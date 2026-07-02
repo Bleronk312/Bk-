@@ -74,15 +74,3 @@ function glasOptimizeRoute(stops) {
   }
   return [...ordered, ...withoutCoords];
 }
-
-function glasMapsLink(stops) {
-  // Google-Maps-Link mit allen Stopps in der berechneten Reihenfolge.
-  const valid = stops.filter((s) => s.lat && s.lng);
-  const points = valid.map((s) => `${s.lat},${s.lng}`);
-  if (!points.length) return "";
-  const destination = points[points.length - 1];
-  const waypoints = points.slice(0, -1).join("|");
-  let url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-  if (waypoints) url += `&waypoints=${encodeURIComponent(waypoints)}`;
-  return url;
-}

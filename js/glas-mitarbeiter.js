@@ -134,7 +134,6 @@ function closeGlasTour() {
 
 function renderGlasTourScreen(t) {
   const done = t.stopps.filter((s) => s.status === "erledigt").length;
-  const fullRouteLink = glasMapsLink(t.stopps);
 
   return `
     <button class="btn btn-sm" style="margin-bottom:12px;" onclick="closeGlasTour()">&larr; Alle Touren</button>
@@ -143,7 +142,6 @@ function renderGlasTourScreen(t) {
       <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
     </div>
     ${renderGlasRouteOverview(t)}
-    ${fullRouteLink ? `<a class="btn btn-sm" href="${fullRouteLink}" target="_blank" style="width:100%; justify-content:center; margin-bottom:10px;">🧭 Gesamtroute in Google Maps</a>` : ""}
     ${!glasStopsRevealed
       ? `<button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="glasStopsRevealed = true; renderGlasMa();">▶ Tour starten</button>`
       : `<button class="btn btn-sm" style="width:100%; justify-content:center; margin-bottom:10px;" onclick="glasStopsRevealed = false; renderGlasMa();">▲ Stopps einklappen</button>${renderGlasStopsList(t)}`

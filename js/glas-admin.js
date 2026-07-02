@@ -16,6 +16,7 @@ let glasPositionen = [];
 let glasTab = "touren";
 let glasObjektEditing = null; // null = keine Bearbeitung, {} = neu, {...} = bestehendes Objekt
 let glasObjektExpandedId = null;
+let glasObjektHistoryCache = {}; // objekt_id -> Array Stopps (Verlauf, inkl. Unterschriften)
 let glasObjektSearch = "";
 let glasTourSearch = "";
 let glasBusy = false;
@@ -114,6 +115,11 @@ function switchGlasTab(tab) {
 }
 
 function renderGlasAdmin() {
+  // Falls das Objekt-Formular gerade offen ist und noch im DOM steht, zuerst die
+  // eingetippten Werte sichern - sonst würde renderObjektForm() das Formular gleich
+  // wieder aus dem (veralteten) glasObjektEditing aufbauen und alles Eingetippte verwerfen.
+  if (glasObjektEditing && document.getElementById("o_name")) syncObjektFormFromDom();
+
   const view = document.getElementById("view");
   view.innerHTML = `
     <div class="tabs">
@@ -209,8 +215,54 @@ function renderGlasObjektRow(o) {
           <button class="btn btn-sm" onclick='editGlasObjekt(${JSON.stringify(o.id)})'>Bearbeiten</button>
           <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasObjekt('${o.id}')">Löschen</button>
         </div>
+        ${renderGlasObjektHistory(o)}
       </div>` : ""}
     </div>`;
+}
+
+function renderGlasObjektHistory(o) {
+  const cached = glasObjektHistoryCache[o.id];
+  if (!cached) return `<p class="muted" style="margin-top:12px;"><span class="spinner"></span> Lade Verlauf...</p>`;
+  if (!cached.length) return `<p class="muted" style="margin-top:12px;">Noch nie in einer Tour eingeplant.</p>`;
+
+  const signed = cached.filter((s) => s.status === "erledigt");
+  const summary = signed.length
+    ? `<p style="margin:12px 0 6px; font-weight:600; font-size:13.5px;">Zuletzt unterschrieben: ${escapeHtml(signed[0].name || "")} am ${formatGlasDate(signed[0].datum)}</p>`
+    : `<p class="muted" style="margin:12px 0 6px;">Noch nie unterschrieben.</p>`;
+
+  const rows = cached
+    .map((s) => {
+      const isDone = s.status === "erledigt";
+      const tourLabel = s.glas_touren?.name || (s.glas_touren?.datum ? formatGlasDate(s.glas_touren.datum) : "Tour");
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-top:1px solid var(--border); font-size:13px;">
+          <span>${escapeHtml(tourLabel)}${s.glas_touren?.datum ? " · " + formatGlasDate(s.glas_touren.datum) : ""}</span>
+          ${isDone
+            ? `<span style="display:flex; align-items:center; gap:8px;"><span class="badge badge-signed" style="font-size:11px;">✓ ${escapeHtml(s.name || "")}</span><button class="btn btn-sm" style="padding:4px 8px;" onclick="downloadGlasPdfHistory('${o.id}','${s.id}')">📄</button></span>`
+            : `<span class="badge badge-open" style="font-size:11px;">Offen</span>`
+          }
+        </div>`;
+    })
+    .join("");
+
+  return `<div style="margin-top:4px;">${summary}${rows}</div>`;
+}
+
+async function loadGlasObjektHistory(id) {
+  const { data, error } = await sb
+    .from("glas_stopps")
+    .select("*, glas_touren(name, datum, template)")
+    .eq("objekt_id", id)
+    .order("created_at", { ascending: false });
+  glasObjektHistoryCache[id] = error ? [] : data || [];
+  if (glasObjektExpandedId === id) renderGlasAdmin();
+}
+
+function downloadGlasPdfHistory(objektId, stopId) {
+  const s = (glasObjektHistoryCache[objektId] || []).find((x) => x.id === stopId);
+  if (!s) return;
+  const doc = generateGlasPdf(s, s.glas_touren?.template || "geko", s.glas_touren?.datum);
+  doc.save(`Abnahmeschein_${(s.adresse || "").replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 }
 
 function toggleGlasObjektGroup(kunde) {
@@ -222,6 +274,9 @@ function toggleGlasObjektGroup(kunde) {
 function toggleGlasObjekt(id) {
   glasObjektExpandedId = glasObjektExpandedId === id ? null : id;
   renderGlasAdmin();
+  if (glasObjektExpandedId && !glasObjektHistoryCache[glasObjektExpandedId]) {
+    loadGlasObjektHistory(glasObjektExpandedId);
+  }
 }
 
 function editGlasObjekt(id) {
@@ -357,14 +412,36 @@ function syncPositionenFromDom() {
   }));
 }
 
-function addPositionRow() {
+// Liest ALLE Formularfelder aus dem DOM zurück in glasObjektEditing, bevor renderGlasAdmin()
+// das Formular neu aufbaut - sonst gehen bereits eingetippte Werte (Name, Adresse, ...)
+// verloren, sobald z.B. eine Position hinzugefügt/entfernt wird (renderObjektForm baut das
+// Formular immer aus glasObjektEditing neu auf, nicht aus dem aktuellen DOM-Zustand).
+function syncObjektFormFromDom() {
+  if (!glasObjektEditing) return;
   syncPositionenFromDom();
+  const kundeSel = document.getElementById("o_kunde");
+  if (kundeSel) {
+    glasObjektEditing.kunde_id = kundeSel.value;
+    glasObjektEditing.kunde_name = kundeSel.options[kundeSel.selectedIndex]?.text || "";
+  }
+  const get = (id) => document.getElementById(id)?.value;
+  if (get("o_kunde_adresse") !== undefined) glasObjektEditing.kunde_adresse = get("o_kunde_adresse");
+  if (get("o_name") !== undefined) glasObjektEditing.name = get("o_name");
+  if (get("o_kdnr") !== undefined) glasObjektEditing.kdnr = get("o_kdnr");
+  const strasse = get("o_strasse");
+  const plz = get("o_plz");
+  const ort = get("o_ort");
+  if (strasse !== undefined) glasObjektEditing.adresse = glasJoinAdresse(strasse, plz || "", ort || "");
+}
+
+function addPositionRow() {
+  syncObjektFormFromDom();
   glasObjektEditing.positionen.push({ nr: glasPositionen[0]?.nr || "10", art: glasPositionen[0]?.name || "", qm: "" });
   renderGlasAdmin();
 }
 
 function removePositionRow(idx) {
-  syncPositionenFromDom();
+  syncObjektFormFromDom();
   glasObjektEditing.positionen.splice(idx, 1);
   renderGlasAdmin();
 }
@@ -838,6 +915,7 @@ async function createGlasTour() {
         ? `Tour angelegt – Adresse(n) nicht gefunden, ans Ende gesetzt: ${failedNames.join(", ")}`
         : "Tour angelegt – erscheint jetzt im Mitarbeiter-Link"
     );
+    selected.forEach((o) => delete glasObjektHistoryCache[o.id]);
     glasSelectedObjekte.clear();
     glasManualOrder = [];
     glasShowNewTourForm = false;
