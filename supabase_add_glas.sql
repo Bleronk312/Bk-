@@ -141,3 +141,25 @@ create index if not exists idx_glas_objekt_positionen_objekt on glas_objekt_posi
 -- Datenmodell nötig ist, sind aber inhaltlich unabhängig von Terminplanung/Intervallen.
 alter table glas_touren add column if not exists frei boolean not null default false;
 
+-- Touren können jetzt auch über mehrere Tage laufen (datum = Start, datum_bis = Ende,
+-- leer = eintägig wie bisher).
+alter table glas_touren add column if not exists datum_bis date;
+
+-- Löschen einer Tour verschiebt sie nur ins Archiv (archiviert_am gesetzt), damit man sich
+-- vertippt/versehentlich Gelöschtes noch retten kann. Ein täglicher Cron-Job (siehe unten)
+-- entfernt archivierte Touren endgültig nach 14 Tagen.
+alter table glas_touren add column if not exists archiviert_am timestamptz;
+
+create extension if not exists pg_cron;
+do $$
+begin
+  if exists (select 1 from cron.job where jobname = 'glas-touren-archiv-aufraeumen') then
+    perform cron.unschedule('glas-touren-archiv-aufraeumen');
+  end if;
+end $$;
+select cron.schedule(
+  'glas-touren-archiv-aufraeumen',
+  '0 3 * * *',
+  $$ delete from glas_touren where archiviert_am is not null and archiviert_am < now() - interval '14 days'; $$
+);
+
