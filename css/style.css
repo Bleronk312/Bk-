@@ -142,6 +142,46 @@ label {
 .badge-open { background: var(--warning-bg); color: var(--warning-text); }
 .badge-signed { background: var(--success-bg); color: var(--success-text); }
 
+.glas-ring {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(var(--ring-color, var(--blue)) var(--pct, 0%), var(--border) 0);
+  transition: background 0.3s ease;
+}
+.glas-ring-inner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.glas-section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  margin: 22px 0 10px;
+}
+.glas-section-title:first-child { margin-top: 4px; }
+
+.glas-empty {
+  text-align: center;
+  padding: 50px 20px;
+}
+.glas-empty .glas-empty-icon { font-size: 42px; margin-bottom: 12px; }
+.glas-empty p { margin: 0; }
+
 .scheine-item {
   display: flex;
   justify-content: space-between;

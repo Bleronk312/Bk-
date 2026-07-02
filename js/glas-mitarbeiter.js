@@ -14,6 +14,7 @@ let glasOpenTourId = null; // gerade geöffnete Tour im Vollbild (ersetzt die Li
 let glasOpenStopId = null;
 let glasStopsRevealed = false; // "Tour starten" wurde getippt, Stopp-Liste sichtbar
 let glasSigPad = null;
+let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
 
 function showToast(msg) {
   const t = document.getElementById("toast");
@@ -40,9 +41,10 @@ function todayIso() {
 
 async function glasMaInit() {
   await loadGlasTouren();
-  // Standardmäßig die heutige Tour (falls vorhanden) automatisch aufklappen
-  const today = glasTouren.find((t) => t.datum === todayIso());
-  if (today) glasOpenTourId = today.id;
+  // Gibt es genau eine Tour für heute, direkt reinspringen statt erst die Liste zu zeigen.
+  // Bei mehreren Touren am selben Tag muss erst ausgewählt werden.
+  const todaysTours = glasTouren.filter((t) => t.datum === todayIso());
+  if (todaysTours.length === 1) glasOpenTourId = todaysTours[0].id;
   renderGlasMa();
 }
 
@@ -80,7 +82,12 @@ function renderGlasMa() {
   const view = document.getElementById("view");
 
   if (!glasTouren.length) {
-    view.innerHTML = `<p class="muted">Noch keine Touren angelegt.</p>`;
+    view.innerHTML = `
+      <div class="glas-empty">
+        <div class="glas-empty-icon">🧽</div>
+        <p style="font-weight:600; font-size:16px;">Noch keine Tour für dich</p>
+        <p class="muted" style="margin-top:4px;">Sobald eine Tour für dich geplant ist, erscheint sie hier automatisch.</p>
+      </div>`;
     return;
   }
 
@@ -96,26 +103,64 @@ function renderGlasMa() {
   view.innerHTML = renderGlasTourList();
 }
 
+function glasTourProgress(t) {
+  const total = t.stopps.length;
+  const done = t.stopps.filter((s) => s.status === "erledigt").length;
+  const allDone = total > 0 && done === total;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return { total, done, allDone, pct };
+}
+
+function renderGlasTourCard(t) {
+  const { total, done, allDone, pct } = glasTourProgress(t);
+  const isToday = t.datum === todayIso();
+  const ringColor = allDone ? "#1e7a34" : "var(--blue)";
+  const border = allDone ? "#cdeed3" : isToday ? "var(--blue)" : "var(--border)";
+  const bg = allDone ? "#f2faf3" : isToday ? "#eaf2fb" : "var(--card)";
+  return `
+    <div class="card" style="cursor:pointer; display:flex; align-items:center; gap:14px; background:${bg}; border-color:${border};" onclick="openGlasTour('${t.id}')">
+      <div class="glas-ring" style="--pct:${pct}%; --ring-color:${ringColor};">
+        <div class="glas-ring-inner">${allDone ? "✓" : `${done}/${total}`}</div>
+      </div>
+      <div style="flex:1; min-width:0;">
+        <p style="margin:0; font-weight:700; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
+        <p class="muted" style="margin:3px 0 0;">${t.datum ? formatGlasDate(t.datum) : "Ohne Datum"}${isToday ? " · Heute" : ""}</p>
+      </div>
+      <span style="font-size:20px; color:var(--text-secondary); flex-shrink:0;">›</span>
+    </div>`;
+}
+
 function renderGlasTourList() {
-  return glasTouren
-    .map((t) => {
-      const done = t.stopps.filter((s) => s.status === "erledigt").length;
-      const isToday = t.datum === todayIso();
-      const allDone = t.stopps.length && done === t.stopps.length;
-      const bg = allDone ? "#eaf7ec" : isToday ? "#eaf2fb" : "var(--card)";
-      const border = allDone ? "#cdeed3" : isToday ? "var(--blue)" : "var(--border)";
-      return `
-        <div class="card" style="cursor:pointer; background:${bg}; border-color:${border};" onclick="openGlasTour('${t.id}')">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <p style="margin:0; font-weight:700; font-size:16px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}${isToday ? " · Heute" : ""}</p>
-              <p class="muted" style="margin:3px 0 0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
-            </div>
-            <span style="font-size:20px; color:var(--text-secondary);">›</span>
-          </div>
-        </div>`;
-    })
-    .join("");
+  const today = todayIso();
+  const heute = [];
+  const kommend = [];
+  const frueher = [];
+  glasTouren.forEach((t) => {
+    if (t.datum === today) heute.push(t);
+    else if (t.datum && t.datum > today) kommend.push(t);
+    else frueher.push(t);
+  });
+  kommend.sort((a, b) => (a.datum || "").localeCompare(b.datum || ""));
+  frueher.sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+
+  let html = "";
+  if (heute.length) {
+    html += `<p class="glas-section-title">Heute</p>` + heute.map(renderGlasTourCard).join("");
+  }
+  if (kommend.length) {
+    html += `<p class="glas-section-title">Kommende Touren</p>` + kommend.map(renderGlasTourCard).join("");
+  }
+  if (frueher.length) {
+    html += `
+      <p class="glas-section-title" style="cursor:pointer; display:flex; align-items:center; gap:6px;" onclick="glasFrueherExpanded = !glasFrueherExpanded; renderGlasMa();">
+        Frühere Touren (${frueher.length}) <span>${glasFrueherExpanded ? "▲" : "▼"}</span>
+      </p>
+      ${glasFrueherExpanded ? frueher.map(renderGlasTourCard).join("") : ""}`;
+  }
+  if (!heute.length && !kommend.length && !frueher.length) {
+    html = `<p class="muted">Keine Touren gefunden.</p>`;
+  }
+  return html;
 }
 
 function openGlasTour(id) {
