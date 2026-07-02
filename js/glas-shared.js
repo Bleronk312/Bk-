@@ -93,6 +93,12 @@ function glasAddDaysIso(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
+function glasAddMonthsIso(iso, months) {
+  const d = new Date(iso + "T00:00:00");
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatGlasDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");

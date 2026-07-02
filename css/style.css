@@ -338,6 +338,7 @@ label {
   margin-bottom: 14px;
 }
 .glas-dash-stats-2 { grid-template-columns: repeat(2, 1fr); }
+.glas-quick-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .glas-pos-row { position: relative; }
 .glas-pos-remove {
   position: absolute;
@@ -388,6 +389,8 @@ label {
   border-color: #2f9e51;
   color: #fff;
 }
+.glas-day-modal-box { max-width: 420px; max-height: 82vh; overflow-y: auto; }
+.glas-verschieben-picker { padding: 14px; }
 .glas-stat {
   background: var(--card);
   border: 1px solid var(--border);

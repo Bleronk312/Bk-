@@ -732,6 +732,8 @@ function editGlasObjekt(id, opts) {
       name: "",
       adresse: "",
       kdnr: "",
+      ansprechpartner: "",
+      telefon: "",
       positionen: [glasLeerePosition()],
     };
   } else {
@@ -797,6 +799,16 @@ Im Gildehof 8
           <label class="muted">Zusätzliche Dietrich Kd.-Nr. (optional)</label>
           <input type="text" id="o_kdnr" value="${escapeHtml(o.kdnr)}" placeholder="3806 590 00" />
           <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint nur auf Scheinen mit dem Dietrich-Template. Leer lassen = Haupt-Kd.-Nr. des Kunden wird verwendet. Das GEKO-Template nutzt immer die Haupt-Kd.-Nr.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="muted">Ansprechpartner (A.P.), optional</label>
+          <input type="text" id="o_ansprechpartner" value="${escapeHtml(o.ansprechpartner || "")}" placeholder="z.B. Frau Müller" />
+        </div>
+        <div class="field">
+          <label class="muted">Telefon, optional</label>
+          <input type="text" id="o_telefon" value="${escapeHtml(o.telefon || "")}" placeholder="0234 12345" />
         </div>
       </div>
       <label class="muted">Positionen &amp; Intervalle</label>
@@ -935,6 +947,8 @@ function syncObjektFormFromDom() {
   if (get("o_kunde_adresse") !== undefined) glasObjektEditing.kunde_adresse = get("o_kunde_adresse");
   if (get("o_name") !== undefined) glasObjektEditing.name = get("o_name");
   if (get("o_kdnr") !== undefined) glasObjektEditing.kdnr = get("o_kdnr");
+  if (get("o_ansprechpartner") !== undefined) glasObjektEditing.ansprechpartner = get("o_ansprechpartner");
+  if (get("o_telefon") !== undefined) glasObjektEditing.telefon = get("o_telefon");
   const strasse = get("o_strasse");
   const plz = get("o_plz");
   const ort = get("o_ort");
@@ -964,6 +978,8 @@ async function saveGlasObjekt() {
   const plz = document.getElementById("o_plz").value.trim();
   const ort = document.getElementById("o_ort").value.trim();
   const kdnr = document.getElementById("o_kdnr").value.trim();
+  const ansprechpartner = document.getElementById("o_ansprechpartner").value.trim();
+  const telefon = document.getElementById("o_telefon").value.trim();
   const positionen = glasObjektEditing.positionen.filter((p) => p.art || p.qm);
 
   if (!kundeId) { showToast("Bitte einen Kunden auswählen"); return; }
@@ -1001,6 +1017,8 @@ async function saveGlasObjekt() {
     name,
     adresse,
     kdnr,
+    ansprechpartner,
+    telefon,
     lat: coords.lat,
     lng: coords.lng,
   };
@@ -1080,11 +1098,12 @@ function renderObjektDetailPage(id) {
   });
   const naechste = positionen
     .filter((p) => !glasIstEingeplant(p))
-    .map(glasFaelligkeitStatus)
+    .map((p) => ({ position: p, ...glasFaelligkeitStatus(p) }))
     .filter((s) => s.faelligkeit)
     .sort((a, b) => a.faelligkeit.localeCompare(b.faelligkeit))[0];
 
   const shown = glasObjektDetailShowAllHistory ? signed : signed.slice(0, 5);
+  const zeigeVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.objektId === o.id;
 
   return `
     <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasKunde('${o.kunde_id}')">&larr; ${escapeHtml(o.kunde_name || "Zurück")}</button>
@@ -1094,15 +1113,19 @@ function renderObjektDetailPage(id) {
       <p class="muted" style="margin:0 0 10px;"><a href="javascript:void(0)" onclick="goGlasKunde('${o.kunde_id}')">${escapeHtml(o.kunde_name || "Ohne Kunde")}</a></p>
       <p style="margin:0; white-space:pre-line;">${escapeHtml(o.adresse)}</p>
       <p class="muted" style="margin:6px 0 0;">Haupt-Kd.-Nr.: ${escapeHtml(glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "–")}${o.kdnr ? ` · Dietrich Kd.-Nr.: ${escapeHtml(o.kdnr)}` : ""}</p>
-      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center;">
-        ${o.lat ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank">🧭 Navigation</a>` : `<span class="muted">⚠️ Nicht geocodiert</span>`}
-        <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Objekt jetzt einplanen</button>
+      ${o.ansprechpartner ? `<p class="muted" style="margin:4px 0 0;">👤 A.P.: ${escapeHtml(o.ansprechpartner)}</p>` : ""}
+      ${o.telefon ? `<p class="muted" style="margin:4px 0 0;">📞 Tel.: <a href="tel:${escapeHtml(o.telefon)}">${escapeHtml(o.telefon)}</a></p>` : ""}
+      <div class="glas-quick-actions">
+        <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Einplanen</button>
+        ${naechste ? `<button class="btn btn-sm" onclick="glasOpenVerschieben('${o.id}', '${naechste.position.id}')">🔁 Verschieben</button>` : ""}
         <select id="objekt_schein_template_${o.id}" style="width:auto;">
           <option value="geko">Vorlage: GEKO</option>
           <option value="sub">Vorlage: Dietrich</option>
         </select>
         <button class="btn btn-sm" onclick="downloadBlankGlasSchein('${o.id}')">📄 Schein erstellen</button>
+        ${o.lat ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank">🧭 Navigation</a>` : `<span class="muted">⚠️ Nicht geocodiert</span>`}
       </div>
+      ${zeigeVerschieben ? renderVerschiebePicker() : ""}
     </div>
 
     <div class="card" style="${alleEingeplant ? "background:#eaf2fb; border-color:#c7dcf2;" : glasStatusTint(naechste ? naechste.status : null)}">
@@ -2580,13 +2603,18 @@ function renderKalenderTagPanel(iso) {
   }).join("");
 
   return `
-    <div class="card glas-screen-in">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <p style="margin:0; font-weight:700; font-size:16px;">${wt}, ${formatGlasDate(iso)}</p>
-        <button class="btn btn-sm" onclick="openGlasTermin(null, '${iso}')">+ Termin</button>
+    <div class="modal-overlay" onclick="if(event.target===this){glasKalenderSelectedDay=null; renderGlasAdmin();}">
+      <div class="modal-box glas-day-modal-box glas-screen-in">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <p style="margin:0; font-weight:700; font-size:16px;">${wt}, ${formatGlasDate(iso)}</p>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button class="btn btn-sm" onclick="openGlasTermin(null, '${iso}')">+ Termin</button>
+            <button class="btn btn-sm" onclick="glasKalenderSelectedDay=null; renderGlasAdmin();">✕</button>
+          </div>
+        </div>
+        ${tourRows}${terminRows}
+        ${!touren.length && !termine.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
       </div>
-      ${tourRows}${terminRows}
-      ${!touren.length && !termine.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
     </div>`;
 }
 
@@ -2627,20 +2655,24 @@ function renderOffeneListe() {
     const key = `${x.objekt.id}::${x.position.id || x.position.nr}`;
     const checked = glasOffeneSelected.has(key);
     const zeitLabel = x.tage === null ? x.label : x.status === "ueberfaellig" ? `${Math.abs(x.tage)}T überfällig` : x.tage === 0 ? "heute" : `in ${x.tage}T`;
+    const zeigeVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.positionId === x.position.id;
     return `
-      <div class="card" style="display:flex; align-items:flex-start; gap:12px; ${glasStatusTint(x.status)}">
-        <input type="checkbox" style="width:auto; margin-top:3px;" ${checked ? "checked" : ""} onchange="toggleGlasOffeneSelect('${key}')" />
-        <div style="flex:1; min-width:0; cursor:pointer;" onclick="goGlasObjekt('${x.objekt.id}')">
-          <p style="margin:0; font-weight:600;">${escapeHtml(x.objekt.name)}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${escapeHtml(x.objekt.kunde_name || "")} · Pos. ${escapeHtml(x.position.nr)} ${escapeHtml(x.position.art)}</p>
-        </div>
-        <div style="text-align:right; flex-shrink:0;">
-          <span class="badge ${glasStatusBadgeClass(x.status)}">${zeitLabel}</span>
-          <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
-            <button class="btn btn-sm btn-primary" style="padding:4px 8px; font-size:11.5px;" onclick="glasJetztPlanen('${x.objekt.id}', ['${x.position.id || x.position.nr}'])">📅 Jetzt planen!</button>
-            <button class="btn btn-sm" style="padding:4px 8px; font-size:11.5px;" onclick="glasVerschiebePosition('${x.objekt.id}','${x.position.id}')">Verschieben</button>
+      <div style="margin-bottom:10px;">
+        <div class="card" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:0; ${glasStatusTint(x.status)}">
+          <input type="checkbox" style="width:auto; margin-top:3px;" ${checked ? "checked" : ""} onchange="toggleGlasOffeneSelect('${key}')" />
+          <div style="flex:1; min-width:0; cursor:pointer;" onclick="goGlasObjekt('${x.objekt.id}')">
+            <p style="margin:0; font-weight:600;">${escapeHtml(x.objekt.name)}</p>
+            <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${escapeHtml(x.objekt.kunde_name || "")} · Pos. ${escapeHtml(x.position.nr)} ${escapeHtml(x.position.art)}</p>
+          </div>
+          <div style="text-align:right; flex-shrink:0;">
+            <span class="badge ${glasStatusBadgeClass(x.status)}">${zeitLabel}</span>
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
+              <button class="btn btn-sm btn-primary" style="padding:4px 8px; font-size:11.5px;" onclick="glasJetztPlanen('${x.objekt.id}', ['${x.position.id || x.position.nr}'])">📅 Jetzt planen!</button>
+              <button class="btn btn-sm" style="padding:4px 8px; font-size:11.5px;" onclick="glasOpenVerschieben('${x.objekt.id}','${x.position.id}')">Verschieben</button>
+            </div>
           </div>
         </div>
+        ${zeigeVerschieben ? renderVerschiebePicker() : ""}
       </div>`;
   }).join("");
 
@@ -2662,14 +2694,64 @@ function toggleGlasOffeneSelect(key) {
   renderGlasAdmin();
 }
 
-function glasVerschiebePosition(objektId, positionId) {
-  const neuesDatum = prompt("Neue Fälligkeit (JJJJ-MM-TT):", glasAddDaysIso(glasTodayIso(), 30));
-  if (!neuesDatum) return;
-  sb.from("glas_objekt_positionen").update({ faelligkeit_override: neuesDatum }).eq("id", positionId).then(({ error }) => {
-    if (error) { showToast("Fehler: " + error.message); return; }
-    showToast("Fälligkeit verschoben");
-    loadGlasObjektPositionen().then(renderGlasAdmin);
-  });
+// Verschieben-Picker: statt ein Datum einzutippen (Tippfehler-Gefahr) gibt es feste
+// Offsets (+2 Wochen/+1 Monat/+3 Monate) plus eine Datumsauswahl für Sonderfälle. Wird sowohl
+// von der Objekt-Detail-Seite als auch von der Offenen Liste aus geöffnet.
+let glasVerschiebeTarget = null; // { objektId, positionId } | null
+
+function glasOpenVerschieben(objektId, positionId) {
+  glasVerschiebeTarget = { objektId, positionId };
+  renderGlasAdmin();
+}
+
+function glasCloseVerschieben() {
+  glasVerschiebeTarget = null;
+  renderGlasAdmin();
+}
+
+function renderVerschiebePicker() {
+  return `
+    <div class="card glas-verschieben-picker" style="margin-top:8px; background:var(--bg);">
+      <p class="muted" style="margin:0 0 8px; font-weight:600;">Fälligkeit verschieben auf...</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-sm" onclick="glasVerschiebeUmTage(14)">+2 Wochen</button>
+        <button class="btn btn-sm" onclick="glasVerschiebeUmMonate(1)">+1 Monat</button>
+        <button class="btn btn-sm" onclick="glasVerschiebeUmMonate(3)">+3 Monate</button>
+      </div>
+      <div style="display:flex; gap:8px; align-items:flex-end; margin-top:10px; flex-wrap:wrap;">
+        <div class="field" style="margin-bottom:0;">
+          <label class="muted">Oder Datum wählen</label>
+          <input type="date" id="verschieben_datum" value="${glasAddMonthsIso(glasTodayIso(), 1)}" />
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="glasVerschiebeAufDatum()">Übernehmen</button>
+      </div>
+      <button class="btn btn-sm" style="margin-top:10px;" onclick="glasCloseVerschieben()">Abbrechen</button>
+    </div>`;
+}
+
+function glasVerschiebeUmTage(tage) {
+  glasSpeichereVerschiebung(glasAddDaysIso(glasTodayIso(), tage));
+}
+
+function glasVerschiebeUmMonate(monate) {
+  glasSpeichereVerschiebung(glasAddMonthsIso(glasTodayIso(), monate));
+}
+
+function glasVerschiebeAufDatum() {
+  const val = document.getElementById("verschieben_datum")?.value;
+  if (!val) { showToast("Bitte ein Datum wählen"); return; }
+  glasSpeichereVerschiebung(val);
+}
+
+async function glasSpeichereVerschiebung(neuesDatum) {
+  if (!glasVerschiebeTarget) return;
+  const { positionId } = glasVerschiebeTarget;
+  const { error } = await sb.from("glas_objekt_positionen").update({ faelligkeit_override: neuesDatum }).eq("id", positionId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Fälligkeit verschoben");
+  glasVerschiebeTarget = null;
+  await loadGlasObjektPositionen();
+  renderGlasAdmin();
 }
 
 function glasOffeneZuTourHinzufuegen() {

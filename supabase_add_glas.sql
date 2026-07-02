@@ -206,3 +206,7 @@ grant select, insert, update, delete on table glas_einstellungen to anon, authen
 -- landen also schon stark verkleinert in der Spalte.
 alter table glas_termine add column if not exists anhaenge text not null default '[]';
 
+-- Ansprechpartner + Telefonnummer je Objekt (z.B. Hausmeister/Kita-Leitung vor Ort).
+alter table glas_objekte add column if not exists ansprechpartner text not null default '';
+alter table glas_objekte add column if not exists telefon text not null default '';
+
