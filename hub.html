@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#1f5d92" />
+<title>GEKO Hub</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="glas-logo-left">
+
+  <div class="app-header">
+    <div class="brand-row"><span class="dot"></span>GEKO Hub</div>
+    <div class="greeting">Willkommen zurück!</div>
+  </div>
+  <div class="app-sheet">
+    <img class="logo-watermark" id="watermarkImg" alt="" />
+    <div class="logo-badge"><img id="badgeLogoImg" alt="Logo" /></div>
+    <div class="app-sheet-content glas-static">
+      <div class="wrap" style="padding:0 18px 24px;">
+
+        <div class="hub-hero">
+          <p class="hub-title">Hallo GEKO Clean <span class="glas-welcome-heart">&#10084;&#65039;</span></p>
+          <p class="hub-sub">In welche Abteilung m&ouml;chtest du?</p>
+        </div>
+
+        <a class="hub-card" href="admin.html" style="animation-delay:0.1s;">
+          <div class="hub-card-icon" style="background:#fdf0ec;">&#127912;</div>
+          <div class="hub-card-body">
+            <p class="hub-card-title">Graffitientfernung &amp; Sonderreinigung</p>
+            <p class="hub-card-sub">Abnahmescheine, Kunden, Statistik</p>
+          </div>
+          <span class="hub-card-arrow">&#8250;</span>
+        </a>
+
+        <a class="hub-card" href="glas-admin.html" style="animation-delay:0.22s;">
+          <div class="hub-card-icon" style="background:#eaf2fb;">&#129951;</div>
+          <div class="hub-card-body">
+            <p class="hub-card-title">Glasreinigung</p>
+            <p class="hub-card-sub">Touren, Kalender, Intervalle, Objekte</p>
+          </div>
+          <span class="hub-card-arrow">&#8250;</span>
+        </a>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/logo-asset.js"></script>
+  <script src="js/pull-refresh.js"></script>
+  <script>
+    const wm = document.getElementById("watermarkImg");
+    const badge = document.getElementById("badgeLogoImg");
+    if (wm) wm.src = GEKO_LOGO_TRANSPARENT_B64;
+    if (badge) badge.src = GEKO_LOGO_TRANSPARENT_B64;
+  </script>
+</body>
+</html>

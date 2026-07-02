@@ -260,6 +260,12 @@ async function init() {
 
   if (!heavyError && heavy && currentScheine && currentScheine.id === id) {
     currentScheine = { ...currentScheine, ...heavy };
+    // Zwischengespeicherte Fotos wieder in die Bearbeitungs-Arrays laden, sonst wirken sie
+    // beim erneuten Öffnen verloren und würden beim nächsten Speichern überschrieben.
+    if (!currentScheine.signed_at) {
+      vorherFotos = parsePhotoJson(currentScheine.vorher_fotos);
+      nachherFotos = parsePhotoJson(currentScheine.nachher_fotos);
+    }
     if (!signFormOpen) render();
   }
 }

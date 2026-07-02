@@ -513,6 +513,13 @@ async function openView(id) {
 
     if (!error && data && currentViewScheine && currentViewScheine.id === id) {
       const merged = { ...light, ...data };
+      // Bereits zwischengespeicherte Vorher-/Nachher-Fotos in die Bearbeitungs-Arrays laden,
+      // sonst wirken sie beim erneuten Öffnen verloren (und würden beim nächsten Speichern
+      // sogar überschrieben).
+      if (!merged.signed_at) {
+        vorherFotos = parsePhotoJson(merged.vorher_fotos);
+        nachherFotos = parsePhotoJson(merged.nachher_fotos);
+      }
       if (!signFormOpen) renderViewScheine(merged);
       else currentViewScheine = merged;
     }

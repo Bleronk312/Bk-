@@ -146,22 +146,18 @@ alter table glas_touren add column if not exists frei boolean not null default f
 alter table glas_touren add column if not exists datum_bis date;
 
 -- Löschen einer Tour verschiebt sie nur ins Archiv (archiviert_am gesetzt), damit man sich
--- vertippt/versehentlich Gelöschtes noch retten kann. Ein täglicher Cron-Job (siehe unten)
--- entfernt archivierte Touren endgültig nach 14 Tagen.
+-- vertippt/versehentlich Gelöschtes noch retten kann. Archivierte Touren bleiben dauerhaft
+-- erhalten, bis sie im Archiv manuell endgültig gelöscht werden (kein Auto-Aufräumen).
 alter table glas_touren add column if not exists archiviert_am timestamptz;
 
-create extension if not exists pg_cron;
+-- Früherer 14-Tage-Aufräum-Cron-Job wird entfernt, falls er noch existiert.
 do $$
 begin
-  if exists (select 1 from cron.job where jobname = 'glas-touren-archiv-aufraeumen') then
+  if exists (select 1 from pg_extension where extname = 'pg_cron')
+     and exists (select 1 from cron.job where jobname = 'glas-touren-archiv-aufraeumen') then
     perform cron.unschedule('glas-touren-archiv-aufraeumen');
   end if;
 end $$;
-select cron.schedule(
-  'glas-touren-archiv-aufraeumen',
-  '0 3 * * *',
-  $$ delete from glas_touren where archiviert_am is not null and archiviert_am < now() - interval '14 days'; $$
-);
 
 -- Freie Kalender-Termine (unabhängig von Touren): Titel, Farbe, Zeitraum, Erinnerung, Notiz.
 -- Angelehnt an den TimeTree-Eintrag - erscheinen als eigene Balken im Kalender.
