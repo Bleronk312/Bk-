@@ -1103,7 +1103,8 @@ function renderObjektDetailPage(id) {
     .sort((a, b) => a.faelligkeit.localeCompare(b.faelligkeit))[0];
 
   const shown = glasObjektDetailShowAllHistory ? signed : signed.slice(0, 5);
-  const zeigeVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.objektId === o.id;
+  const alleVerschiebbarIds = positionen.filter((p) => p.intervall_typ && p.id && !glasIstEingeplant(p)).map((p) => p.id);
+  const zeigeAlleVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.objektId === o.id && glasVerschiebeTarget.scope === "alle";
 
   return `
     <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasKunde('${o.kunde_id}')">&larr; ${escapeHtml(o.kunde_name || "Zurück")}</button>
@@ -1117,7 +1118,7 @@ function renderObjektDetailPage(id) {
       ${o.telefon ? `<p class="muted" style="margin:4px 0 0;">📞 Tel.: <a href="tel:${escapeHtml(o.telefon)}">${escapeHtml(o.telefon)}</a></p>` : ""}
       <div class="glas-quick-actions">
         <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Einplanen</button>
-        ${naechste ? `<button class="btn btn-sm" onclick="glasOpenVerschieben('${o.id}', '${naechste.position.id}')">🔁 Verschieben</button>` : ""}
+        ${alleVerschiebbarIds.length ? `<button class="btn btn-sm" onclick='glasOpenVerschieben(${JSON.stringify(o.id)}, ${JSON.stringify(alleVerschiebbarIds)}, "alle")'>🔁 Alle verschieben</button>` : ""}
         <select id="objekt_schein_template_${o.id}" style="width:auto;">
           <option value="geko">Vorlage: GEKO</option>
           <option value="sub">Vorlage: Dietrich</option>
@@ -1125,7 +1126,7 @@ function renderObjektDetailPage(id) {
         <button class="btn btn-sm" onclick="downloadBlankGlasSchein('${o.id}')">📄 Schein erstellen</button>
         ${o.lat ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank">🧭 Navigation</a>` : `<span class="muted">⚠️ Nicht geocodiert</span>`}
       </div>
-      ${zeigeVerschieben ? renderVerschiebePicker() : ""}
+      ${zeigeAlleVerschieben ? renderVerschiebePicker() : ""}
     </div>
 
     <div class="card" style="${alleEingeplant ? "background:#eaf2fb; border-color:#c7dcf2;" : glasStatusTint(naechste ? naechste.status : null)}">
@@ -1144,6 +1145,8 @@ function renderObjektDetailPage(id) {
       ${positionen.map((p) => {
         const f = glasFaelligkeitStatus(p);
         const eingeplant = glasIstEingeplant(p);
+        const kannVerschieben = p.intervall_typ && p.id && !eingeplant;
+        const zeigtPickerHier = glasVerschiebeTarget && glasVerschiebeTarget.scope === "position" && glasVerschiebeTarget.positionIds[0] === p.id;
         return `
         <div style="padding:10px 0; border-top:1px solid var(--border);">
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1153,7 +1156,11 @@ function renderObjektDetailPage(id) {
               : f.status ? `<span class="badge ${glasStatusBadgeClass(f.status)}">${glasStatusLabel(f.status)}</span>` : ""}
           </div>
           <p class="muted" style="margin:3px 0 0; font-size:12.5px;">${glasIntervallLabel(p)}${f.faelligkeit ? ` · ${glasStatusLabel(f.status)}: ${f.label}` : ""}${p.letzte_reinigung ? ` · Zuletzt: ${formatGlasDate(p.letzte_reinigung)}` : ""}</p>
-          ${eingeplant ? "" : `<button class="btn btn-sm" style="margin-top:6px;" onclick="glasJetztPlanen('${o.id}', ['${p.id || p.nr}'])">📅 Jetzt einplanen</button>`}
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            ${eingeplant ? "" : `<button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', ['${p.id || p.nr}'])">📅 Jetzt einplanen</button>`}
+            ${kannVerschieben ? `<button class="btn btn-sm" onclick='glasOpenVerschieben(${JSON.stringify(o.id)}, ${JSON.stringify([p.id])}, "position")'>🔁 Verschieben</button>` : ""}
+          </div>
+          ${zeigtPickerHier ? renderVerschiebePicker() : ""}
         </div>`;
       }).join("")}
       <button class="btn btn-sm" style="margin-top:12px;" onclick='editGlasObjekt(${JSON.stringify(o.id)}, {returnTo:{type:"objekt", id:${JSON.stringify(o.id)}}})'>Objekt bearbeiten</button>
@@ -1254,21 +1261,38 @@ async function loadGlasEinstellungen() {
   }
 }
 
+// Die drei Bereiche stehen als einklappbare Kacheln da (statt alles auf einmal auszubreiten)
+// - antippen öffnet/schließt jeweils nur einen Bereich.
+let glasEinstellungenOpen = null; // null | "standort" | "positionen" | "archiv"
+
+function glasToggleEinstellungenSection(key) {
+  glasEinstellungenOpen = glasEinstellungenOpen === key ? null : key;
+  renderGlasAdmin();
+}
+
+function renderEinstellungenKachel(key, titel, inhaltHtml) {
+  const open = glasEinstellungenOpen === key;
+  return `
+    <div class="card glas-settings-tile" style="margin-top:16px;">
+      <div class="glas-settings-tile-head" onclick="glasToggleEinstellungenSection('${key}')">
+        <p style="margin:0; font-weight:600;">${titel}</p>
+        <span class="glas-settings-tile-chevron${open ? " open" : ""}">›</span>
+      </div>
+      ${open ? `<div class="glas-settings-tile-body">${inhaltHtml}</div>` : ""}
+    </div>`;
+}
+
 function renderEinstellungenTab() {
   return `
-    ${renderGlasStandortCard()}
-    <h2 style="margin:26px 0 4px;">📋 Positionen</h2>
-    ${renderPositionenTab()}
-    <h2 style="margin:26px 0 4px;">🗑️ Archiv</h2>
-    ${renderArchivTab()}
+    ${renderEinstellungenKachel("standort", "📍 Standort für Routenplanung", renderGlasStandortContent())}
+    ${renderEinstellungenKachel("positionen", "📋 Positionen", renderPositionenTab())}
+    ${renderEinstellungenKachel("archiv", "🗑️ Archiv", renderArchivTab())}
   `;
 }
 
-function renderGlasStandortCard() {
+function renderGlasStandortContent() {
   const hatKoordinaten = glasEinstellungen.standort_lat && glasEinstellungen.standort_lng;
   return `
-    <div class="card" style="margin-top:16px;">
-      <h2>📍 Standort für Routenplanung</h2>
       <p class="muted" style="margin:0 0 10px;">Ausgangspunkt, von dem aus "🧠 Smart sortieren" die Reihenfolge der Tour-Stopps berechnet (z.B. euer Betriebssitz/Lager).</p>
       <div class="field">
         <label class="muted">Adresse</label>
@@ -1279,8 +1303,7 @@ function renderGlasStandortCard() {
       </button>
       ${hatKoordinaten
         ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">✓ Koordinaten hinterlegt (${glasEinstellungen.standort_lat.toFixed(4)}, ${glasEinstellungen.standort_lng.toFixed(4)})</p>`
-        : `<p class="muted" style="margin:8px 0 0; font-size:12px;">⚠️ Noch keine Adresse hinterlegt – die Routenoptimierung nutzt bis dahin einen Standard-Startpunkt.</p>`}
-    </div>`;
+        : `<p class="muted" style="margin:8px 0 0; font-size:12px;">⚠️ Noch keine Adresse hinterlegt – die Routenoptimierung nutzt bis dahin einen Standard-Startpunkt.</p>`}`;
 }
 
 async function saveGlasStandort() {
@@ -1334,14 +1357,12 @@ function renderPositionenTab() {
     : `<p class="muted">Noch keine Positionen angelegt.</p>`;
 
   return `
-    <div class="card" style="margin-top:16px;">
-      <h2>Neue Position</h2>
-      <p class="muted" style="margin:0 0 10px;">Leistungsarten mit fester Standard-Positionsnummer (z.B. Pos. 10 Glas- und Rahmenreinigung, Pos. 15 Hubsteigereinsatz). Wird beim Objekt einfach ausgewählt.</p>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="pos_new_nr" placeholder="Nr." style="flex:0 0 60px;" value="10" />
-        <input type="text" id="pos_new_name" placeholder="z.B. Grundreinigung" />
-        <button class="btn btn-primary" onclick="addGlasPosition()">+ Hinzufügen</button>
-      </div>
+    <p class="muted" style="margin:0 0 10px; font-weight:600;">Neue Position</p>
+    <p class="muted" style="margin:0 0 10px;">Leistungsarten mit fester Standard-Positionsnummer (z.B. Pos. 10 Glas- und Rahmenreinigung, Pos. 15 Hubsteigereinsatz). Wird beim Objekt einfach ausgewählt.</p>
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="pos_new_nr" placeholder="Nr." style="flex:0 0 60px;" value="10" />
+      <input type="text" id="pos_new_name" placeholder="z.B. Grundreinigung" />
+      <button class="btn btn-primary" onclick="addGlasPosition()">+ Hinzufügen</button>
     </div>
     ${list}
   `;
@@ -1447,9 +1468,9 @@ function glasStartNewTourForm() {
 
 function renderArchivTab() {
   const archiv = glasTouren.filter((t) => t.archiviert_am);
-  if (!archiv.length) return `<p class="muted" style="margin-top:16px;">Das Archiv ist leer.</p>`;
+  if (!archiv.length) return `<p class="muted">Das Archiv ist leer.</p>`;
   return `
-    <p class="muted" style="margin:16px 0;">Gelöschte Touren bleiben hier 14 Tage, bevor sie endgültig entfernt werden.</p>
+    <p class="muted" style="margin:0 0 12px;">Gelöschte Touren bleiben hier 14 Tage, bevor sie endgültig entfernt werden.</p>
     ${archiv.map((t) => `
       <div class="card" style="opacity:0.75;">
         <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}</p>
@@ -2504,7 +2525,7 @@ function renderKalenderMonat() {
     ...activeTouren.map((t) => {
       const allDone = glasTourAllDone(t);
       return {
-        datum: t.datum, datum_bis: t.datum_bis,
+        datum: t.datum, datum_bis: t.datum_bis, type: "tour",
         bg: allDone ? "#d9f2dd" : "#dbe9f8", fg: allDone ? "#1e7a34" : "#1f5d92",
         label: t.name ? t.name : (t.frei ? "Einzelschein" : "Tour"),
         onclick: `glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');`,
@@ -2513,7 +2534,7 @@ function renderKalenderMonat() {
     ...glasTermine.filter((t) => t.datum).map((t) => {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
       return {
-        datum: t.datum, datum_bis: t.datum_bis,
+        datum: t.datum, datum_bis: t.datum_bis, type: "termin",
         bg: c.bg, fg: c.fg, label: t.titel || "Termin",
         onclick: `openGlasTermin('${t.id}')`,
       };
@@ -2522,8 +2543,9 @@ function renderKalenderMonat() {
 
   // Pro Tag die Events sammeln (mehrtägige erscheinen auf jedem betroffenen Tag als Chip,
   // an den Rändern abgerundet, damit es wie ein durchgehender Balken wirkt). Jede Kachel ist
-  // komplett anklickbar (öffnet den Tag), die Chips fangen den Klick ab und öffnen gezielt
-  // die Tour bzw. den Termin.
+  // komplett anklickbar (öffnet den Tag). Tour-Chips fangen den Klick zusätzlich ab und
+  // springen direkt zur Tour; Termin-Chips NICHT - Termine lassen sich nur im Tages-Modal
+  // öffnen, damit man auf dem Kalender selbst nicht aus Versehen einzelne Termine antippt.
   const maxChips = 3;
   const cellsHtml = weeks
     .flat()
@@ -2537,7 +2559,8 @@ function renderKalenderMonat() {
       const chips = dayEvents.slice(0, maxChips).map((t) => {
         const contLeft = t.datum < iso;
         const contRight = (t.datum_bis || t.datum) > iso;
-        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};" onclick="event.stopPropagation(); ${t.onclick}">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+        const clickAttr = t.type === "tour" ? ` onclick="event.stopPropagation(); ${t.onclick}"` : "";
+        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};"${clickAttr}>${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
       }).join("");
       const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
 
@@ -2655,7 +2678,7 @@ function renderOffeneListe() {
     const key = `${x.objekt.id}::${x.position.id || x.position.nr}`;
     const checked = glasOffeneSelected.has(key);
     const zeitLabel = x.tage === null ? x.label : x.status === "ueberfaellig" ? `${Math.abs(x.tage)}T überfällig` : x.tage === 0 ? "heute" : `in ${x.tage}T`;
-    const zeigeVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.positionId === x.position.id;
+    const zeigeVerschieben = glasVerschiebeTarget && glasVerschiebeTarget.scope === "position" && glasVerschiebeTarget.positionIds[0] === x.position.id;
     return `
       <div style="margin-bottom:10px;">
         <div class="card" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:0; ${glasStatusTint(x.status)}">
@@ -2668,7 +2691,7 @@ function renderOffeneListe() {
             <span class="badge ${glasStatusBadgeClass(x.status)}">${zeitLabel}</span>
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
               <button class="btn btn-sm btn-primary" style="padding:4px 8px; font-size:11.5px;" onclick="glasJetztPlanen('${x.objekt.id}', ['${x.position.id || x.position.nr}'])">📅 Jetzt planen!</button>
-              <button class="btn btn-sm" style="padding:4px 8px; font-size:11.5px;" onclick="glasOpenVerschieben('${x.objekt.id}','${x.position.id}')">Verschieben</button>
+              <button class="btn btn-sm" style="padding:4px 8px; font-size:11.5px;" onclick='glasOpenVerschieben(${JSON.stringify(x.objekt.id)}, ${JSON.stringify([x.position.id])}, "position")'>Verschieben</button>
             </div>
           </div>
         </div>
@@ -2695,12 +2718,13 @@ function toggleGlasOffeneSelect(key) {
 }
 
 // Verschieben-Picker: statt ein Datum einzutippen (Tippfehler-Gefahr) gibt es feste
-// Offsets (+2 Wochen/+1 Monat/+3 Monate) plus eine Datumsauswahl für Sonderfälle. Wird sowohl
-// von der Objekt-Detail-Seite als auch von der Offenen Liste aus geöffnet.
-let glasVerschiebeTarget = null; // { objektId, positionId } | null
+// Offsets (+2 Wochen/+1 Monat/+3 Monate) plus eine Datumsauswahl für Sonderfälle. Wird von
+// drei Stellen aus geöffnet: pro Position (Objekt-Seite + Offene Liste) und als "Alle
+// verschieben" oben auf der Objekt-Seite (verschiebt alle Positionen des Objekts zusammen).
+let glasVerschiebeTarget = null; // { objektId, positionIds: [...], scope: "alle"|"position" } | null
 
-function glasOpenVerschieben(objektId, positionId) {
-  glasVerschiebeTarget = { objektId, positionId };
+function glasOpenVerschieben(objektId, positionIds, scope) {
+  glasVerschiebeTarget = { objektId, positionIds, scope };
   renderGlasAdmin();
 }
 
@@ -2710,9 +2734,10 @@ function glasCloseVerschieben() {
 }
 
 function renderVerschiebePicker() {
+  const label = glasVerschiebeTarget?.scope === "alle" ? "Alle Positionen verschieben auf..." : "Fälligkeit verschieben auf...";
   return `
     <div class="card glas-verschieben-picker" style="margin-top:8px; background:var(--bg);">
-      <p class="muted" style="margin:0 0 8px; font-weight:600;">Fälligkeit verschieben auf...</p>
+      <p class="muted" style="margin:0 0 8px; font-weight:600;">${label}</p>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-sm" onclick="glasVerschiebeUmTage(14)">+2 Wochen</button>
         <button class="btn btn-sm" onclick="glasVerschiebeUmMonate(1)">+1 Monat</button>
@@ -2745,10 +2770,10 @@ function glasVerschiebeAufDatum() {
 
 async function glasSpeichereVerschiebung(neuesDatum) {
   if (!glasVerschiebeTarget) return;
-  const { positionId } = glasVerschiebeTarget;
-  const { error } = await sb.from("glas_objekt_positionen").update({ faelligkeit_override: neuesDatum }).eq("id", positionId);
+  const { positionIds } = glasVerschiebeTarget;
+  const { error } = await sb.from("glas_objekt_positionen").update({ faelligkeit_override: neuesDatum }).in("id", positionIds);
   if (error) { showToast("Fehler: " + error.message); return; }
-  showToast("Fälligkeit verschoben");
+  showToast(positionIds.length > 1 ? "Fälligkeiten verschoben" : "Fälligkeit verschoben");
   glasVerschiebeTarget = null;
   await loadGlasObjektPositionen();
   renderGlasAdmin();
