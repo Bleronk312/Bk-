@@ -815,15 +815,20 @@ Im Gildehof 8
 
 const GLAS_CUSTOM_POS = "__custom__";
 
+// Gemeinsamer Dropdown-Options-Baustein für die Positionsauswahl - genutzt vom
+// Objekt-Formular (renderPositionenRows) UND vom Einzelschein-Formular (renderEsPositionenRows),
+// damit man überall entweder eine vorgespeicherte Position wählt oder manuell eine einträgt.
+function glasPositionSelectOptions(pos) {
+  const placeholder = !pos.art && !pos.custom ? `<option value="" selected disabled>Position wählen...</option>` : "";
+  const gespeichert = glasPositionen
+    .map((p) => `<option value="${escapeHtml(p.name)}" data-nr="${escapeHtml(p.nr || "10")}" ${!pos.custom && p.name === pos.art ? "selected" : ""}>Pos. ${escapeHtml(p.nr || "10")} – ${escapeHtml(p.name)}</option>`)
+    .join("");
+  const custom = `<option value="${GLAS_CUSTOM_POS}" ${pos.custom ? "selected" : ""}>✏️ Eigene Position eintragen</option>`;
+  return placeholder + gespeichert + custom;
+}
+
 function renderPositionenRows(positionen) {
-  const positionenOptions = (pos) => {
-    const placeholder = !pos.art && !pos.custom ? `<option value="" selected disabled>Position wählen...</option>` : "";
-    const gespeichert = glasPositionen
-      .map((p) => `<option value="${escapeHtml(p.name)}" data-nr="${escapeHtml(p.nr || "10")}" ${!pos.custom && p.name === pos.art ? "selected" : ""}>Pos. ${escapeHtml(p.nr || "10")} – ${escapeHtml(p.name)}</option>`)
-      .join("");
-    const custom = `<option value="${GLAS_CUSTOM_POS}" ${pos.custom ? "selected" : ""}>✏️ Eigene Position eintragen</option>`;
-    return placeholder + gespeichert + custom;
-  };
+  const positionenOptions = glasPositionSelectOptions;
 
   return positionen
     .map((pos, i) => {
@@ -1974,7 +1979,7 @@ function openGlasEinzelschein() {
     objekt: "",
     adresse: "",
     kdnr: "",
-    positionen: [{ nr: "10", art: glasPositionen[0]?.name || "", qm: "" }],
+    positionen: [{ nr: "", art: "", qm: "", custom: false }],
   };
   renderGlasAdmin();
 }
@@ -2053,20 +2058,56 @@ function renderEinzelscheinForm() {
 function renderEsPositionenRows(positionen) {
   return positionen
     .map((pos, i) => `
-      <div class="row" style="align-items:flex-end; margin-bottom:4px;">
-        <div class="field" style="flex:0 0 70px;"><label class="muted">Nr.</label><input type="text" id="es_pos_nr_${i}" value="${escapeHtml(pos.nr)}" /></div>
-        <div class="field" style="flex:2;"><label class="muted">Art</label><input type="text" id="es_pos_art_${i}" value="${escapeHtml(pos.art)}" /></div>
-        <div class="field" style="flex:1;"><label class="muted">QM</label><input type="text" id="es_pos_qm_${i}" value="${escapeHtml(pos.qm)}" /></div>
-        ${positionen.length > 1 ? `<button class="btn btn-sm" style="margin-bottom:14px;" onclick="removeEsPositionRow(${i})">✕</button>` : ""}
+      <div class="card glas-pos-row" style="padding:14px 40px 14px 14px; margin-bottom:10px; background:var(--bg);">
+        ${positionen.length > 1 ? `<button type="button" class="glas-pos-remove" title="Position entfernen" onclick="removeEsPositionRow(${i})">✕</button>` : ""}
+        <div class="row" style="align-items:flex-end; margin-bottom:${pos.custom ? "8px" : "0"};">
+          <div class="field" style="flex:2; margin-bottom:0;">
+            <label class="muted">Position</label>
+            <select id="es_pos_art_${i}" onchange="onEsPositionArtChange(${i})">${glasPositionSelectOptions(pos)}</select>
+          </div>
+          <div class="field" style="flex:1; margin-bottom:0;">
+            <label class="muted">QM</label>
+            <input type="text" id="es_pos_qm_${i}" value="${escapeHtml(pos.qm)}" />
+          </div>
+        </div>
+        ${pos.custom ? `
+        <div class="row" style="align-items:flex-end;">
+          <div class="field" style="flex:0 0 70px; margin-bottom:0;">
+            <label class="muted">Nr.</label>
+            <input type="text" id="es_pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="10" />
+          </div>
+          <div class="field" style="flex:2; margin-bottom:0;">
+            <label class="muted">Bezeichnung</label>
+            <input type="text" id="es_pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
+          </div>
+        </div>` : ""}
       </div>`)
     .join("");
+}
+
+function onEsPositionArtChange(i) {
+  syncEsFromDom();
+  const select = document.getElementById(`es_pos_art_${i}`);
+  const val = select.value;
+  const pos = glasEinzelscheinData.positionen[i];
+  if (val === GLAS_CUSTOM_POS) {
+    pos.custom = true;
+    pos.art = "";
+    pos.nr = "";
+  } else {
+    pos.custom = false;
+    pos.art = val;
+    pos.nr = select.options[select.selectedIndex]?.getAttribute("data-nr") || pos.nr;
+  }
+  renderGlasAdmin();
 }
 
 function syncEsFromDom() {
   const d = glasEinzelscheinData;
   d.positionen = d.positionen.map((pos, i) => ({
-    nr: document.getElementById(`es_pos_nr_${i}`)?.value.trim() || pos.nr,
-    art: document.getElementById(`es_pos_art_${i}`)?.value.trim() || pos.art,
+    ...pos,
+    nr: pos.custom ? (document.getElementById(`es_pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
+    art: pos.custom ? (document.getElementById(`es_pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
     qm: document.getElementById(`es_pos_qm_${i}`)?.value.trim() ?? pos.qm,
   }));
   d.kunde_adresse = document.getElementById("es_kunde_adresse")?.value ?? d.kunde_adresse;
@@ -2077,7 +2118,7 @@ function syncEsFromDom() {
 
 function addEsPositionRow() {
   syncEsFromDom();
-  glasEinzelscheinData.positionen.push({ nr: "10", art: "", qm: "" });
+  glasEinzelscheinData.positionen.push({ nr: "", art: "", qm: "", custom: false });
   renderGlasAdmin();
 }
 function removeEsPositionRow(idx) {
@@ -2108,7 +2149,12 @@ function onEsObjektChange() {
     glasEinzelscheinData.adresse = o.adresse;
     glasEinzelscheinData.kdnr = o.kdnr;
     const positionen = glasGetObjektPositionen(o.id);
-    if (positionen.length) glasEinzelscheinData.positionen = positionen.map((p) => ({ nr: p.nr, art: p.art, qm: p.qm }));
+    if (positionen.length) {
+      glasEinzelscheinData.positionen = positionen.map((p) => ({
+        nr: p.nr, art: p.art, qm: p.qm,
+        custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
+      }));
+    }
   } else {
     glasEinzelscheinData.objekt_id = "";
   }
@@ -2139,7 +2185,7 @@ async function saveEinzelschein() {
   }
 
   const tourId = genCode();
-  const positionen = d.positionen.filter((p) => p.art || p.qm);
+  const positionen = d.positionen.filter((p) => p.art || p.qm).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm }));
   const { error: tourErr } = await sb.from("glas_touren").insert({
     id: tourId, name: `Einzelschein – ${d.objekt}`, datum: datum || null, template, frei: true,
   });
