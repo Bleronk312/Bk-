@@ -193,6 +193,77 @@ label {
 .glas-reorder-handle { cursor: grab; touch-action: none; font-size: 18px; color: var(--text-secondary); padding: 4px 6px; flex-shrink: 0; }
 .glas-reorder-handle:active { cursor: grabbing; }
 
+/* GEKO-Logo sitzt auf den Glasreinigungs-Seiten oben LINKS statt rechts (etwas kleiner,
+   damit es nicht mit dem Header-Text kollidiert) */
+.glas-logo-left .logo-badge { right: auto; left: 18px; top: -20px; width: 76px; height: 76px; }
+.glas-logo-left .logo-badge img { height: 66px; }
+.glas-logo-left .logo-watermark { right: auto; left: -110px; transform: rotate(-8deg); }
+.glas-logo-left .app-header { padding-bottom: 52px; }
+.glas-logo-left .app-sheet-content { padding-top: 66px; }
+
+/* Kalender darf die volle Breite nutzen (Handy UND Desktop) */
+.glas-fullwidth .wrap { max-width: none; }
+
+/* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
+.glas-welcome {
+  text-align: center;
+  padding: 46px 20px 60px;
+}
+.glas-welcome-logo {
+  height: 120px;
+  width: auto;
+  animation: glasLogoIn 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.glas-welcome-title {
+  margin: 22px 0 4px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  animation: glasFadeUp 0.6s ease 0.25s both;
+}
+.glas-welcome-heart {
+  display: inline-block;
+  animation: glasHeartbeat 1.6s ease-in-out 1s infinite;
+}
+.glas-welcome-sub {
+  margin: 0;
+  color: var(--text-secondary);
+  animation: glasFadeUp 0.6s ease 0.4s both;
+}
+.glas-welcome-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 340px;
+  margin: 34px auto 0;
+}
+.glas-welcome-btn {
+  justify-content: center;
+  padding: 15px;
+  font-size: 16px;
+  border-radius: 14px;
+  animation: glasFadeUp 0.55s ease both;
+}
+@keyframes glasLogoIn {
+  0% { opacity: 0; transform: scale(0.4) rotate(-8deg); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes glasFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes glasHeartbeat {
+  0%, 100% { transform: scale(1); }
+  12% { transform: scale(1.25); }
+  24% { transform: scale(1); }
+  36% { transform: scale(1.18); }
+  48% { transform: scale(1); }
+}
+
+/* Sanfter Übergang, wenn ein neuer Screen aufgebaut wird (statt der Karten-Einzelanimation) */
+.glas-screen-in { animation: glasFadeUp 0.28s ease both; }
+
 .scheine-item {
   display: flex;
   justify-content: space-between;

@@ -163,3 +163,21 @@ select cron.schedule(
   $$ delete from glas_touren where archiviert_am is not null and archiviert_am < now() - interval '14 days'; $$
 );
 
+-- Freie Kalender-Termine (unabhängig von Touren): Titel, Farbe, Zeitraum, Erinnerung, Notiz.
+-- Angelehnt an den TimeTree-Eintrag - erscheinen als eigene Balken im Kalender.
+create table if not exists glas_termine (
+  id text primary key,
+  titel text not null default '',
+  datum date not null,
+  datum_bis date,
+  farbe text not null default 'blau',       -- 'blau' | 'gruen' | 'gelb' | 'rot' | 'lila' | 'grau'
+  erinnerung text not null default '',      -- '' | 'same_day' | '1d' | '2d' | '7d'
+  notiz text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table glas_termine enable row level security;
+drop policy if exists "anon_full_access_glas_termine" on glas_termine;
+create policy "anon_full_access_glas_termine" on glas_termine for all using (true) with check (true);
+grant select, insert, update, delete on table glas_termine to anon, authenticated;
+

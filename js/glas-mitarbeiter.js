@@ -10,6 +10,7 @@ document.title = "Glasreinigung - Meine Touren";
 })();
 
 let glasTouren = [];
+let glasMaScreen = "home"; // "home" (Logo-Startseite) | "touren"
 let glasOpenTourId = null; // gerade geöffnete Tour im Vollbild (ersetzt die Liste)
 let glasOpenStopId = null;
 let glasStopsRevealed = false; // "Tour starten" wurde getippt, Stopp-Liste sichtbar
@@ -40,11 +41,8 @@ function todayIso() {
 }
 
 async function glasMaInit() {
+  renderGlasMa(); // Startseite sofort zeigen, Touren laden im Hintergrund
   await loadGlasTouren();
-  // Gibt es genau eine Tour für heute, direkt reinspringen statt erst die Liste zu zeigen.
-  // Bei mehreren Touren am selben Tag muss erst ausgewählt werden.
-  const todaysTours = glasTouren.filter((t) => t.datum === todayIso());
-  if (todaysTours.length === 1) glasOpenTourId = todaysTours[0].id;
   renderGlasMa();
 }
 
@@ -63,10 +61,12 @@ async function loadGlasTouren() {
     .select("*")
     .order("reihenfolge", { ascending: true });
 
-  glasTouren = (touren || []).map((t) => ({
-    ...t,
-    stopps: (stops || []).filter((s) => s.tour_id === t.id),
-  }));
+  glasTouren = (touren || [])
+    .filter((t) => !t.archiviert_am) // archivierte Touren gehören nicht in die Mitarbeiter-Ansicht
+    .map((t) => ({
+      ...t,
+      stopps: (stops || []).filter((s) => s.tour_id === t.id),
+    }));
 }
 
 function glasSingleMapLinks(stop) {
@@ -81,12 +81,18 @@ function glasSingleMapLinks(stop) {
 function renderGlasMa() {
   const view = document.getElementById("view");
 
-  if (!glasTouren.length) {
+  if (glasMaScreen === "home") {
+    const heute = glasTouren.filter((t) => t.datum === todayIso()).length;
     view.innerHTML = `
-      <div class="glas-empty">
-        <div class="glas-empty-icon">🧽</div>
-        <p style="font-weight:600; font-size:16px;">Noch keine Tour für dich</p>
-        <p class="muted" style="margin-top:4px;">Sobald eine Tour für dich geplant ist, erscheint sie hier automatisch.</p>
+      <div class="glas-welcome">
+        <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
+        <p class="glas-welcome-title">Hallo GEKO Clean <span class="glas-welcome-heart">❤️</span></p>
+        <p class="glas-welcome-sub">Schön, dass du da bist!</p>
+        <div class="glas-welcome-buttons">
+          <button class="btn btn-primary glas-welcome-btn" style="animation-delay:0.35s;" onclick="glasMaScreen = 'touren'; renderGlasMa();">
+            🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
+          </button>
+        </div>
       </div>`;
     return;
   }
@@ -100,7 +106,20 @@ function renderGlasMa() {
     }
   }
 
-  view.innerHTML = renderGlasTourList();
+  if (!glasTouren.length) {
+    view.innerHTML = `
+      <button class="btn btn-sm" style="margin:16px 0;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
+      <div class="glas-empty">
+        <div class="glas-empty-icon">🧽</div>
+        <p style="font-weight:600; font-size:16px;">Noch keine Tour für dich</p>
+        <p class="muted" style="margin-top:4px;">Sobald eine Tour für dich geplant ist, erscheint sie hier automatisch.</p>
+      </div>`;
+    return;
+  }
+
+  view.innerHTML = `
+    <button class="btn btn-sm" style="margin:16px 0 4px;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
+    ${renderGlasTourList()}`;
 }
 
 function glasTourProgress(t) {
