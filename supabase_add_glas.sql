@@ -181,3 +181,8 @@ drop policy if exists "anon_full_access_glas_termine" on glas_termine;
 create policy "anon_full_access_glas_termine" on glas_termine for all using (true) with check (true);
 grant select, insert, update, delete on table glas_termine to anon, authenticated;
 
+-- Haupt-Kundennummer des Kunden als Schnappschuss auf dem Stopp: das GEKO-Template zeigt
+-- immer diese Nummer; das Dietrich-Template zeigt die zusätzliche Dietrich-Kdnr des Objekts
+-- (Feld "kdnr") und fällt auf die Haupt-Kundennummer zurück, wenn dort nichts eingetragen ist.
+alter table glas_stopps add column if not exists kunde_kdnr text not null default '';
+

@@ -549,7 +549,7 @@ function renderKundeForm() {
       <div class="field"><label class="muted">Name</label><input type="text" id="k_name" value="${escapeHtml(k.name)}" placeholder="Zweckverband Kath. Tageseinrichtungen" /></div>
       <div class="field"><label class="muted">Adresse</label><textarea id="k_adresse" rows="3" placeholder="Im Gildehof 8
 45127 Essen">${escapeHtml(k.adresse)}</textarea></div>
-      <div class="field"><label class="muted">Kd.-Nr. (optional, allgemein für den Kunden)</label><input type="text" id="k_kdnr" value="${escapeHtml(k.kdnr)}" /></div>
+      <div class="field"><label class="muted">Haupt-Kd.-Nr. (erscheint auf den Abnahmescheinen)</label><input type="text" id="k_kdnr" value="${escapeHtml(k.kdnr)}" /></div>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-primary" onclick="saveGlasKunde()" ${glasBusy ? "disabled" : ""}>${glasBusy ? '<span class="spinner"></span> Speichere...' : "Speichern"}</button>
         <button class="btn btn-sm" onclick="cancelGlasKundeEdit()">Abbrechen</button>
@@ -754,8 +754,9 @@ Im Gildehof 8
       </div>
       <div class="row">
         <div class="field">
-          <label class="muted">Kd.-Nr.</label>
+          <label class="muted">Zusätzliche Dietrich Kd.-Nr. (optional)</label>
           <input type="text" id="o_kdnr" value="${escapeHtml(o.kdnr)}" placeholder="3806 590 00" />
+          <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint nur auf Scheinen mit dem Dietrich-Template. Leer lassen = Haupt-Kd.-Nr. des Kunden wird verwendet. Das GEKO-Template nutzt immer die Haupt-Kd.-Nr.</p>
         </div>
       </div>
       <label class="muted">Positionen &amp; Intervalle</label>
@@ -1023,7 +1024,7 @@ function renderObjektDetailPage(id) {
       <p style="margin:0 0 4px; font-weight:700; font-size:19px;">${escapeHtml(o.name)}</p>
       <p class="muted" style="margin:0 0 10px;"><a href="javascript:void(0)" onclick="goGlasKunde('${o.kunde_id}')">${escapeHtml(o.kunde_name || "Ohne Kunde")}</a></p>
       <p style="margin:0; white-space:pre-line;">${escapeHtml(o.adresse)}</p>
-      <p class="muted" style="margin:6px 0 0;">Kd.-Nr.: ${escapeHtml(o.kdnr || "–")}</p>
+      <p class="muted" style="margin:6px 0 0;">Haupt-Kd.-Nr.: ${escapeHtml(glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "–")}${o.kdnr ? ` · Dietrich Kd.-Nr.: ${escapeHtml(o.kdnr)}` : ""}</p>
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
         ${o.lat ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank">🧭 Navigation</a>` : `<span class="muted">⚠️ Nicht geocodiert</span>`}
         <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Objekt jetzt einplanen</button>
@@ -1758,6 +1759,7 @@ async function createGlasTour() {
         objekt: o.name,
         adresse: o.adresse,
         kdnr: o.kdnr,
+        kunde_kdnr: glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "",
         kunde_adresse: o.kunde_adresse,
         positionen: JSON.stringify(positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }))),
         lat: o.lat,
@@ -1907,7 +1909,7 @@ function renderEinzelscheinForm() {
 44793 Bochum">${escapeHtml(d.adresse)}</textarea>
       </div>
       <div class="field">
-        <label class="muted">Kd.-Nr.</label>
+        <label class="muted">Zusätzliche Dietrich Kd.-Nr. (optional, nur fürs Dietrich-Template – sonst gilt die Haupt-Kd.-Nr. des Kunden)</label>
         <input type="text" id="es_kdnr" value="${escapeHtml(d.kdnr)}" />
       </div>
       <div class="row">
@@ -2030,7 +2032,9 @@ async function saveEinzelschein() {
 
   const { error: stoppErr } = await sb.from("glas_stopps").insert({
     id: genCode(), tour_id: tourId, objekt_id: d.objekt_id || null, reihenfolge: 0,
-    objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr, kunde_adresse: d.kunde_adresse,
+    objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr,
+    kunde_kdnr: glasKunden.find((k) => k.id === d.kunde_id)?.kdnr || "",
+    kunde_adresse: d.kunde_adresse,
     positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng, status: "offen",
   });
   glasBusy = false;

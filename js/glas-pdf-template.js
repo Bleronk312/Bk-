@@ -137,11 +137,18 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   doc.line(L.left, lineY, L.right, lineY);
 
   // Auszuführende Arbeiten Monat / Kd.-Nr.
+  // GEKO-Template: immer die Haupt-Kundennummer des Kunden.
+  // Dietrich-Template: die zusätzliche Dietrich-Kdnr des Objekts (s.kdnr), fällt auf die
+  // Haupt-Kundennummer zurück, wenn beim Objekt nichts eingetragen wurde.
+  // (s.kunde_kdnr fehlt bei alten Stopps aus früheren Versionen - dann s.kdnr als Fallback.)
+  const kdnrForPdf = templateKey === "sub"
+    ? (s.kdnr || s.kunde_kdnr || "")
+    : (s.kunde_kdnr || s.kdnr || "");
   const rowY = lineY + L.rowGapAfterLine1;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10.5);
   doc.text(`Auszuführende Arbeiten Monat:  ${glasMonatJahr(tourDatum)}`, L.left, rowY);
-  doc.text(`Kd.-Nr.:  ${s.kdnr || ""}`, L.kdnrX, rowY);
+  doc.text(`Kd.-Nr.:  ${kdnrForPdf}`, L.kdnrX, rowY);
 
   // Linie 2
   const line2Y = rowY + L.line2GapAfterRow;
