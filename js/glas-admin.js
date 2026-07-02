@@ -315,26 +315,29 @@ function renderGlasAdmin() {
   // Kalender darf die ganze Breite nutzen, alle anderen Seiten bleiben schmal/zentriert
   document.body.classList.toggle("glas-fullwidth", glasPage.type === "tabs" && glasPage.tab === "kalender");
 
-  if (glasPage.type === "home") { view.innerHTML = renderGlasHome(); return; }
   if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); return; }
   if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); return; }
   if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); return; }
 
-  const tab = glasPage.tab;
+  // Startseite (Dashboard) und alle Reiter teilen sich dieselbe Reiter-Leiste, damit die
+  // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
+  const isHome = glasPage.type === "home";
+  const tab = isHome ? "" : glasPage.tab;
   view.innerHTML = `
     <div class="tabs">
-      <button class="tab-btn" onclick="goGlasHome()">🏠</button>
+      <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
       <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
       <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
       <button class="tab-btn ${tab === "positionen" ? "active" : ""}" onclick="goGlasTab('positionen')">📋 Positionen</button>
       <button class="tab-btn ${tab === "archiv" ? "active" : ""}" onclick="goGlasTab('archiv')">🗑️ Archiv</button>
     </div>
-    ${renderGlobalSearchBar()}
+    ${isHome ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
   const content = document.getElementById("glasTabContent");
-  content.innerHTML = glasGlobalSearch.trim()
+  content.innerHTML = isHome ? renderGlasHome()
+    : glasGlobalSearch.trim()
     ? renderGlobalSearchResults()
     : tab === "kunden" ? renderKundenTab()
     : tab === "kalender" ? renderKalenderTab()
@@ -377,22 +380,98 @@ function focusSearch(id) {
    ======================================================================== */
 
 function renderGlasHome() {
+  const today = glasTodayIso();
+  const in7 = glasAddDaysIso(today, 7);
   const offene = glasAlleOffenenPositionen();
   const ueberfaellig = offene.filter((x) => x.status === "ueberfaellig").length;
-  const heute = glasTouren.filter((t) => !t.archiviert_am && t.datum && glasTodayIso() >= t.datum && glasTodayIso() <= (t.datum_bis || t.datum)).length;
+  const baldFaellig = offene.filter((x) => x.status === "bald").length;
+
+  const aktiveTouren = glasTouren.filter((t) => !t.archiviert_am);
+  const heuteTouren = aktiveTouren.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
+  const naechsteTouren = aktiveTouren
+    .filter((t) => t.datum && t.datum > today && !glasTourAllDone(t))
+    .sort((a, b) => a.datum.localeCompare(b.datum))
+    .slice(0, 3);
+  const heuteTermine = glasTermine.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
+
+  const tourZeile = (t) => {
+    const stops = t.glas_stopps || [];
+    const done = stops.filter((s) => s.status === "erledigt").length;
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourAllDone(t) ? "#2e9e4f" : "var(--blue)"};"></span>
+        <div style="flex:1; min-width:0;">
+          <p style="margin:0; font-weight:600;">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
+        </div>
+        <span style="color:var(--text-secondary);">›</span>
+      </div>`;
+  };
+
   return `
-    <div class="glas-welcome">
-      <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
-      <p class="glas-welcome-title">Hallo GEKO Clean <span class="glas-welcome-heart">❤️</span></p>
-      <p class="glas-welcome-sub">${heute ? `${heute} Tour(en) heute` : "Heute keine Tour geplant"}${ueberfaellig ? ` · ${ueberfaellig} überfällig` : ""}</p>
-      <div class="glas-welcome-buttons">
-        <button class="btn btn-primary glas-welcome-btn" style="animation-delay:0.35s;" onclick="goGlasTab('touren')">🚐 Touren</button>
-        <button class="btn glas-welcome-btn" style="animation-delay:0.45s;" onclick="goGlasTab('kalender')">📅 Kalender${ueberfaellig ? ` <span class="badge badge-danger" style="margin-left:6px;">${ueberfaellig}</span>` : ""}</button>
-        <button class="btn glas-welcome-btn" style="animation-delay:0.55s;" onclick="goGlasTab('kunden')">👥 Kunden &amp; Objekte</button>
-        <button class="btn glas-welcome-btn" style="animation-delay:0.65s;" onclick="goGlasTab('positionen')">📋 Positionen</button>
-        <button class="btn glas-welcome-btn" style="animation-delay:0.75s;" onclick="goGlasTab('archiv')">🗑️ Archiv</button>
+    <div class="glas-dash">
+      <div class="glas-dash-hello">
+        <div>
+          <p class="glas-dash-hi">Hallo GEKO Clean <span class="glas-welcome-heart">❤️</span></p>
+          <p class="muted" style="margin:2px 0 0;">${glasHeuteLangDatum()}</p>
+        </div>
       </div>
+
+      <div class="glas-dash-stats">
+        <div class="glas-stat ${ueberfaellig ? "danger" : ""}" onclick="goGlasTab('kalender'); glasKalenderSub='offen'; renderGlasAdmin();">
+          <span class="glas-stat-num">${ueberfaellig}</span>
+          <span class="glas-stat-label">Überfällig</span>
+        </div>
+        <div class="glas-stat ${baldFaellig ? "warn" : ""}" onclick="goGlasTab('kalender'); glasKalenderSub='offen'; renderGlasAdmin();">
+          <span class="glas-stat-num">${baldFaellig}</span>
+          <span class="glas-stat-label">Bald fällig</span>
+        </div>
+        <div class="glas-stat" onclick="goGlasTab('touren')">
+          <span class="glas-stat-num">${heuteTouren.length}</span>
+          <span class="glas-stat-label">Touren heute</span>
+        </div>
+      </div>
+
+      <div class="glas-dash-actions">
+        <button class="btn btn-primary" style="flex:1; justify-content:center;" onclick="glasStartNewTourForm(); glasNavigate({type:'tabs', tab:'touren'});">+ Neue Tour</button>
+        <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('kalender'); openGlasTermin(null);">+ Termin</button>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 4px;">Heute</h2>
+        ${heuteTouren.length || heuteTermine.length
+          ? heuteTouren.map(tourZeile).join("") + heuteTermine.map((t) => {
+              const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
+              return `<div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
+                <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
+                <div style="flex:1;"><p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p></div>
+                <span style="color:var(--text-secondary);">›</span></div>`;
+            }).join("")
+          : `<p class="muted" style="margin:10px 0 2px;">Heute ist nichts geplant. 🎉</p>`}
+      </div>
+
+      ${naechsteTouren.length ? `
+      <div class="card">
+        <h2 style="margin:0 0 4px;">Als Nächstes</h2>
+        ${naechsteTouren.map(tourZeile).join("")}
+      </div>` : ""}
+
+      ${ueberfaellig ? `
+      <div class="card" style="background:#fdf3f1; border-color:#f3c9c2;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <p style="margin:0; font-weight:600;">⚠️ ${ueberfaellig} Position(en) überfällig</p>
+          <button class="btn btn-sm" onclick="goGlasTab('kalender'); glasKalenderSub='offen'; renderGlasAdmin();">Ansehen</button>
+        </div>
+      </div>` : ""}
     </div>`;
+}
+
+// "Donnerstag, 2. Juli 2026"
+function glasHeuteLangDatum() {
+  const wt = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+  const mo = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  const d = new Date();
+  return `${wt[d.getDay()]}, ${d.getDate()}. ${mo[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 /* ========================================================================

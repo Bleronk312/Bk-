@@ -319,6 +319,42 @@ label {
 /* Sanfter Übergang, wenn ein neuer Screen aufgebaut wird (statt der Karten-Einzelanimation) */
 .glas-screen-in { animation: glasFadeUp 0.28s ease both; }
 
+/* ---------------- Admin-Dashboard (Startseite) ---------------- */
+.glas-dash { padding-top: 8px; }
+.glas-dash > * { animation: glasFadeUp 0.4s ease both; }
+.glas-dash > *:nth-child(2) { animation-delay: 0.05s; }
+.glas-dash > *:nth-child(3) { animation-delay: 0.1s; }
+.glas-dash > *:nth-child(4) { animation-delay: 0.15s; }
+.glas-dash > *:nth-child(5) { animation-delay: 0.2s; }
+
+.glas-dash-hello { margin-bottom: 16px; }
+.glas-dash-hi { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+
+.glas-dash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.glas-stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.glas-stat:active { transform: scale(0.97); }
+.glas-stat.danger { background: #fdf3f1; border-color: #f3c9c2; }
+.glas-stat.warn { background: #fefaf1; border-color: #f0dca6; }
+.glas-stat-num { display: block; font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+.glas-stat.danger .glas-stat-num { color: var(--danger); }
+.glas-stat.warn .glas-stat-num { color: var(--warning-text); }
+.glas-stat-label { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+
+.glas-dash-actions { display: flex; gap: 10px; margin-bottom: 16px; }
+
 .scheine-item {
   display: flex;
   justify-content: space-between;
