@@ -186,3 +186,23 @@ grant select, insert, update, delete on table glas_termine to anon, authenticate
 -- (Feld "kdnr") und fällt auf die Haupt-Kundennummer zurück, wenn dort nichts eingetragen ist.
 alter table glas_stopps add column if not exists kunde_kdnr text not null default '';
 
+-- Allgemeine Einstellungen für das Glasreinigungs-Modul (aktuell nur eine Zeile mit fester
+-- id 'default'). Der Standort ersetzt den bisher fest im Code hinterlegten GLAS_BASE-Punkt
+-- als Ausgangspunkt für die Routenoptimierung ("Smart sortieren").
+create table if not exists glas_einstellungen (
+  id text primary key,
+  standort_adresse text not null default '',
+  standort_lat double precision,
+  standort_lng double precision
+);
+
+alter table glas_einstellungen enable row level security;
+drop policy if exists "anon_full_access_glas_einstellungen" on glas_einstellungen;
+create policy "anon_full_access_glas_einstellungen" on glas_einstellungen for all using (true) with check (true);
+grant select, insert, update, delete on table glas_einstellungen to anon, authenticated;
+
+-- Anhänge an freien Terminen: JSON-Array aus {name, dataUrl}, die Bilder werden vor dem
+-- Speichern im Browser per Canvas komprimiert (siehe glasCompressImageFile in glas-admin.js),
+-- landen also schon stark verkleinert in der Spalte.
+alter table glas_termine add column if not exists anhaenge text not null default '[]';
+

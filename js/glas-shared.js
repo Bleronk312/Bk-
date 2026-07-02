@@ -1,8 +1,14 @@
 // Gemeinsame Hilfsfunktionen für das Glasreinigungs-Modul:
 // Geocoding (OpenStreetMap Nominatim, kostenlos, kein API-Key) + Routenoptimierung.
 
-// Basis-Standort (Startpunkt der Touren). Bei Bedarf anpassen (aktuell Bonn-Zentrum).
-const GLAS_BASE = { lat: 50.7374, lng: 7.0982 };
+// Basis-Standort (Startpunkt der Touren für "Smart sortieren"). Standardwert, bis unter
+// "Weitere Einstellungen" ein eigener Standort hinterlegt und geocodiert wurde (siehe
+// glasSetBase, wird beim Laden von glas_einstellungen in glas-admin.js aufgerufen).
+let GLAS_BASE = { lat: 50.7374, lng: 7.0982 };
+
+function glasSetBase(lat, lng) {
+  if (lat && lng) GLAS_BASE = { lat, lng };
+}
 
 function glasHaversineKm(a, b) {
   const R = 6371;
@@ -87,6 +93,12 @@ function glasAddDaysIso(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatGlasDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 // Nächstes Datum aus einer festen Monatsliste (z.B. "3,6,9,12").
 // Ohne letzte Reinigung: nächster Listen-Monat ab heute (inklusive des aktuellen Monats).
 // Mit letzter Reinigung: nächster Listen-Monat STRIKT NACH dem Monat der letzten Reinigung -
@@ -106,9 +118,12 @@ function glasNaechsterFesterMonat(feste_monate, letzteReinigungIso) {
     jahr = d.getFullYear();
     minMonat = d.getMonth() + 2; // erst der Monat NACH der letzten Reinigung zählt wieder
   } else {
+    // noch nie gereinigt: der früheste hinterlegte Monat des laufenden Jahres gilt als
+    // "geschuldet" - liegt er schon in der Vergangenheit, ist die Position überfällig,
+    // statt (falsch) erst nächstes Jahr fällig zu werden.
     const heute = new Date(glasTodayIso() + "T00:00:00");
     jahr = heute.getFullYear();
-    minMonat = heute.getMonth() + 1;
+    minMonat = 1;
   }
 
   let monat = monate.find((m) => m >= minMonat);
@@ -132,23 +147,49 @@ function glasBerechneFaelligkeit(pos) {
   return null;
 }
 
-// Liefert Fälligkeit + Status ('ueberfaellig' | 'bald' | 'geplant' | null) + Tage-Differenz.
+const GLAS_MONATSNAMEN_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+// Liefert Fälligkeit + Status ('ueberfaellig' | 'faellig' | 'bald' | 'geplant' | null) + eine
+// zur Intervallart passende Anzeige-Beschriftung.
+//
+// Bei "feste Monate" wird nur auf Monatsebene verglichen, nicht auf den Tag genau (das
+// Fälligkeitsdatum ist intern immer der 1. des Monats, das ist aber nur ein Rechenhilfswert,
+// keine echte Deadline "am 1."). Im Zielmonat selbst gilt die Position als "faellig", nicht
+// "ueberfaellig" - überfällig wird sie erst, sobald der Zielmonat vorbei ist. Einen Monat
+// vorher gilt sie als "bald fällig". Bei rollierenden Intervallen bleibt es bei der genauen
+// Tagesberechnung, weil da ein konkretes Datum gemeint ist.
 function glasFaelligkeitStatus(pos) {
   const faelligkeit = glasBerechneFaelligkeit(pos);
-  if (!faelligkeit) return { faelligkeit: null, status: null, tage: null };
+  if (!faelligkeit) return { faelligkeit: null, status: null, tage: null, label: null };
+
+  if (pos.intervall_typ === "feste_monate" && !pos.faelligkeit_override) {
+    const [fJahr, fMonat] = faelligkeit.split("-").map(Number);
+    const heute = new Date(glasTodayIso() + "T00:00:00");
+    const monatsDiff = (fJahr * 12 + fMonat) - (heute.getFullYear() * 12 + heute.getMonth() + 1);
+    const status = monatsDiff < 0 ? "ueberfaellig" : monatsDiff === 0 ? "faellig" : monatsDiff === 1 ? "bald" : "geplant";
+    const label = `${String(fMonat).padStart(2, "0")}.${String(fJahr).slice(-2)}`;
+    return { faelligkeit, status, tage: null, label };
+  }
+
   const today = glasTodayIso();
   const tage = Math.round((new Date(faelligkeit) - new Date(today)) / 86400000);
   const status = tage < 0 ? "ueberfaellig" : tage <= 14 ? "bald" : "geplant";
-  return { faelligkeit, status, tage };
+  return { faelligkeit, status, tage, label: formatGlasDate(faelligkeit) };
+}
+
+function glasStatusLabel(status) {
+  return status === "ueberfaellig" ? "Überfällig"
+    : status === "faellig" ? "Fällig"
+    : status === "bald" ? "Bald fällig"
+    : "Geplant";
 }
 
 function glasIntervallLabel(pos) {
   if (pos.intervall_typ === "rollierend") return `alle ${pos.intervall_wochen || "?"} Wochen`;
   if (pos.intervall_typ === "feste_monate") {
-    const namen = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
     return String(pos.feste_monate || "")
       .split(",")
-      .map((m) => namen[parseInt(m.trim(), 10) - 1])
+      .map((m) => GLAS_MONATSNAMEN_KURZ[parseInt(m.trim(), 10) - 1])
       .filter(Boolean)
       .join(", ");
   }
