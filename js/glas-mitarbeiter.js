@@ -46,6 +46,15 @@ async function glasMaInit() {
   renderGlasMa();
 }
 
+// Logo oben links -> zurück zur Startseite (schließt auch eine offene Tour)
+function glasMaGoHome() {
+  glasMaScreen = "home";
+  glasOpenTourId = null;
+  glasOpenStopId = null;
+  glasStopsRevealed = false;
+  renderGlasMa();
+}
+
 async function loadGlasTouren() {
   const { data: touren, error } = await sb
     .from("glas_touren")

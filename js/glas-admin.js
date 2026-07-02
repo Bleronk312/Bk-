@@ -2223,36 +2223,34 @@ function renderKalenderMonat() {
     }),
   ];
 
-  const weekRowsHtml = weeks
-    .map((weekDays) => {
-      const weekEvents = events.filter((t) => weekDays.some((d) => d >= t.datum && d <= (t.datum_bis || t.datum)));
-      const items = glasAssignLanes(weekEvents, weekDays);
-      const laneCount = items.length ? Math.max(...items.map((it) => it.lane + 1)) : 0;
+  // Pro Tag die Events sammeln (mehrtägige erscheinen auf jedem betroffenen Tag als Chip,
+  // an den Rändern abgerundet, damit es wie ein durchgehender Balken wirkt). Jede Kachel ist
+  // komplett anklickbar (öffnet den Tag), die Chips fangen den Klick ab und öffnen gezielt
+  // die Tour bzw. den Termin.
+  const maxChips = 3;
+  const cellsHtml = weeks
+    .flat()
+    .map((iso) => {
+      const d = parseInt(iso.slice(8, 10), 10);
+      const isToday = iso === todayIso;
+      const isSelected = iso === glasKalenderSelectedDay;
+      const inMonth = parseInt(iso.slice(5, 7), 10) - 1 === month;
+      const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
 
-      const dayNumbers = weekDays
-        .map((iso) => {
-          const d = parseInt(iso.slice(8, 10), 10);
-          const isToday = iso === todayIso;
-          const isSelected = iso === glasKalenderSelectedDay;
-          const inMonth = parseInt(iso.slice(5, 7), 10) - 1 === month;
-          return `
-            <div onclick="glasKalenderSelectedDay = glasKalenderSelectedDay === '${iso}' ? null : '${iso}'; renderGlasAdmin();" style="text-align:center; cursor:pointer; padding:3px 0; opacity:${inMonth ? "1" : "0.35"};">
-              <span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; font-size:12.5px; font-weight:${isToday ? "700" : "500"}; transition:border 0.15s ease; ${isToday ? "background:var(--blue); color:white;" : isSelected ? "border:2px solid var(--blue);" : ""}">${d}</span>
-            </div>`;
-        })
-        .join("");
-
-      const bars = items
-        .map((it) => `<div onclick="${it.tour.onclick}" style="grid-column:${it.startCol + 1} / ${it.endCol + 2}; grid-row:${it.lane + 1}; background:${it.tour.bg}; color:${it.tour.fg}; font-size:10.5px; font-weight:600; border-radius:4px; padding:3px 6px; margin:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;">${escapeHtml(it.tour.label)}</div>`)
-        .join("");
+      const chips = dayEvents.slice(0, maxChips).map((t) => {
+        const contLeft = t.datum < iso;
+        const contRight = (t.datum_bis || t.datum) > iso;
+        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};" onclick="event.stopPropagation(); ${t.onclick}">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+      }).join("");
+      const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
 
       return `
-        <div>
-          <div style="display:grid; grid-template-columns:repeat(7,1fr);">${dayNumbers}</div>
-          ${laneCount ? `<div style="display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:22px;">${bars}</div>` : ""}
+        <div class="glas-cal-cell${isSelected ? " is-selected" : ""}${inMonth ? "" : " out-month"}" onclick="glasKalenderSelectedDay = glasKalenderSelectedDay === '${iso}' ? null : '${iso}'; renderGlasAdmin();">
+          <span class="glas-cal-daynum${isToday ? " is-today" : ""}">${d}</span>
+          ${chips}${more}
         </div>`;
     })
-    .join(`<div style="border-top:1px solid var(--border); margin:6px 0;"></div>`);
+    .join("");
 
   return `
     <div class="card">
@@ -2261,10 +2259,10 @@ function renderKalenderMonat() {
         <p style="margin:0; font-weight:700; font-size:17px;">${monatsNamen[month]} ${year}</p>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:4px;">
+      <div class="glas-cal-grid" style="margin-bottom:4px;">
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
-      ${weekRowsHtml}
+      <div class="glas-cal-grid">${cellsHtml}</div>
       <button class="btn btn-sm" style="margin-top:14px;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = new Date().toISOString().slice(0,10); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}

@@ -204,6 +204,61 @@ label {
 /* Kalender darf die volle Breite nutzen (Handy UND Desktop) */
 .glas-fullwidth .wrap { max-width: none; }
 
+/* ---------------- Monatskalender (echte anklickbare Kacheln) ---------------- */
+.glas-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.glas-cal-cell {
+  min-height: 74px;
+  border-radius: 8px;
+  padding: 4px 4px 5px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  overflow: hidden;
+}
+.glas-cal-cell:hover { background: #f2f5f9; }
+.glas-cal-cell.is-selected { background: #eaf2fb; border-color: var(--blue); }
+.glas-cal-cell.out-month { opacity: 0.4; }
+.glas-cal-daynum {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  font-size: 12.5px; font-weight: 500;
+  flex-shrink: 0;
+}
+.glas-cal-daynum.is-today { background: var(--blue); color: white; font-weight: 700; }
+.glas-cal-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  border-radius: 4px;
+  padding: 2px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.glas-cal-more { font-size: 9.5px; color: var(--text-secondary); padding-left: 3px; }
+
+/* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
+   der den Platz füllt statt in die Länge gezogen zu wirken */
+@media (min-width: 760px) {
+  .glas-cal-cell { min-height: 116px; padding: 8px; gap: 3px; }
+  .glas-cal-daynum { width: 28px; height: 28px; font-size: 14px; }
+  .glas-cal-chip { font-size: 12px; padding: 3px 7px; }
+}
+
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
 .glas-welcome {
   text-align: center;
