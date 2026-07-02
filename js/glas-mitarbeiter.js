@@ -17,18 +17,7 @@ let glasStopsRevealed = false; // "Tour starten" wurde getippt, Stopp-Liste sich
 let glasSigPad = null;
 let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
 
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2600);
-}
 
-function escapeHtml(str) {
-  return String(str || "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);

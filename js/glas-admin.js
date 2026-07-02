@@ -75,18 +75,7 @@ const GLAS_TERMIN_FARBEN = {
    Hilfsfunktionen
    ======================================================================== */
 
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2600);
-}
 
-function escapeHtml(str) {
-  return String(str || "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
 
 function formatGlasDateRange(datum, datumBis) {
   if (!datum) return "Ohne Datum";
@@ -332,7 +321,24 @@ function renderGlasAdmin() {
     ${isHome ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
+  glasUpdateTabContent();
+
+  // Die globale Suche liegt AUSSERHALB des Content-Bereichs: Beim Tippen wird nur der
+  // Inhalt darunter neu gebaut, das Suchfeld selbst bleibt unangetastet - so bleiben
+  // Fokus und Tastatur stabil (kein focusSearch-Hack mehr nötig).
+  const gsEl = document.getElementById("global_search");
+  if (gsEl) gsEl.oninput = (e) => { glasGlobalSearch = e.target.value; glasUpdateTabContent(); };
+}
+
+// Baut NUR den Tab-Inhalt (#glasTabContent) neu auf - Reiterleiste und globales Suchfeld
+// bleiben stehen. Kern der flüssigeren Bedienung: Tipp-Interaktionen ersetzen nicht mehr
+// die komplette Seite.
+function glasUpdateTabContent() {
   const content = document.getElementById("glasTabContent");
+  if (!content) { renderGlasAdmin(); return; }
+  const isHome = glasPage.type === "home";
+  const tab = isHome ? "" : glasPage.tab;
+
   content.innerHTML = isHome ? renderGlasHome()
     : glasGlobalSearch.trim()
     ? renderGlobalSearchResults()
@@ -341,17 +347,24 @@ function renderGlasAdmin() {
     : tab === "einstellungen" ? renderEinstellungenTab()
     : renderTourenTab();
 
-  const gsEl = document.getElementById("global_search");
-  if (gsEl) gsEl.oninput = (e) => { glasGlobalSearch = e.target.value; renderGlasAdmin(); focusSearch("global_search"); };
-
+  // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
+  // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
   if (!glasGlobalSearch.trim() && tab === "kalender" && glasKalenderSub === "offen") {
     const searchEl = document.getElementById("offen_search");
-    if (searchEl) searchEl.oninput = (e) => { glasOffeneSearch = e.target.value; renderGlasAdmin(); focusSearch("offen_search"); };
+    if (searchEl) searchEl.oninput = (e) => {
+      glasOffeneSearch = e.target.value;
+      const box = document.getElementById("offeneListeErgebnisse");
+      if (box) box.innerHTML = renderOffeneListeErgebnisse();
+    };
   }
   if (!glasGlobalSearch.trim() && tab === "touren" && glasShowNewTourForm && !glasTourDetailId) {
     attachGlasReorderHandlers();
     const searchEl = document.getElementById("tour_obj_search");
-    if (searchEl) searchEl.oninput = (e) => { glasTourSearch = e.target.value; renderGlasAdmin(); focusSearch("tour_obj_search"); };
+    if (searchEl) searchEl.oninput = (e) => {
+      glasTourSearch = e.target.value;
+      const box = document.getElementById("tourSearchResults");
+      if (box) box.innerHTML = renderTourObjektSearchResults();
+    };
   }
   if (!glasGlobalSearch.trim() && tab === "touren" && glasShowEinzelschein) {
     const kundeSearchEl = document.getElementById("es_kunde_search");
@@ -1692,7 +1705,7 @@ function renderNewTourForm() {
       <div class="field">
         <input type="text" id="tour_obj_search" placeholder="🔍 Kunde oder Objekt suchen..." value="${escapeHtml(glasTourSearch)}" autocomplete="off" />
       </div>
-      ${renderTourObjektSearchResults()}
+      <div id="tourSearchResults">${renderTourObjektSearchResults()}</div>
 
       ${glasRoutingMode === "manual" ? renderManualOrderList() : ""}
       <button class="btn btn-primary" style="margin-top:16px;" onclick="createGlasTour()" ${glasBusy ? "disabled" : ""}>
@@ -2456,7 +2469,10 @@ async function handleGlasTerminFiles(fileList) {
   for (const file of [...fileList]) {
     try {
       const dataUrl = await glasCompressImageFile(file);
-      glasTerminEditing.anhaenge.push({ name: file.name, dataUrl });
+      // In den Storage hochladen (URL statt Base64 in der DB); fällt bei fehlendem Bucket
+      // automatisch auf die Base64-dataURL zurück (siehe app-shared.js)
+      const stored = await uploadFotoToStorage(dataUrl, "termin");
+      glasTerminEditing.anhaenge.push({ name: file.name, dataUrl: stored });
     } catch (e) {
       showToast("Anhang konnte nicht verarbeitet werden: " + file.name);
     }
@@ -2466,7 +2482,8 @@ async function handleGlasTerminFiles(fileList) {
 
 function removeGlasTerminAnhang(idx) {
   syncTerminFormFromDom();
-  glasTerminEditing.anhaenge.splice(idx, 1);
+  const [removed] = glasTerminEditing.anhaenge.splice(idx, 1);
+  if (removed) deleteFotoFromStorage(removed.dataUrl);
   renderGlasAdmin();
 }
 
@@ -2704,6 +2721,15 @@ function glasAlleOffenenPositionen() {
 // Welche Positionen genau drankommen, entscheidet man erst beim Planen (Checkboxen im
 // Tour-Formular) bzw. beim Verschieben (Checkboxen im Picker).
 function renderOffeneListe() {
+  return `
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="offen_search" placeholder="🔍 Objekt/Kunde suchen..." value="${escapeHtml(glasOffeneSearch)}" />
+    </div>
+    <div id="offeneListeErgebnisse">${renderOffeneListeErgebnisse()}</div>
+  `;
+}
+
+function renderOffeneListeErgebnisse() {
   const all = glasAlleOffenenPositionen();
   const q = glasOffeneSearch.trim().toLowerCase();
   const filtered = q ? all.filter((x) => `${x.objekt.name} ${x.objekt.kunde_name}`.toLowerCase().includes(q)) : all;
@@ -2754,9 +2780,6 @@ function renderOffeneListe() {
   }).join("");
 
   return `
-    <div style="display:flex; gap:8px; margin-bottom:14px;">
-      <input type="text" id="offen_search" placeholder="🔍 Objekt/Kunde suchen..." value="${escapeHtml(glasOffeneSearch)}" />
-    </div>
     ${glasOffeneSelected.size ? `
       <button class="btn btn-primary" style="width:100%; justify-content:center; margin-bottom:14px;" onclick="glasOffeneZuTourHinzufuegen()">
         ${glasOffeneSelected.size} Objekt${glasOffeneSelected.size === 1 ? "" : "e"} zu neuer Tour hinzufügen

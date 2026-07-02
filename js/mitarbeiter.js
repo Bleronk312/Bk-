@@ -21,94 +21,20 @@ function updateHeaderStat(openCount) {
 
 let scheine = [];
 let currentScheine = null;
+
+// Hooks für die gemeinsame Foto-Sektion (js/app-shared.js)
+function appGetCurrentSchein() { return currentScheine; }
+function appRerenderDetail() { if (currentScheine) renderDetail(); }
 let sigPad = null;
 let signFormOpen = false;
 let materialSurveyOpen = false;
 let photoEditOpen = false;
-let vorherFotos = [];
-let nachherFotos = [];
 
-const PHOTO_MAX_DIM = 900;
-const PHOTO_QUALITY = 0.65;
-const PHOTO_MAX_COUNT = 15;
 
-function compressPhotoFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > PHOTO_MAX_DIM || height > PHOTO_MAX_DIM) {
-          if (width > height) {
-            height = Math.round((height * PHOTO_MAX_DIM) / width);
-            width = PHOTO_MAX_DIM;
-          } else {
-            width = Math.round((width * PHOTO_MAX_DIM) / height);
-            height = PHOTO_MAX_DIM;
-          }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", PHOTO_QUALITY));
-      };
-      img.onerror = () => reject(new Error("Bild konnte nicht geladen werden"));
-      img.src = reader.result;
-    };
-    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden"));
-    reader.readAsDataURL(file);
-  });
-}
 
-async function handlePhotoSelect(event, which) {
-  const files = Array.from(event.target.files || []);
-  event.target.value = "";
-  if (!files.length) return;
-  const arr = which === "vorher" ? vorherFotos : nachherFotos;
-  const remaining = PHOTO_MAX_COUNT - arr.length;
-  if (remaining <= 0) {
-    showToast(`Maximal ${PHOTO_MAX_COUNT} Fotos`);
-    return;
-  }
-  const toProcess = files.slice(0, remaining);
-  if (files.length > remaining) showToast(`Nur die ersten ${remaining} Foto(s) wurden hinzugefügt (max. ${PHOTO_MAX_COUNT})`);
-  for (const file of toProcess) {
-    try {
-      const compressed = await compressPhotoFile(file);
-      arr.push(compressed);
-    } catch (e) {
-      showToast("Ein Foto konnte nicht verarbeitet werden");
-    }
-  }
-  refreshPhotoSection();
-}
 
-function removePhoto(which, index) {
-  const arr = which === "vorher" ? vorherFotos : nachherFotos;
-  arr.splice(index, 1);
-  refreshPhotoSection();
-}
 
-function refreshPhotoSection() {
-  const el = document.getElementById("photoSectionWrap");
-  if (el) {
-    el.innerHTML = renderPhotoSection();
-  } else {
-    renderDetail();
-  }
-}
 
-function parsePhotoJson(jsonStr) {
-  if (!jsonStr) return [];
-  try {
-    const arr = JSON.parse(jsonStr);
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) {
-    return [];
-  }
-}
 
 function openPhotoEdit() {
   vorherFotos = parsePhotoJson(currentScheine.vorher_fotos);
@@ -140,89 +66,21 @@ async function savePhotoEdit() {
   renderDetail();
 }
 
-function renderPhotoSection() {
-  const renderRow = (label, which) => {
-    const arr = which === "vorher" ? vorherFotos : nachherFotos;
-    const thumbs = arr.map((src, i) => `
-      <div class="photo-thumb">
-        <img src="${src}" />
-        <button class="remove-btn" onclick="removePhoto('${which}', ${i})">&times;</button>
-      </div>
-    `).join("");
-    const addBtn = arr.length < PHOTO_MAX_COUNT
-      ? `<div class="photo-add-btn" onclick="document.getElementById('photoInput_${which}').click()">+</div>`
-      : "";
-    return `
-      <div class="photo-section-label">${label}</div>
-      <div class="photo-grid">${thumbs}${addBtn}</div>
-      <input type="file" id="photoInput_${which}" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(event, '${which}')" />
-    `;
-  };
-  return `
-    <div class="card">
-      ${renderRow("Vorher-Fotos (optional)", "vorher")}
-      <div style="height:10px;"></div>
-      ${renderRow("Nachher-Fotos (optional)", "nachher")}
-      <button class="btn btn-sm btn-primary" style="margin-top:12px; width:100%; justify-content:center;" onclick="saveVorherNachherNow()">💾 Fotos speichern</button>
-      <p class="muted" style="margin:6px 0 0; font-size:11.5px;">Speichert die Fotos sofort – so gehen sie beim Verlassen der Seite nicht verloren.</p>
-    </div>
-  `;
-}
 
 // Speichert Vorher-/Nachher-Fotos sofort, damit sie beim Verlassen nicht verloren gehen.
-async function saveVorherNachherNow() {
-  if (!currentScheine || !currentScheine.id) { showToast("Schein noch nicht gespeichert"); return; }
-  const payload = {
-    vorher_fotos: vorherFotos.length ? JSON.stringify(vorherFotos) : null,
-    nachher_fotos: nachherFotos.length ? JSON.stringify(nachherFotos) : null,
-  };
-  const { error } = await sb.from("scheine").update(payload).eq("id", currentScheine.id);
-  if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
-  Object.assign(currentScheine, payload);
-  showToast("Fotos gespeichert");
-}
 
-function renderPhotoGallery(label, jsonStr) {
-  if (!jsonStr) return "";
-  let arr = [];
-  try { arr = JSON.parse(jsonStr); } catch (e) { return ""; }
-  if (!arr.length) return "";
-  const thumbs = arr.map((src) => `<div class="photo-thumb"><img src="${src}" /></div>`).join("");
-  return `
-    <div class="card">
-      <div class="muted" style="margin-bottom:8px;">${label}</div>
-      <div class="photo-grid">${thumbs}</div>
-    </div>
-  `;
-}
 let scheineSearchQuery = "";
 
 const ARCHIVE_AFTER_DAYS = 3;
 
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2200);
-}
 
-function escapeHtml(s) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
-function mapsLink(adresse) {
-  const query = encodeURIComponent((adresse || "").replace(/\n/g, ", "));
-  return `https://www.google.com/maps/dir/?api=1&destination=${query}`;
-}
 
 function appleMapsLink(adresse) {
   const query = encodeURIComponent((adresse || "").replace(/\n/g, ", "));
   return `https://maps.apple.com/?daddr=${query}`;
 }
 
-function telLink(telefon) {
-  return `tel:${(telefon || "").replace(/[^0-9+]/g, "")}`;
-}
 
 function openBase64File(dataUrl, filename) {
   try {
@@ -246,9 +104,6 @@ function openAttachmentFile() {
   openBase64File(currentScheine.anhang, currentScheine.anhang_name || "anhang.pdf");
 }
 
-function firstLine(text) {
-  return (text || "").split("\n")[0];
-}
 
 function todayIso() {
   const d = new Date();
@@ -261,15 +116,6 @@ function formatDateDisplay(iso) {
   return `${d}.${m}.${y}`;
 }
 
-function formatTermin(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}.${mm}. ${hh}:${min}`;
-}
 
 // ---------- Login ----------
 
@@ -389,35 +235,21 @@ function matchesSearch(s, query) {
   return haystack.includes(query.toLowerCase());
 }
 
+// Beim Tippen wird nur die Trefferliste unterhalb neu gebaut - Fokus/Tastatur bleiben stabil.
 function onScheineSearchInput(value) {
   scheineSearchQuery = value;
-  renderList();
-  const input = document.getElementById("scheineSearchInput");
-  if (input) {
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-  }
+  const box = document.getElementById("scheineListResults");
+  if (box) box.innerHTML = renderListResults();
+  else renderList();
 }
 
-function renderList() {
-  const view = document.getElementById("view");
+function renderListResults() {
   const filtered = scheine.filter((s) => matchesSearch(s, scheineSearchQuery));
   const open = filtered.filter((s) => !s.signed_at);
   const signed = filtered.filter((s) => s.signed_at).sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at));
   const groups = groupByWeek(open);
 
-  const allOpenCount = scheine.filter((s) => !s.signed_at).length;
-  updateHeaderStat(allOpenCount);
-
-  let html = `
-    <div class="field">
-      <input type="text" id="scheineSearchInput" placeholder="Suche nach Kunde, Adresse, Kategorie..." value="${escapeHtml(scheineSearchQuery)}" oninput="onScheineSearchInput(this.value)" />
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
-      <button class="btn btn-sm" onclick="openCalendar()">📅 Kalender</button>
-      <button class="btn btn-sm" onclick="loadList()" title="Aktualisieren">🔄</button>
-    </div>
-  `;
+  let html = "";
   let any = false;
   for (const [label, items] of Object.entries(groups)) {
     if (!items.length) continue;
@@ -435,8 +267,24 @@ function renderList() {
   if (!any) {
     html += `<div class="card"><div class="empty-state">${scheineSearchQuery ? "Keine Treffer für diese Suche." : "Aktuell keine Abnahmescheine vorhanden."}</div></div>`;
   }
+  return html;
+}
 
-  view.innerHTML = html;
+function renderList() {
+  const view = document.getElementById("view");
+  const allOpenCount = scheine.filter((s) => !s.signed_at).length;
+  updateHeaderStat(allOpenCount);
+
+  view.innerHTML = `
+    <div class="field">
+      <input type="text" id="scheineSearchInput" placeholder="Suche nach Kunde, Adresse, Kategorie..." value="${escapeHtml(scheineSearchQuery)}" oninput="onScheineSearchInput(this.value)" />
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <button class="btn btn-sm" onclick="openCalendar()">📅 Kalender</button>
+      <button class="btn btn-sm" onclick="loadList()" title="Aktualisieren">🔄</button>
+    </div>
+    <div id="scheineListResults">${renderListResults()}</div>
+  `;
 }
 
 function renderItem(s) {
