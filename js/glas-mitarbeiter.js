@@ -14,7 +14,6 @@ let glasOpenTourId = null; // gerade geöffnete Tour im Vollbild (ersetzt die Li
 let glasOpenStopId = null;
 let glasStopsRevealed = false; // "Tour starten" wurde getippt, Stopp-Liste sichtbar
 let glasSigPad = null;
-let glasMapInstance = null;
 
 function showToast(msg) {
   const t = document.getElementById("toast");
@@ -89,7 +88,6 @@ function renderGlasMa() {
     const t = glasTouren.find((x) => x.id === glasOpenTourId);
     if (t) {
       view.innerHTML = renderGlasTourScreen(t);
-      setTimeout(() => initGlasMap(t), 30);
       if (glasOpenStopId) setTimeout(() => setupGlasSigPad(), 30);
       return;
     }
@@ -131,7 +129,6 @@ function closeGlasTour() {
   glasOpenTourId = null;
   glasStopsRevealed = false;
   glasOpenStopId = null;
-  if (glasMapInstance) { glasMapInstance.remove(); glasMapInstance = null; }
   renderGlasMa();
 }
 
@@ -145,7 +142,7 @@ function renderGlasTourScreen(t) {
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
       <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
     </div>
-    <div id="glasMapDiv" style="height:280px; border-radius:14px; overflow:hidden; margin:14px 0; border:1px solid var(--border);"></div>
+    ${renderGlasRouteOverview(t)}
     ${fullRouteLink ? `<a class="btn btn-sm" href="${fullRouteLink}" target="_blank" style="width:100%; justify-content:center; margin-bottom:10px;">🧭 Gesamtroute in Google Maps</a>` : ""}
     ${!glasStopsRevealed
       ? `<button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="glasStopsRevealed = true; renderGlasMa();">▶ Tour starten</button>`
@@ -154,43 +151,21 @@ function renderGlasTourScreen(t) {
   `;
 }
 
-function initGlasMap(t) {
-  const div = document.getElementById("glasMapDiv");
-  if (!div || typeof L === "undefined") return;
-  if (glasMapInstance) { glasMapInstance.remove(); glasMapInstance = null; }
-
-  const map = L.map("glasMapDiv", { scrollWheelZoom: false });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap-Mitwirkende",
-    maxZoom: 19,
-  }).addTo(map);
-
-  const points = [[GLAS_BASE.lat, GLAS_BASE.lng]];
-  const baseIcon = L.divIcon({
-    className: "",
-    html: `<div style="background:#1f5d92; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.35);"></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
-  L.marker([GLAS_BASE.lat, GLAS_BASE.lng], { icon: baseIcon }).addTo(map).bindPopup("Start");
-
-  t.stopps.forEach((s, idx) => {
-    if (!s.lat || !s.lng) return;
-    const color = s.status === "erledigt" ? "#1e7a34" : "#2d7dc4";
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="background:${color}; color:white; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.35);">${idx + 1}</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
-    L.marker([s.lat, s.lng], { icon }).addTo(map).bindPopup(`<b>Stopp ${idx + 1}</b><br>${escapeHtml(s.adresse || "")}`);
-    points.push([s.lat, s.lng]);
-  });
-
-  if (points.length > 1) map.fitBounds(points, { padding: [28, 28] });
-  else map.setView(points[0], 12);
-
-  glasMapInstance = map;
+function renderGlasRouteOverview(t) {
+  const rows = t.stopps
+    .map((s, idx) => {
+      const isDone = s.status === "erledigt";
+      return `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; ${idx < t.stopps.length - 1 ? "border-bottom:1px solid var(--border);" : ""}">
+          <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : idx + 1}</div>
+          <div style="min-width:0;">
+            <p style="margin:0; font-weight:600; font-size:14px; ${isDone ? "text-decoration:line-through; color:var(--text-secondary);" : ""}">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
+            <p class="muted" style="margin:0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
+          </div>
+        </div>`;
+    })
+    .join("");
+  return `<div class="card" style="margin:14px 0; padding:12px 16px;">${rows}</div>`;
 }
 
 function renderGlasStopsList(t) {
