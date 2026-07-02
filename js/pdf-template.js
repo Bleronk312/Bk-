@@ -50,11 +50,14 @@ function generatePdf(s) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const L = LAYOUT;
 
-  doc.setFont("helvetica", "normal");
+  // Eingebettete Unicode-Schrift, damit Ä/Ö/Ü/ß korrekt erscheinen (jsPDF-Standard-Helvetica
+  // kann diese Zeichen nicht rendern). Fällt bei Problemen auf Helvetica zurück.
+  const FONT = (typeof glasRegisterPdfFont === "function" && glasRegisterPdfFont(doc)) ? "LibSans" : "helvetica";
+  doc.setFont(FONT, "normal");
 
   // Titel
   doc.setFontSize(L.title.size);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Abnahmebescheinigung", L.title.x, L.title.y);
 
   // Logo oben rechts
@@ -63,11 +66,11 @@ function generatePdf(s) {
   // Auftraggeber
   let y = L.auftraggeberLabel.y;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Auftraggeber", L.auftraggeberLabel.x, y);
 
   y += L.auftraggeberFirstLineGap;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   const kundeLines = (s.kunde || "").split("\n").filter((l) => l.trim());
   kundeLines.forEach((line, i) => {
@@ -78,11 +81,11 @@ function generatePdf(s) {
   // Objekt
   y += L.objektLabelGap;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Objekt", L.objektLabel.x, y);
 
   let objektStartY = y + L.objektFirstLineGap;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   const adresseLines = (s.adresse || "").split("\n").filter((l) => l.trim());
   adresseLines.forEach((line, i) => {
@@ -93,9 +96,9 @@ function generatePdf(s) {
   // Kontakt (rechte Spalte), beginnt eine Zeile unter dem Objekt-Block
   let ky = objektEndY + L.kontaktGapFromObjektEnd;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Kontakt:", L.kontaktX, ky);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   if (s.ansprechpartner) {
     ky += L.lineGap;
@@ -109,7 +112,7 @@ function generatePdf(s) {
   // Kategorie
   y = Math.max(objektEndY, ky) + L.kategorieGap;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text(s.kategorie || "", L.left, y);
 
   // Linie 1
@@ -120,7 +123,7 @@ function generatePdf(s) {
 
   // Auszuführende Arbeiten / Kd.-Nr. Zeile
   const rowY = lineY + L.rowGapAfterLine1;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   doc.text(`Auszuführende Arbeiten Monat:  ${s.monat || ""}`, L.left, rowY);
   doc.text(`Kd.-Nr.:  ${s.kdnr || ""}`, L.kdnrX, rowY);
@@ -133,16 +136,16 @@ function generatePdf(s) {
   let by = line2Y + L.bulletGapAfterLine2;
   const leistungen = (s.leistungen || "").split("\n").filter((l) => l.trim());
   leistungen.forEach((line) => {
-    doc.setFont("helvetica", "bold");
+    doc.setFont(FONT, "bold");
     doc.text("-", L.bulletDashX, by);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(FONT, "normal");
     doc.text(line.trim(), L.bulletTextX, by);
     by += L.bulletLineGap;
   });
 
   // Hinweistext
   doc.setFontSize(10.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.text("Die ordnungsgemäße Durchführung der Arbeiten wird bestätigt!", L.left, L.disclaimerY);
   doc.text("Spätere Reklamation können nicht anerkannt werden.", L.left, L.disclaimerY + L.disclaimerLineGap);
 
@@ -157,12 +160,12 @@ function generatePdf(s) {
   }
   if (s.unterschrift_name) {
     doc.setFontSize(8.5);
-    doc.setFont("helvetica", "italic");
+    doc.setFont(FONT, "italic");
     doc.text(s.unterschrift_name, sigX, L.sigLineY - 1.5);
   }
   if (s.datum) {
     doc.setFontSize(10.5);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(FONT, "normal");
     doc.text(formatDate(s.datum), L.left, L.sigLineY - 1.5);
   }
 

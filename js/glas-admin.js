@@ -1201,8 +1201,9 @@ async function loadGlasObjektHistory(id) {
 function downloadGlasPdfHistory(objektId, stopId) {
   const s = (glasObjektDetailHistory[objektId] || []).find((x) => x.id === stopId);
   if (!s) return;
-  const doc = generateGlasPdf(s, s.glas_touren?.template || "geko", s.glas_touren?.datum);
-  doc.save(`Abnahmeschein_${(s.adresse || "").replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+  const template = s.glas_touren?.template || "geko";
+  const doc = generateGlasPdf(s, template, s.glas_touren?.datum);
+  doc.save(glasScheinFilename(s, template));
 }
 
 // Erzeugt sofort einen leeren, unterschriftslosen Abnahmeschein direkt von der
@@ -1221,7 +1222,7 @@ function downloadBlankGlasSchein(objektId) {
     positionen: JSON.stringify(positionen),
   };
   const doc = generateGlasPdf(s, template, glasTodayIso());
-  doc.save(`Abnahmeschein_${(o.adresse || o.name || "").replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+  doc.save(glasScheinFilename(s, template));
   showToast("Schein erstellt");
 }
 
@@ -1552,7 +1553,7 @@ function downloadGlasPdfAdmin(stopId) {
   const s = glasTourDetailStops.find((x) => x.id === stopId);
   if (!s || !t) return;
   const doc = generateGlasPdf(s, t.template, t.datum);
-  doc.save(`Abnahmeschein_${(s.adresse || "").replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+  doc.save(glasScheinFilename(s, t.template));
 }
 
 /* ---------------- Unterschreiben direkt in der Admin-Ansicht ---------------- */
@@ -1926,6 +1927,8 @@ async function createGlasTour() {
         kdnr: o.kdnr,
         kunde_kdnr: glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "",
         kunde_adresse: o.kunde_adresse,
+        ansprechpartner: o.ansprechpartner || "",
+        telefon: o.telefon || "",
         positionen: JSON.stringify(positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }))),
         lat: o.lat,
         lng: o.lng,
@@ -2235,11 +2238,14 @@ async function saveEinzelschein() {
   });
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
 
+  const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
   const { error: stoppErr } = await sb.from("glas_stopps").insert({
     id: genCode(), tour_id: tourId, objekt_id: d.objekt_id || null, reihenfolge: 0,
     objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr,
     kunde_kdnr: glasKunden.find((k) => k.id === d.kunde_id)?.kdnr || "",
     kunde_adresse: d.kunde_adresse,
+    ansprechpartner: esObjekt?.ansprechpartner || "",
+    telefon: esObjekt?.telefon || "",
     positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng, status: "offen",
   });
   glasBusy = false;

@@ -30,7 +30,7 @@ let nachherFotos = [];
 
 const PHOTO_MAX_DIM = 900;
 const PHOTO_QUALITY = 0.65;
-const PHOTO_MAX_COUNT = 5;
+const PHOTO_MAX_COUNT = 15;
 
 function compressPhotoFile(file) {
   return new Promise((resolve, reject) => {
@@ -163,8 +163,23 @@ function renderPhotoSection() {
       ${renderRow("Vorher-Fotos (optional)", "vorher")}
       <div style="height:10px;"></div>
       ${renderRow("Nachher-Fotos (optional)", "nachher")}
+      <button class="btn btn-sm btn-primary" style="margin-top:12px; width:100%; justify-content:center;" onclick="saveVorherNachherNow()">💾 Fotos speichern</button>
+      <p class="muted" style="margin:6px 0 0; font-size:11.5px;">Speichert die Fotos sofort – so gehen sie beim Verlassen der Seite nicht verloren.</p>
     </div>
   `;
+}
+
+// Speichert Vorher-/Nachher-Fotos sofort, damit sie beim Verlassen nicht verloren gehen.
+async function saveVorherNachherNow() {
+  if (!currentScheine || !currentScheine.id) { showToast("Schein noch nicht gespeichert"); return; }
+  const payload = {
+    vorher_fotos: vorherFotos.length ? JSON.stringify(vorherFotos) : null,
+    nachher_fotos: nachherFotos.length ? JSON.stringify(nachherFotos) : null,
+  };
+  const { error } = await sb.from("scheine").update(payload).eq("id", currentScheine.id);
+  if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
+  Object.assign(currentScheine, payload);
+  showToast("Fotos gespeichert");
 }
 
 function renderPhotoGallery(label, jsonStr) {

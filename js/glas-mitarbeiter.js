@@ -248,6 +248,11 @@ function renderGlasStopsList(t) {
             </div>
             <span class="badge ${isDone ? "badge-signed" : "badge-open"}">${isDone ? "✓ Erledigt" : "Offen"}</span>
           </div>
+          ${(s.ansprechpartner || s.telefon) ? `
+          <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
+            ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
+          </div>` : ""}
           ${!isDone ? `
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;">
             <a class="btn btn-sm" href="${links.google}" target="_blank" style="justify-content:center;">🧭 Google</a>
@@ -338,7 +343,7 @@ function downloadGlasPdf(tourId, stopId) {
   const s = t?.stopps.find((x) => x.id === stopId);
   if (!s) return;
   const doc = generateGlasPdf(s, t.template, t.datum);
-  doc.save(`Abnahmeschein_${(s.adresse || "").replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+  doc.save(glasScheinFilename(s, t.template));
 }
 
 glasMaInit();

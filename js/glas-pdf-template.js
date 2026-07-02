@@ -89,11 +89,15 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   const tpl = GLAS_TEMPLATES[templateKey] || GLAS_TEMPLATES.geko;
   const L = GLAS_LAYOUT;
 
-  doc.setFont("helvetica", "normal");
+  // Eingebettete Unicode-Schrift, damit Ä/Ö/Ü/ß im PDF korrekt erscheinen (die jsPDF-
+  // Standard-Helvetica kann diese Zeichen nicht darstellen). Fällt bei Problemen auf
+  // Helvetica zurück.
+  const FONT = (typeof glasRegisterPdfFont === "function" && glasRegisterPdfFont(doc)) ? "LibSans" : "helvetica";
+  doc.setFont(FONT, "normal");
 
   // Titel
   doc.setFontSize(L.title.size);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Abnahmebescheinigung", L.title.x, L.title.y);
 
   // Logo oben rechts
@@ -105,11 +109,11 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   // Auftraggeber (Kunde, oben links)
   let y = L.auftraggeberLabel.y;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Auftraggeber", L.auftraggeberLabel.x, y);
 
   y += L.auftraggeberFirstLineGap;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   const kundeLines = (s.kunde_adresse || "").split("\n").filter((l) => l.trim());
   kundeLines.forEach((line, i) => doc.text(line, L.auftraggeberContentX, y + i * L.lineGap));
@@ -118,11 +122,11 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   // Objekt
   y += L.objektLabelGap;
   doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(FONT, "bold");
   doc.text("Objekt", L.objektLabel.x, y);
 
   let objY = y + L.objektFirstLineGap;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   const objektLine = s.objekt ? [s.objekt] : [];
   const adresseLines = (s.adresse || "").split("\n").filter((l) => l.trim());
@@ -145,7 +149,7 @@ function generateGlasPdf(s, templateKey, tourDatum) {
     ? (s.kdnr || s.kunde_kdnr || "")
     : (s.kunde_kdnr || s.kdnr || "");
   const rowY = lineY + L.rowGapAfterLine1;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
   doc.text(`Auszuführende Arbeiten Monat:  ${glasMonatJahr(tourDatum)}`, L.left, rowY);
   doc.text(`Kd.-Nr.:  ${kdnrForPdf}`, L.kdnrX, rowY);
@@ -170,9 +174,9 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   let gesamtQm = 0;
   positionen.forEach((pos) => {
     const qmText = glasFormatQm(pos.qm);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(FONT, "bold");
     doc.text(`Pos.: ${pos.nr || ""}`, posX, by);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(FONT, "normal");
     doc.text(pos.art || "", descX, by);
     if (qmText) doc.text(`${qmText} qm`, L.qmX, by);
     const num = parseFloat(String(pos.qm).replace(",", "."));
@@ -184,15 +188,15 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   // dort, wo genug Platz ist, unabhängig davon wie viele Positionen es gibt
   if (gesamtQm > 0) {
     const gesamtY = L.disclaimerY - 16;
-    doc.setFont("helvetica", "bold");
+    doc.setFont(FONT, "bold");
     doc.text("Gesamt Reinigungsfläche:", descX, gesamtY);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(FONT, "normal");
     doc.text(`${glasFormatQm(gesamtQm)} qm`, L.qmX, gesamtY);
   }
 
   // Hinweistext
   doc.setFontSize(10.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(FONT, "normal");
   doc.text("Die ordnungsgemäße Durchführung der Arbeiten wird bestätigt!", L.left, L.disclaimerY);
   doc.text("Spätere Reklamationen können nicht anerkannt werden.", L.left, L.disclaimerY + L.disclaimerLineGap);
 
@@ -207,12 +211,12 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   }
   if (s.name) {
     doc.setFontSize(8.5);
-    doc.setFont("helvetica", "italic");
+    doc.setFont(FONT, "italic");
     doc.text(s.name, sigX, L.sigLineY - 1.5);
   }
   if (s.datum) {
     doc.setFontSize(10.5);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(FONT, "normal");
     doc.text(formatGlasDate(s.datum), L.left, L.sigLineY - 1.5);
   }
 
@@ -236,4 +240,17 @@ function formatGlasDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y}`;
+}
+
+// Einheitlicher Dateiname für alle Abnahmescheine: LN_<Kd.-Nr.>_<Straße>.pdf
+// (LN = Leistungsnachweis). Straße = erste Adresszeile. Kd.-Nr. nach gleicher Logik wie im
+// PDF (Dietrich-Template bevorzugt die Objekt-Kdnr, sonst Haupt-Kdnr des Kunden).
+function glasScheinFilename(s, templateKey) {
+  const kdnr = templateKey === "sub"
+    ? (s.kdnr || s.kunde_kdnr || "")
+    : (s.kunde_kdnr || s.kdnr || "");
+  const strasse = (s.adresse || "").split("\n")[0] || s.objekt || "";
+  const clean = (v) => String(v || "").replace(/[^a-z0-9äöüß]+/gi, "_").replace(/^_+|_+$/g, "");
+  const parts = ["LN", clean(kdnr), clean(strasse)].filter(Boolean);
+  return parts.join("_") + ".pdf";
 }

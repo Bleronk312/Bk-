@@ -210,3 +210,8 @@ alter table glas_termine add column if not exists anhaenge text not null default
 alter table glas_objekte add column if not exists ansprechpartner text not null default '';
 alter table glas_objekte add column if not exists telefon text not null default '';
 
+-- Ansprechpartner/Telefon als Schnappschuss auf dem Stopp, damit sie in der Mitarbeiter-
+-- Tourenansicht (Abnahmeschein) angezeigt und direkt angerufen werden können.
+alter table glas_stopps add column if not exists ansprechpartner text not null default '';
+alter table glas_stopps add column if not exists telefon text not null default '';
+
