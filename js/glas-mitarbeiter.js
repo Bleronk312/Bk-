@@ -296,29 +296,15 @@ async function saveGlasSignature(stopId) {
   if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasSigPad.toDataURL("image/png");
-  const payload = { name, datum, unterschrift, status: "erledigt", signed_at: new Date().toISOString() };
-
-  const { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
-  if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
-
   let stopRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
-    if (stop) { Object.assign(stop, payload); stopRef = stop; }
+    if (stop) stopRef = stop;
   }
 
-  // Für jede Position, die auf diesem Schein tatsächlich enthalten war, "zuletzt gereinigt"
-  // aktualisieren und eine evtl. manuelle Verschiebung zurücksetzen - damit läuft das
-  // Intervall für genau diese Positionen ab jetzt neu, nicht für das ganze Objekt.
-  if (stopRef) {
-    try {
-      const positionen = JSON.parse(stopRef.positionen || "[]");
-      const ids = positionen.map((p) => p.id).filter(Boolean);
-      if (ids.length) {
-        await sb.from("glas_objekt_positionen").update({ letzte_reinigung: datum, faelligkeit_override: null }).in("id", ids);
-      }
-    } catch (e) { /* kein/ungültiges JSON - Objekt ohne Intervall-Tracking, kein Problem */ }
-  }
+  const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift);
+  if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
+  if (stopRef) Object.assign(stopRef, payload);
 
   showToast("Gespeichert");
   glasOpenStopId = null;

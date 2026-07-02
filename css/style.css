@@ -183,6 +183,16 @@ label {
 .glas-empty .glas-empty-icon { font-size: 42px; margin-bottom: 12px; }
 .glas-empty p { margin: 0; }
 
+/* Die App baut Formulare (Touren-/Objekt-Planung) bei jedem Tastendruck/Klick komplett neu
+   auf - die normale .card-Eintrittsanimation würde dort bei jeder Kleinigkeit erneut abspielen
+   und wirkt dann eher störend als schön. Innerhalb der Glasreinigung-Seiten daher abgeschaltet. */
+.glas-static .card { animation: none !important; }
+
+.glas-reorder-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); background: var(--card); }
+.glas-reorder-row.dragging { opacity: 0.5; }
+.glas-reorder-handle { cursor: grab; touch-action: none; font-size: 18px; color: var(--text-secondary); padding: 4px 6px; flex-shrink: 0; }
+.glas-reorder-handle:active { cursor: grabbing; }
+
 .scheine-item {
   display: flex;
   justify-content: space-between;

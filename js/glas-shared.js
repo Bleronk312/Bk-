@@ -145,3 +145,75 @@ function glasIntervallLabel(pos) {
   }
   return "Kein Intervall";
 }
+
+/* ---------------- Unterschreiben (von Mitarbeiter- UND Admin-Seite genutzt) ---------------- */
+
+// Markiert einen Stopp als unterschrieben und setzt "zuletzt gereinigt" nur für die
+// Positionen zurück, die tatsächlich auf diesem Schein enthalten waren (nicht automatisch
+// für alle Positionen des Objekts) - inkl. Zurücksetzen einer evtl. manuellen Verschiebung.
+async function glasSignStop(stopId, positionenJson, name, datum, unterschrift) {
+  const payload = { name, datum, unterschrift, status: "erledigt", signed_at: new Date().toISOString() };
+  const { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+  if (error) return { error };
+
+  try {
+    const positionen = JSON.parse(positionenJson || "[]");
+    const ids = positionen.map((p) => p.id).filter(Boolean);
+    if (ids.length) {
+      await sb.from("glas_objekt_positionen").update({ letzte_reinigung: datum, faelligkeit_override: null }).in("id", ids);
+    }
+  } catch (e) { /* kein/ungültiges JSON - Objekt ohne Intervall-Tracking, kein Problem */ }
+
+  return { error: null, payload };
+}
+
+/* ---------------- Wochen-Layout für die TimeTree-artige Kalenderansicht ---------------- */
+
+function glasIsoFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Liefert ein Array von Wochen (je 7 ISO-Datumsstrings, Montag-Sonntag), die den Bereich
+// von "vonMonat" bis "bisMonat" (inklusive, {year, month} mit month 0-11) komplett abdecken,
+// aufgerundet auf volle Wochen.
+function glasWeeksInRange(vonMonat, bisMonat) {
+  const start = new Date(vonMonat.year, vonMonat.month, 1);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // zurück auf den Montag
+  const endMonat = new Date(bisMonat.year, bisMonat.month + 1, 0); // letzter Tag des Bis-Monats
+  const weeks = [];
+  let cur = new Date(start);
+  while (cur <= endMonat) {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      days.push(glasIsoFromDate(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(days);
+  }
+  return weeks;
+}
+
+// Greedy Intervall-Zuordnung: verteilt Touren, die in dieser Woche sichtbar sind, auf möglichst
+// wenige "Zeilen" (Lanes), ohne dass sich zwei Touren in derselben Zeile überschneiden.
+function glasAssignLanes(touren, weekDays) {
+  const items = [];
+  touren.forEach((t) => {
+    const startCol = weekDays.findIndex((d) => d >= t.datum && d <= (t.datum_bis || t.datum));
+    if (startCol === -1) return;
+    let endCol = startCol;
+    for (let i = weekDays.length - 1; i > startCol; i--) {
+      if (weekDays[i] <= (t.datum_bis || t.datum) && weekDays[i] >= t.datum) { endCol = i; break; }
+    }
+    items.push({ tour: t, startCol, endCol });
+  });
+  items.sort((a, b) => a.startCol - b.startCol || (b.endCol - b.startCol) - (a.endCol - a.startCol));
+
+  const laneEnds = [];
+  items.forEach((it) => {
+    let lane = laneEnds.findIndex((end) => end < it.startCol);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(it.endCol); }
+    else laneEnds[lane] = it.endCol;
+    it.lane = lane;
+  });
+  return items;
+}

@@ -6,19 +6,19 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#1f5d92" />
-<title>Glasreinigung - Touren</title>
+<title>GEKO Hub - Glasreinigung</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
   <div class="app-header">
-    <div class="brand-row"><span class="dot"></span>Glasreinigung – Touren</div>
-    <div class="greeting">Adressen eintragen, Route wird automatisch erstellt</div>
+    <div class="brand-row"><span class="dot"></span>GEKO Hub</div>
+    <div class="greeting">Glasreinigung – Planung &amp; Touren</div>
   </div>
   <div class="app-sheet">
     <img class="logo-watermark" id="watermarkImg" alt="" />
     <div class="logo-badge"><img id="badgeLogoImg" alt="Logo" /></div>
-    <div class="app-sheet-content">
+    <div class="app-sheet-content glas-static">
       <div class="wrap" style="padding:0 18px 24px;">
         <div id="view"><p class="muted"><span class="spinner"></span>Lade...</p></div>
       </div>
@@ -29,6 +29,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/logo-asset.js"></script>
   <script src="js/supabase-client.js"></script>
