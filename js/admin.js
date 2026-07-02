@@ -1,0 +1,1550 @@
+document.title = FIRMA_NAME + " - Abnahmescheine";
+document.getElementById("firmaTitle").textContent = FIRMA_NAME + " Abnahmescheine";
+
+function initHeader() {
+  const wm = document.getElementById("watermarkImg");
+  const badge = document.getElementById("badgeLogoImg");
+  if (wm) wm.src = GEKO_LOGO_TRANSPARENT_B64;
+  if (badge) badge.src = GEKO_LOGO_TRANSPARENT_B64;
+  const greeting = document.getElementById("greetingText");
+  if (greeting) {
+    const name = typeof GREETING_NAME !== "undefined" ? GREETING_NAME : FIRMA_NAME;
+    greeting.innerHTML = `Hallo ${name}! &#128147;`;
+  }
+}
+try { initHeader(); } catch (e) { console.error("Header-Init fehlgeschlagen:", e); }
+try { checkPushStatus(); } catch (e) {}
+
+function updateHeaderStat(openCount) {
+  const stat = document.getElementById("headerStat");
+  if (stat) stat.textContent = `${openCount} offene Schein${openCount === 1 ? "" : "e"}`;
+}
+
+let scheine = [];
+let archivScheine = [];
+let kunden = [];
+let kategorien = [];
+let currentTab = "scheine";
+let pendingAnhang = null; // {data, name, type} when a new file was chosen
+let removeAnhangFlag = false;
+let scheineSearchQuery = "";
+let signFormOpen = false;
+let materialSurveyOpen = false;
+let photoEditOpen = false;
+let sigPad = null;
+let currentViewScheine = null;
+let vorherFotos = [];
+let nachherFotos = [];
+
+const PHOTO_MAX_DIM = 900;
+const PHOTO_QUALITY = 0.65;
+const PHOTO_MAX_COUNT = 5;
+
+function compressPhotoFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > PHOTO_MAX_DIM || height > PHOTO_MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * PHOTO_MAX_DIM) / width);
+            width = PHOTO_MAX_DIM;
+          } else {
+            width = Math.round((width * PHOTO_MAX_DIM) / height);
+            height = PHOTO_MAX_DIM;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", PHOTO_QUALITY));
+      };
+      img.onerror = () => reject(new Error("Bild konnte nicht geladen werden"));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoSelect(event, which) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = "";
+  if (!files.length) return;
+  const arr = which === "vorher" ? vorherFotos : nachherFotos;
+  const remaining = PHOTO_MAX_COUNT - arr.length;
+  if (remaining <= 0) {
+    showToast(`Maximal ${PHOTO_MAX_COUNT} Fotos`);
+    return;
+  }
+  const toProcess = files.slice(0, remaining);
+  if (files.length > remaining) showToast(`Nur die ersten ${remaining} Foto(s) wurden hinzugefügt (max. ${PHOTO_MAX_COUNT})`);
+  for (const file of toProcess) {
+    try {
+      const compressed = await compressPhotoFile(file);
+      arr.push(compressed);
+    } catch (e) {
+      showToast("Ein Foto konnte nicht verarbeitet werden");
+    }
+  }
+  refreshPhotoSection();
+}
+
+function removePhoto(which, index) {
+  const arr = which === "vorher" ? vorherFotos : nachherFotos;
+  arr.splice(index, 1);
+  refreshPhotoSection();
+}
+
+function refreshPhotoSection() {
+  const el = document.getElementById("photoSectionWrap");
+  if (el) {
+    el.innerHTML = renderPhotoSection();
+  } else {
+    renderViewScheine(currentViewScheine);
+  }
+}
+
+function parsePhotoJson(jsonStr) {
+  if (!jsonStr) return [];
+  try {
+    const arr = JSON.parse(jsonStr);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function openPhotoEditAdmin() {
+  vorherFotos = parsePhotoJson(currentViewScheine.vorher_fotos);
+  nachherFotos = parsePhotoJson(currentViewScheine.nachher_fotos);
+  photoEditOpen = true;
+  renderViewScheine(currentViewScheine);
+}
+
+function cancelPhotoEditAdmin() {
+  photoEditOpen = false;
+  renderViewScheine(currentViewScheine);
+}
+
+async function savePhotoEditAdmin(id) {
+  const payload = {
+    vorher_fotos: vorherFotos.length ? JSON.stringify(vorherFotos) : null,
+    nachher_fotos: nachherFotos.length ? JSON.stringify(nachherFotos) : null,
+  };
+
+  const { error } = await sb.from("scheine").update(payload).eq("id", id);
+  if (error) {
+    showToast("Fehler beim Speichern: " + error.message);
+    return;
+  }
+
+  Object.assign(currentViewScheine, payload);
+  photoEditOpen = false;
+  showToast("Gespeichert");
+  renderViewScheine(currentViewScheine);
+}
+
+function renderPhotoSection() {
+  const renderRow = (label, which) => {
+    const arr = which === "vorher" ? vorherFotos : nachherFotos;
+    const thumbs = arr.map((src, i) => `
+      <div class="photo-thumb">
+        <img src="${src}" />
+        <button class="remove-btn" onclick="removePhoto('${which}', ${i})">&times;</button>
+      </div>
+    `).join("");
+    const addBtn = arr.length < PHOTO_MAX_COUNT
+      ? `<div class="photo-add-btn" onclick="document.getElementById('photoInput_${which}').click()">+</div>`
+      : "";
+    return `
+      <div class="photo-section-label">${label}</div>
+      <div class="photo-grid">${thumbs}${addBtn}</div>
+      <input type="file" id="photoInput_${which}" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(event, '${which}')" />
+    `;
+  };
+  return `
+    <div class="card">
+      ${renderRow("Vorher-Fotos (optional)", "vorher")}
+      <div style="height:10px;"></div>
+      ${renderRow("Nachher-Fotos (optional)", "nachher")}
+    </div>
+  `;
+}
+
+function renderPhotoGallery(label, jsonStr) {
+  if (!jsonStr) return "";
+  let arr = [];
+  try { arr = JSON.parse(jsonStr); } catch (e) { return ""; }
+  if (!arr.length) return "";
+  const thumbs = arr.map((src) => `<div class="photo-thumb"><img src="${src}" /></div>`).join("");
+  return `
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px;">${label}</div>
+      <div class="photo-grid">${thumbs}</div>
+    </div>
+  `;
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function mapsLink(adresse) {
+  const query = encodeURIComponent((adresse || "").replace(/\n/g, ", "));
+  return `https://www.google.com/maps/dir/?api=1&destination=${query}`;
+}
+
+function wazeLink(adresse) {
+  const query = encodeURIComponent((adresse || "").replace(/\n/g, ", "));
+  return `https://waze.com/ul?q=${query}&navigate=yes`;
+}
+
+function telLink(telefon) {
+  return `tel:${(telefon || "").replace(/[^0-9+]/g, "")}`;
+}
+
+function openBase64File(dataUrl, filename) {
+  try {
+    const [header, base64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:([^;]+);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    showToast("Datei konnte nicht geöffnet werden");
+  }
+}
+
+function openAttachmentFileAdmin() {
+  if (!currentViewScheine || !currentViewScheine.anhang) return;
+  openBase64File(currentViewScheine.anhang, currentViewScheine.anhang_name || "anhang.pdf");
+}
+
+function firstLine(text) {
+  return (text || "").split("\n")[0];
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `(${d}.${m}.${y})`;
+}
+
+function todayIso() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function toDatetimeLocalValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+// ---------- Login ----------
+
+async function showApp() {
+  await Promise.all([loadKundenData(), loadKategorienData()]);
+  switchTab("scheine");
+}
+
+showApp();
+
+// ---------- Tabs ----------
+
+function switchTab(tab) {
+  currentTab = tab;
+  ["scheine", "kunden", "kategorien", "statistik", "archiv"].forEach((t) => {
+    document.getElementById("tab-" + t).classList.toggle("active", t === tab);
+  });
+  if (tab === "scheine") loadScheineList();
+  if (tab === "kunden") renderKundenList();
+  if (tab === "kategorien") renderKategorienList();
+  if (tab === "statistik") loadStatistik();
+  if (tab === "archiv") loadArchivList();
+}
+
+// ---------- Week grouping helper ----------
+
+function startOfWeek(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function groupByWeek(items, dateField) {
+  const now = new Date();
+  const thisWeekStart = startOfWeek(now);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(thisWeekStart.getDate() - 7);
+
+  const groups = { "Diese Woche": [], "Letzte Woche": [], "Älter": [] };
+  items.forEach((item) => {
+    const d = new Date(item[dateField]);
+    if (d >= thisWeekStart) groups["Diese Woche"].push(item);
+    else if (d >= lastWeekStart) groups["Letzte Woche"].push(item);
+    else groups["Älter"].push(item);
+  });
+
+  function sortByTermin(arr) {
+    return arr.sort((a, b) => {
+      if (a.termin && b.termin) return new Date(a.termin) - new Date(b.termin);
+      if (a.termin && !b.termin) return -1;
+      if (!a.termin && b.termin) return 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+  }
+  groups["Diese Woche"] = sortByTermin(groups["Diese Woche"]);
+  groups["Letzte Woche"] = sortByTermin(groups["Letzte Woche"]);
+  groups["Älter"] = sortByTermin(groups["Älter"]);
+
+  return groups;
+}
+
+// ---------- Scheine ----------
+
+async function loadScheineList() {
+  const view = document.getElementById("view");
+  view.innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+  const { data, error } = await sb.from("scheine")
+    .select("id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, monat, kdnr, datum, unterschrift_name, anhang_name, anhang_type, interne_notiz, created_at, signed_at, termin, archiviert, material_erfasst, material_stunden, material_graffiti_ex_spray, material_graffiti_gel, material_paint_cleaner, material_streichen, material_hochdruck, material_sandstrahl, material_freitext")
+    .eq("archiviert", false)
+    .order("created_at", { ascending: false });
+  if (error) {
+    view.innerHTML = `<div class="card"><p style="color:#c0392b;">Fehler beim Laden: ${error.message}</p><p class="muted">Prüfe, ob js/config.js korrekt mit deinen Supabase-Daten gefüllt ist, und ob das Migrations-SQL (supabase_update.sql) ausgeführt wurde.</p></div>`;
+    return;
+  }
+  scheine = data || [];
+  renderScheineList();
+}
+
+async function loadArchivList() {
+  const view = document.getElementById("view");
+  view.innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+  const { data, error } = await sb.from("scheine")
+    .select("id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, monat, kdnr, datum, unterschrift_name, anhang_name, anhang_type, interne_notiz, created_at, signed_at, termin, archiviert, material_erfasst, material_stunden, material_graffiti_ex_spray, material_graffiti_gel, material_paint_cleaner, material_streichen, material_hochdruck, material_sandstrahl, material_freitext")
+    .eq("archiviert", true)
+    .order("signed_at", { ascending: false });
+  if (error) {
+    view.innerHTML = `<div class="card"><p style="color:#c0392b;">Fehler beim Laden: ${error.message}</p></div>`;
+    return;
+  }
+  archivScheine = data || [];
+  renderArchivList();
+}
+
+async function fetchFullScheine(id) {
+  const { data, error } = await sb.from("scheine").select("*").eq("id", id).maybeSingle();
+  if (error) {
+    showToast("Fehler: " + error.message);
+    return null;
+  }
+  return data;
+}
+
+function matchesSearch(s, query) {
+  if (!query) return true;
+  const haystack = [s.kunde, s.adresse, s.kategorie, s.ansprechpartner, s.kdnr].join(" ").toLowerCase();
+  return haystack.includes(query.toLowerCase());
+}
+
+function onScheineSearchInput(value) {
+  scheineSearchQuery = value;
+  renderScheineList();
+  const input = document.getElementById("scheineSearchInput");
+  if (input) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+}
+
+function renderScheineList() {
+  const view = document.getElementById("view");
+  const filtered = scheine.filter((s) => matchesSearch(s, scheineSearchQuery));
+  const open = filtered.filter((s) => !s.signed_at);
+  const signed = filtered.filter((s) => s.signed_at).sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at));
+  const groups = groupByWeek(open, "created_at");
+
+  const allOpenCount = scheine.filter((s) => !s.signed_at).length;
+  updateHeaderStat(allOpenCount);
+
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px;">
+      <p class="muted" style="margin:0; white-space:nowrap;">${filtered.length} von ${scheine.length} Schein(en)</p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm" onclick="loadScheineList()" title="Aktualisieren">🔄</button>
+        <button class="btn btn-primary" onclick="openEdit(null)">+ Neuer Schein</button>
+      </div>
+    </div>
+    <div class="field">
+      <input type="text" id="scheineSearchInput" placeholder="Suche nach Kunde, Adresse, Kategorie..." value="${escapeHtml(scheineSearchQuery)}" oninput="onScheineSearchInput(this.value)" />
+    </div>
+  `;
+
+  let any = false;
+  for (const [label, items] of Object.entries(groups)) {
+    if (!items.length) continue;
+    any = true;
+    html += `<div class="week-heading">${label}</div><div class="card" style="padding:6px 20px;">`;
+    html += items.map(renderScheineItem).join("");
+    html += `</div>`;
+  }
+  if (signed.length) {
+    any = true;
+    html += `<div class="week-heading">Unterschriebene Scheine</div><div class="card" style="padding:6px 20px;">`;
+    html += signed.map(renderScheineItem).join("");
+    html += `</div>`;
+  }
+  if (!any) {
+    html += `<div class="card"><div class="empty-state">${scheineSearchQuery ? "Keine Treffer für diese Suche." : "Noch keine Abnahmescheine.<br>Lege oben den ersten an."}</div></div>`;
+  }
+
+  view.innerHTML = html;
+}
+
+function formatTermin(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}.${mm}. ${hh}:${min}`;
+}
+
+function renderScheineItem(s) {
+  const signed = !!s.signed_at;
+  return `
+    <div class="scheine-item">
+      <div class="ribbon ${signed ? "ribbon-done" : "ribbon-open"}">${signed ? "ERLEDIGT" : "OFFEN"}</div>
+      <div class="scheine-item-content" style="flex:1; min-width:0;">
+        <div style="font-weight:600; font-size:14.5px;">${escapeHtml(firstLine(s.kunde)) || "(ohne Kunde)"}</div>
+        <div class="muted">${escapeHtml(firstLine(s.adresse))}</div>
+        <div class="muted">${escapeHtml(s.kategorie || "")}</div>
+        <div style="margin-top:6px;">
+          ${s.termin ? `<span class="badge" style="background:#eaf3fb; color:#1f5d92;">📅 ${formatTermin(s.termin)}</span>` : ""}
+          ${s.anhang_name ? `<span class="badge" style="background:#eef2f7; color:#475569;">📎 Anhang</span>` : ""}
+          ${s.interne_notiz ? `<span class="badge" style="background:#fff4e0; color:#8a5a07;">📝 Notiz</span>` : ""}
+          ${signed && !s.material_erfasst ? `<span class="badge" style="background:#fff8ec; color:#8a5a07;">📦 Material offen</span>` : ""}
+        </div>
+        <div class="scheine-actions">
+          <button class="btn btn-sm" onclick="openView('${s.id}')">Öffnen</button>
+          <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
+          <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
+          ${signed ? `<button class="btn btn-sm" onclick="archiveScheine('${s.id}')">Archivieren</button>` : ""}
+          <button class="btn btn-sm btn-danger" onclick="deleteScheine('${s.id}')">Löschen</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadKundenData() {
+  const { data, error } = await sb.from("kunden").select("*").order("name", { ascending: true });
+  if (!error) kunden = data || [];
+}
+
+async function loadKategorienData() {
+  const { data, error } = await sb.from("kategorien").select("*").order("name", { ascending: true });
+  if (!error) kategorien = data || [];
+}
+
+async function openView(id) {
+  signFormOpen = false;
+  materialSurveyOpen = false;
+  photoEditOpen = false;
+  vorherFotos = [];
+  nachherFotos = [];
+  currentViewScheine = null;
+
+  const light = scheine.find((x) => x.id === id) || archivScheine.find((x) => x.id === id);
+
+  if (light) {
+    renderViewScheine({ ...light });
+
+    const { data, error } = await sb.from("scheine")
+      .select("anhang, anhang_name, anhang_type, unterschrift, vorher_fotos, nachher_fotos")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!error && data && currentViewScheine && currentViewScheine.id === id) {
+      const merged = { ...light, ...data };
+      if (!signFormOpen) renderViewScheine(merged);
+      else currentViewScheine = merged;
+    }
+    return;
+  }
+
+  document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+  const full = await fetchFullScheine(id);
+  if (!full) { showToast("Fehler beim Laden"); switchTab("scheine"); return; }
+  renderViewScheine(full);
+}
+
+function renderViewScheine(s) {
+  currentViewScheine = s;
+  const leistungenList = (s.leistungen || "").split("\n").filter((l) => l.trim())
+    .map((l) => `<li>${escapeHtml(l.trim())}</li>`).join("");
+  const signed = !!s.signed_at;
+
+  let anhangHtml = "";
+  if (s.anhang_name || s.anhang_type) {
+    if (!s.anhang) {
+      anhangHtml = `
+        <div class="card">
+          <div class="muted" style="margin-bottom:6px;">Anhang</div>
+          <p class="muted" style="margin:0;">Lade...</p>
+        </div>
+      `;
+    } else {
+      const isImg = (s.anhang_type || "").startsWith("image/");
+      anhangHtml = `
+        <div class="card">
+          <div class="muted" style="margin-bottom:6px;">Anhang</div>
+          ${isImg
+            ? `<img src="${s.anhang}" style="max-width:100%; border-radius:8px; border:1px solid var(--border);" />`
+            : `<button class="btn btn-sm" onclick="openAttachmentFileAdmin()">📎 ${escapeHtml(s.anhang_name || "Anhang öffnen")}</button>`}
+        </div>
+      `;
+    }
+  }
+
+  document.getElementById("view").innerHTML = `
+    <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
+
+    <div class="card">
+      <div class="muted" style="font-size:12px; margin-bottom:10px;">${escapeHtml(firstLine(s.kunde))}</div>
+
+      <div class="muted" style="margin-bottom:2px;">Objekt</div>
+      <div class="highlight-box" style="white-space:pre-line;">${escapeHtml(s.adresse)}</div>
+      <a href="${mapsLink(s.adresse)}" target="_blank" rel="noopener"><button class="btn btn-sm" style="margin-bottom:12px;">🧭 Route (Google Maps)</button></a>
+      <a href="${wazeLink(s.adresse)}" target="_blank" rel="noopener"><button class="btn btn-sm" style="margin-bottom:12px;">🚗 Route (Waze)</button></a>
+
+      ${s.ansprechpartner ? `<div class="muted" style="margin-bottom:2px;">Ansprechpartner vor Ort</div><div class="highlight-box">${escapeHtml(s.ansprechpartner)}${s.telefon ? " &middot; " + escapeHtml(s.telefon) : ""}</div>${s.telefon ? `<a href="${telLink(s.telefon)}"><button class="btn btn-sm" style="margin-bottom:12px;">📞 Anrufen</button></a>` : ""}` : ""}
+
+      ${s.termin ? `<div class="muted" style="margin-bottom:2px;">Termin</div><div class="highlight-box">📅 ${formatTermin(s.termin)}</div>` : ""}
+
+      <div class="divider"></div>
+
+      <div style="font-weight:600; margin-bottom:8px;">${escapeHtml(s.kategorie || "")}</div>
+      <div class="muted" style="margin-bottom:6px;">${escapeHtml(s.monat || "")}${s.kdnr ? " &middot; Kd.-Nr. " + escapeHtml(s.kdnr) : ""}</div>
+      <ul class="bullet-list">${leistungenList}</ul>
+    </div>
+
+    ${s.interne_notiz ? `
+      <div class="card" style="background:#fff8ec; border-color:#f0d9a8;">
+        <div style="font-weight:600; font-size:13px; color:#8a5a07; margin-bottom:4px;">📝 Interne Notiz</div>
+        <div style="white-space:pre-line; font-size:14px;">${escapeHtml(s.interne_notiz)}</div>
+      </div>
+    ` : ""}
+
+    ${anhangHtml}
+
+    <div class="card">
+      <p style="margin:0 0 8px;"><span class="badge ${signed ? "badge-signed" : "badge-open"}">${signed ? "Unterschrieben " + formatDate(s.datum) : "Offen"}</span></p>
+      ${signed && s.unterschrift_name ? `<p class="muted" style="margin:0 0 8px;">Von: ${escapeHtml(s.unterschrift_name)}</p>` : ""}
+      ${signed ? (s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px;" />` : `<p class="muted">Lade Unterschrift...</p>`) : ""}
+    </div>
+
+    ${signed && photoEditOpen ? `
+      <div id="photoSectionWrap">${renderPhotoSection()}</div>
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button class="btn btn-sm" onclick="cancelPhotoEditAdmin()">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="savePhotoEditAdmin('${s.id}')">Fotos speichern</button>
+      </div>
+    ` : ""}
+    ${signed && !photoEditOpen ? renderPhotoGallery("Vorher-Fotos", s.vorher_fotos) : ""}
+    ${signed && !photoEditOpen ? renderPhotoGallery("Nachher-Fotos", s.nachher_fotos) : ""}
+    ${signed && !photoEditOpen ? `<button class="btn btn-sm" onclick="openPhotoEditAdmin()" style="margin-bottom:14px;">📷 Fotos bearbeiten</button>` : ""}
+    ${signed ? (materialSurveyOpen ? renderMaterialSurvey(s) : !s.material_erfasst ? `
+      <div class="material-reminder">
+        <span>📦 Hier noch Material eintragen!</span>
+        <button class="btn btn-sm" onclick="openMaterialSurvey()">Jetzt eintragen</button>
+      </div>
+    ` : `
+      <button class="btn btn-sm" onclick="openMaterialSurvey()" style="margin-bottom:14px;">📦 Material-Angaben bearbeiten</button>
+    `) : ""}
+    ${signed && (s.vorher_fotos || s.nachher_fotos) ? `
+      <div class="scheine-actions" style="margin-bottom:14px;">
+        <button class="btn btn-sm" onclick="downloadPhotosPdf('${s.id}')">Fotos als PDF speichern</button>
+        <button class="btn btn-sm" onclick="sharePhotosPdf('${s.id}')">Fotos als PDF teilen</button>
+      </div>
+    ` : ""}
+
+    ${!signed ? `<div id="photoSectionWrap">${renderPhotoSection()}</div>` : ""}
+
+    ${!signed && signFormOpen ? `
+      <div class="card" id="signForm">
+        <h2>Abnahme bestätigen</h2>
+        <div class="field">
+          <label>Name der unterschreibenden Person</label>
+          <input type="text" id="f_name" placeholder="Vor- und Nachname" />
+        </div>
+        <div class="field">
+          <label>Datum</label>
+          <input type="date" id="f_datum" value="${todayIso()}" />
+        </div>
+        <label>Unterschrift</label>
+        <div class="sig-pad-wrap">
+          <canvas id="sigCanvas"></canvas>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px; margin-bottom:16px;">
+          <button class="btn btn-sm" onclick="clearSig()">Löschen</button>
+          <button class="btn btn-sm" onclick="cancelSignFormAdmin()">Abbrechen</button>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="saveSignatureAdmin('${s.id}')">Speichern</button>
+      </div>
+    ` : ""}
+
+    ${!signed && !signFormOpen ? `
+      <button class="btn btn-primary btn-block" onclick="openSignFormAdmin()" style="margin-bottom:14px;">Jetzt unterschreiben</button>
+    ` : ""}
+
+    <div class="scheine-actions" style="margin-top:4px;">
+      ${s.archiviert ? `
+        <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
+        <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
+        <button class="btn btn-primary" onclick="restoreScheine('${s.id}')">Wiederherstellen</button>
+      ` : `
+        <button class="btn btn-primary" onclick="openEdit('${s.id}')">Bearbeiten</button>
+        <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
+        <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
+        ${signed ? `<button class="btn btn-sm" onclick="archiveScheine('${s.id}')">Archivieren</button>` : ""}
+        <button class="btn btn-sm btn-danger" onclick="deleteScheine('${s.id}')">Löschen</button>
+      `}
+    </div>
+  `;
+
+  if (!signed && signFormOpen) setupSigPad();
+}
+
+function openSignFormAdmin() {
+  signFormOpen = true;
+  renderViewScheine(currentViewScheine);
+}
+
+function cancelSignFormAdmin() {
+  signFormOpen = false;
+  renderViewScheine(currentViewScheine);
+}
+
+
+
+function setupSigPad() {
+  const canvas = document.getElementById("sigCanvas");
+  if (!canvas) return;
+  resizeCanvas(canvas);
+  sigPad = new SignaturePad(canvas, { minWidth: 0.8, maxWidth: 2.2 });
+}
+
+function resizeCanvas(canvas) {
+  const ratio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  canvas.getContext("2d").scale(ratio, ratio);
+  if (sigPad) sigPad.clear();
+}
+
+function clearSig() {
+  if (sigPad) sigPad.clear();
+}
+
+async function saveSignatureAdmin(id) {
+  const name = document.getElementById("f_name").value.trim();
+  const datum = document.getElementById("f_datum").value;
+  if (!name) { showToast("Bitte Namen der unterschreibenden Person eintragen"); return; }
+  if (!datum) { showToast("Bitte ein Datum wählen"); return; }
+  if (!sigPad || sigPad.isEmpty()) { showToast("Bitte unterschreiben"); return; }
+
+  const unterschrift = sigPad.toDataURL("image/png");
+  const payload = {
+    datum,
+    unterschrift,
+    unterschrift_name: name,
+    signed_at: new Date().toISOString(),
+  };
+  if (vorherFotos.length) payload.vorher_fotos = JSON.stringify(vorherFotos);
+  if (nachherFotos.length) payload.nachher_fotos = JSON.stringify(nachherFotos);
+
+  const { error } = await sb.from("scheine").update(payload).eq("id", id);
+
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Gespeichert");
+  signFormOpen = false;
+
+  const idx = scheine.findIndex((x) => x.id === id);
+  if (idx >= 0) {
+    scheine[idx] = { ...scheine[idx], ...payload };
+  }
+
+  await openView(id);
+  materialSurveyOpen = true;
+  renderViewScheine(currentViewScheine);
+}
+
+async function openEdit(id) {
+  pendingAnhang = null;
+  removeAnhangFlag = false;
+
+  let s;
+  if (id) {
+    document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+    s = await fetchFullScheine(id);
+    if (!s) { switchTab("scheine"); return; }
+  } else {
+    s = {
+      id: genCode(), kunde: "", adresse: "", ansprechpartner: "", telefon: "",
+      kategorie: "", leistungen: "", monat: "", kdnr: "", anhang: null, anhang_name: null, interne_notiz: "",
+    };
+  }
+
+  const kundenOptions = kunden.map((k) => {
+    const addressHint = firstLine(k.adresse);
+    const label = addressHint ? `${k.name} – ${addressHint}` : k.name;
+    return `<option value="${k.id}">${escapeHtml(label)}</option>`;
+  }).join("");
+  const kategorienOptions = kategorien.map((k) => `<option value="${escapeHtml(k.name)}">${escapeHtml(k.name)}</option>`).join("");
+
+  document.getElementById("view").innerHTML = `
+    <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
+    <div class="card">
+      <h2>${id ? "Schein bearbeiten" : "Neuer Abnahmeschein"}</h2>
+
+      ${kunden.length ? `
+      <div class="field">
+        <label>Gespeicherten Kunden wählen (optional)</label>
+        <select id="kundenSelect" onchange="applyKundeSelection()">
+          <option value="">— Kunde auswählen —</option>
+          ${kundenOptions}
+        </select>
+      </div>` : ""}
+
+      <div class="field">
+        <label>Kunde (mehrzeilig möglich)</label>
+        <textarea id="f_kunde" rows="3" placeholder="Landeshauptstadt Düsseldorf&#10;OE-23331&#10;40213 Düsseldorf">${escapeHtml(s.kunde)}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Objektadresse (mehrzeilig möglich)</label>
+        <textarea id="f_adresse" rows="2" placeholder="Friedrichstraße 127&#10;40217 Düsseldorf">${escapeHtml(s.adresse)}</textarea>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Ansprechpartner vor Ort</label>
+          <input id="f_ansprechpartner" value="${escapeHtml(s.ansprechpartner)}" placeholder="Frau Mustermann" />
+        </div>
+        <div class="field">
+          <label>Telefon</label>
+          <input id="f_telefon" value="${escapeHtml(s.telefon)}" placeholder="0211 ..." />
+        </div>
+      </div>
+
+      ${kategorien.length ? `
+      <div class="field">
+        <label>Gespeicherte Kategorie wählen (optional)</label>
+        <select id="kategorieSelect" onchange="applyKategorieSelection()">
+          <option value="">— Kategorie auswählen —</option>
+          ${kategorienOptions}
+        </select>
+      </div>` : ""}
+
+      <div class="field">
+        <label>Kategorie / Titel</label>
+        <input id="f_kategorie" value="${escapeHtml(s.kategorie)}" placeholder="Graffiti-Entfernung" />
+      </div>
+
+      <div class="field">
+        <label>Termin (optional, falls schon mit dem Ansprechpartner vereinbart)</label>
+        <input type="datetime-local" id="f_termin" value="${toDatetimeLocalValue(s.termin)}" />
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Monat</label>
+          <input id="f_monat" value="${escapeHtml(s.monat)}" placeholder="Juni 2026" />
+        </div>
+        <div class="field">
+          <label>Kd.-Nr.</label>
+          <input id="f_kdnr" value="${escapeHtml(s.kdnr)}" placeholder="1012" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Leistung (eine Zeile = ein Punkt)</label>
+        <textarea id="f_leistungen" rows="3" placeholder="Graffitientfernung">${escapeHtml(s.leistungen)}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Interne Notiz (nur für Mitarbeiter sichtbar – erscheint NICHT im PDF, der Kunde sieht das nie)</label>
+        <textarea id="f_notiz" rows="3" placeholder="z.B. genauer Ort: Schaufenster links neben dem Eingang">${escapeHtml(s.interne_notiz)}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Anhang für Mitarbeiter (Foto/PDF, optional – erscheint nicht im PDF, nur in der App)</label>
+        <div id="anhangContainer">${renderAnhangPreview(s)}</div>
+        <input type="file" id="f_anhang" accept="image/*,application/pdf" style="display:none;" onchange="handleAnhangChange(event)" />
+      </div>
+
+      <button class="btn btn-primary btn-block" onclick="saveScheine('${s.id}')">Speichern</button>
+    </div>
+  `;
+}
+
+function renderAnhangPreview(s) {
+  if (pendingAnhang) {
+    const isImg = pendingAnhang.type.startsWith("image/");
+    return `
+      <div class="attachment-preview">
+        ${isImg ? `<img src="${pendingAnhang.data}" />` : `<div class="file-icon">PDF</div>`}
+        <div style="flex:1; font-size:13.5px;">${escapeHtml(pendingAnhang.name)}</div>
+        <button class="btn btn-sm" onclick="clearAnhangSelection()">Entfernen</button>
+      </div>
+    `;
+  }
+  if (s.anhang && !removeAnhangFlag) {
+    const isImg = (s.anhang_type || "").startsWith("image/");
+    return `
+      <div class="attachment-preview">
+        ${isImg ? `<img src="${s.anhang}" />` : `<div class="file-icon">PDF</div>`}
+        <div style="flex:1; font-size:13.5px;">${escapeHtml(s.anhang_name || "Anhang")}</div>
+        <button class="btn btn-sm" onclick="removeExistingAnhang('${s.id}')">Entfernen</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="file-input-wrap" onclick="document.getElementById('f_anhang').click()">
+      <span class="muted">Klicken, um ein Foto oder PDF auszuwählen (Fotos werden automatisch verkleinert, PDF max. 4 MB)</span>
+    </div>
+  `;
+}
+
+function compressImageFile(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => reject(new Error("Bild konnte nicht geladen werden"));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAnhangChange(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.type.startsWith("image/")) {
+    if (file.size > 15 * 1024 * 1024) {
+      showToast("Bild zu groß (max. 15 MB)");
+      e.target.value = "";
+      return;
+    }
+    showToast("Bild wird komprimiert...");
+    try {
+      const compressed = await compressImageFile(file, 1280, 0.78);
+      const jpegName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+      pendingAnhang = { data: compressed, name: jpegName, type: "image/jpeg" };
+      removeAnhangFlag = false;
+      document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+      showToast("Bild angehängt");
+    } catch (err) {
+      showToast("Bild konnte nicht verarbeitet werden");
+    }
+    return;
+  }
+
+  if (file.size > 4 * 1024 * 1024) {
+    showToast("Datei zu groß (max. 4 MB)");
+    e.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingAnhang = { data: reader.result, name: file.name, type: file.type };
+    removeAnhangFlag = false;
+    document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearAnhangSelection() {
+  pendingAnhang = null;
+  document.getElementById("f_anhang").value = "";
+  document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+}
+
+function removeExistingAnhang(id) {
+  removeAnhangFlag = true;
+  pendingAnhang = null;
+  document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+}
+
+function applyKundeSelection() {
+  const id = document.getElementById("kundenSelect").value;
+  if (!id) return;
+  const k = kunden.find((x) => x.id === id);
+  if (!k) return;
+  const combined = [k.name, ...(k.adresse || "").split("\n")].filter((l) => l.trim()).join("\n");
+  document.getElementById("f_kunde").value = combined;
+  if (k.kdnr) document.getElementById("f_kdnr").value = k.kdnr;
+}
+
+function applyKategorieSelection() {
+  const val = document.getElementById("kategorieSelect").value;
+  if (!val) return;
+  document.getElementById("f_kategorie").value = val;
+}
+
+async function saveScheine(id) {
+  const isNew = !scheine.find((x) => x.id === id);
+  const payload = {
+    id,
+    kunde: document.getElementById("f_kunde").value,
+    adresse: document.getElementById("f_adresse").value,
+    ansprechpartner: document.getElementById("f_ansprechpartner").value,
+    telefon: document.getElementById("f_telefon").value,
+    kategorie: document.getElementById("f_kategorie").value,
+    termin: fromDatetimeLocalValue(document.getElementById("f_termin").value),
+    monat: document.getElementById("f_monat").value,
+    kdnr: document.getElementById("f_kdnr").value,
+    leistungen: document.getElementById("f_leistungen").value,
+    interne_notiz: document.getElementById("f_notiz").value,
+  };
+
+  if (pendingAnhang) {
+    payload.anhang = pendingAnhang.data;
+    payload.anhang_name = pendingAnhang.name;
+    payload.anhang_type = pendingAnhang.type;
+  } else if (removeAnhangFlag) {
+    payload.anhang = null;
+    payload.anhang_name = null;
+    payload.anhang_type = null;
+  }
+
+  const { error } = await sb.from("scheine").upsert(payload);
+  if (error) {
+    showToast("Fehler: " + error.message);
+    return;
+  }
+  pendingAnhang = null;
+  removeAnhangFlag = false;
+  await loadScheineList();
+  switchTab("scheine");
+  showToast("Gespeichert");
+
+  if (isNew) {
+    try {
+      sb.functions.invoke("send-push", {
+        body: {
+          role: "mitarbeiter",
+          title: "📋 Neuer Schein verfügbar!",
+          body: `${firstLine(payload.adresse) || "Ein neuer Auftrag"} wartet auf dich.`,
+        },
+      });
+    } catch (e) {}
+  }
+}
+
+
+
+function customConfirm(title, message, confirmLabel, onConfirm, danger) {
+  const existing = document.getElementById("customConfirmOverlay");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "customConfirmOverlay";
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(message)}</p>
+      <div class="modal-actions">
+        <button class="btn" id="customConfirmCancel">Abbrechen</button>
+        <button class="btn ${danger ? "btn-danger" : "btn-primary"}" id="customConfirmOk">${escapeHtml(confirmLabel)}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("customConfirmCancel").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.getElementById("customConfirmOk").onclick = () => {
+    overlay.remove();
+    onConfirm();
+  };
+}
+
+async function deleteScheine(id) {
+  customConfirm(
+    "Schein löschen",
+    "Diesen Abnahmeschein wirklich löschen? Das kann nicht rückgängig gemacht werden.",
+    "Löschen",
+    async () => {
+      const { error } = await sb.from("scheine").delete().eq("id", id);
+      if (error) { showToast("Fehler: " + error.message); return; }
+      await loadScheineList();
+      showToast("Gelöscht");
+    },
+    true
+  );
+}
+
+async function archiveScheine(id) {
+  const { error } = await sb.from("scheine").update({ archiviert: true }).eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadScheineList();
+  showToast("Archiviert");
+}
+
+async function restoreScheine(id) {
+  const { error } = await sb.from("scheine").update({ archiviert: false }).eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadArchivList();
+  showToast("Wiederhergestellt");
+}
+
+function renderArchivList() {
+  const view = document.getElementById("view");
+  const items = archivScheine.map((s) => `
+    <div class="scheine-item">
+      <div class="ribbon ribbon-done">ERLEDIGT</div>
+      <div class="scheine-item-content" style="flex:1; min-width:0;">
+        <div style="font-weight:600; font-size:14.5px;">${escapeHtml(firstLine(s.kunde)) || "(ohne Kunde)"}</div>
+        <div class="muted">${escapeHtml(firstLine(s.adresse))}</div>
+        <div class="muted">${escapeHtml(s.kategorie || "")}</div>
+        <div class="scheine-actions">
+          <button class="btn btn-sm" onclick="openView('${s.id}')">Öffnen</button>
+          <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
+          <button class="btn btn-sm" onclick="restoreScheine('${s.id}')">Wiederherstellen</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  view.innerHTML = `
+    <p class="muted" style="margin:0 0 14px;">${archivScheine.length} archivierte(r) Schein(e)</p>
+    <div class="card" style="padding:6px 20px;">
+      ${items || `<div class="empty-state">Noch keine archivierten Scheine.</div>`}
+    </div>
+  `;
+}
+
+async function sharePdf(id) {
+  showToast("PDF wird erstellt...");
+  const s = await fetchFullScheine(id);
+  if (!s) return;
+  const doc = generatePdf(s);
+  const strasse = sanitizeFilenamePart(firstLine(s.adresse)) || "Adresse";
+  const kdnr = sanitizeFilenamePart(s.kdnr) || "ohneKdNr";
+  const name = `Anhang_LN_${kdnr}_${strasse}.pdf`;
+  const blob = doc.output("blob");
+  const file = new File([blob], name, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+    } catch (e) {
+      // Person hat das Teilen-Menü abgebrochen - kein Fehler
+    }
+  } else {
+    showToast("Teilen wird hier nicht unterstützt - lade die PDF stattdessen herunter");
+    doc.save(name);
+  }
+}
+
+function sanitizeFilenamePart(s) {
+  return (s || "").trim().replace(/\s+/g, "_").replace(/[\\/:*?"<>|]/g, "");
+}
+
+async function downloadPdf(id) {
+  showToast("PDF wird erstellt...");
+  const s = await fetchFullScheine(id);
+  if (!s) return;
+  const doc = generatePdf(s);
+  const strasse = sanitizeFilenamePart(firstLine(s.adresse)) || "Adresse";
+  const kdnr = sanitizeFilenamePart(s.kdnr) || "ohneKdNr";
+  const name = `Anhang_LN_${kdnr}_${strasse}.pdf`;
+  doc.save(name);
+}
+
+// ---------- Kunden ----------
+
+function renderKundenList() {
+  const view = document.getElementById("view");
+  const items = kunden.map((k) => `
+    <div class="scheine-item">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:600; font-size:14.5px;">${escapeHtml(k.name)}</div>
+        <div class="muted" style="white-space:pre-line;">${escapeHtml(k.adresse)}</div>
+        ${k.kdnr ? `<div class="muted">Kd.-Nr.: ${escapeHtml(k.kdnr)}</div>` : ""}
+        <div class="scheine-actions">
+          <button class="btn btn-sm" onclick="openKundeEdit('${k.id}')">Bearbeiten</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteKunde('${k.id}')">Löschen</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  view.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <p class="muted" style="margin:0;">${kunden.length} Kunde(n)</p>
+      <button class="btn btn-primary" onclick="openKundeEdit(null)">+ Neuer Kunde</button>
+    </div>
+    <div class="card" style="padding:6px 20px;">
+      ${items || `<div class="empty-state">Noch keine Kunden angelegt.</div>`}
+    </div>
+  `;
+}
+
+function openKundeEdit(id) {
+  const k = id ? kunden.find((x) => x.id === id) : { id: genCode(), name: "", adresse: "", kdnr: "" };
+  document.getElementById("view").innerHTML = `
+    <button class="btn btn-sm" onclick="switchTab('kunden')" style="margin-bottom:14px;">&larr; Zurück</button>
+    <div class="card">
+      <h2>${id ? "Kunde bearbeiten" : "Neuer Kunde"}</h2>
+      <div class="field">
+        <label>Name</label>
+        <input id="k_name" value="${escapeHtml(k.name)}" placeholder="Landeshauptstadt Düsseldorf" />
+      </div>
+      <div class="field">
+        <label>Adresse (mehrzeilig möglich)</label>
+        <textarea id="k_adresse" rows="2" placeholder="OE-23331&#10;40213 Düsseldorf">${escapeHtml(k.adresse)}</textarea>
+      </div>
+      <div class="field">
+        <label>Kd.-Nr.</label>
+        <input id="k_kdnr" value="${escapeHtml(k.kdnr)}" placeholder="1012" />
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveKunde('${k.id}')">Speichern</button>
+    </div>
+  `;
+}
+
+async function saveKunde(id) {
+  const payload = {
+    id,
+    name: document.getElementById("k_name").value,
+    adresse: document.getElementById("k_adresse").value,
+    kdnr: document.getElementById("k_kdnr").value,
+  };
+  const { error } = await sb.from("kunden").upsert(payload);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadKundenData();
+  switchTab("kunden");
+  showToast("Gespeichert");
+}
+
+async function deleteKunde(id) {
+  customConfirm("Kunde löschen", "Diesen Kunden wirklich löschen? Bestehende Scheine bleiben unverändert.", "Löschen", async () => {
+    const { error } = await sb.from("kunden").delete().eq("id", id);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    await loadKundenData();
+    renderKundenList();
+    showToast("Gelöscht");
+  }, true);
+}
+
+// ---------- Kategorien ----------
+
+function renderKategorienList() {
+  const view = document.getElementById("view");
+  const items = kategorien.map((k) => `
+    <div class="scheine-item">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:600; font-size:14.5px;">${escapeHtml(k.name)}</div>
+        <div class="scheine-actions">
+          <button class="btn btn-sm" onclick="openKategorieEdit('${k.id}')">Bearbeiten</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteKategorie('${k.id}')">Löschen</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  view.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <p class="muted" style="margin:0;">${kategorien.length} Kategorie(n)</p>
+      <button class="btn btn-primary" onclick="openKategorieEdit(null)">+ Neue Kategorie</button>
+    </div>
+    <div class="card" style="padding:6px 20px;">
+      ${items || `<div class="empty-state">Noch keine Kategorien angelegt.</div>`}
+    </div>
+  `;
+}
+
+function openKategorieEdit(id) {
+  const k = id ? kategorien.find((x) => x.id === id) : { id: genCode(), name: "" };
+  document.getElementById("view").innerHTML = `
+    <button class="btn btn-sm" onclick="switchTab('kategorien')" style="margin-bottom:14px;">&larr; Zurück</button>
+    <div class="card">
+      <h2>${id ? "Kategorie bearbeiten" : "Neue Kategorie"}</h2>
+      <div class="field">
+        <label>Name</label>
+        <input id="kat_name" value="${escapeHtml(k.name)}" placeholder="Graffiti-Entfernung" />
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveKategorie('${k.id}')">Speichern</button>
+    </div>
+  `;
+}
+
+async function saveKategorie(id) {
+  const payload = { id, name: document.getElementById("kat_name").value };
+  const { error } = await sb.from("kategorien").upsert(payload);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadKategorienData();
+  switchTab("kategorien");
+  showToast("Gespeichert");
+}
+
+async function deleteKategorie(id) {
+  customConfirm("Kategorie löschen", "Diese Kategorie wirklich löschen?", "Löschen", async () => {
+    const { error } = await sb.from("kategorien").delete().eq("id", id);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    await loadKategorienData();
+    renderKategorienList();
+    showToast("Gelöscht");
+  }, true);
+}
+
+// ---------- Statistik ----------
+
+let statsData = [];
+let statsPeriod = "woche";
+
+async function loadStatistik() {
+  document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+  const { data, error } = await sb.from("scheine").select("id, created_at, signed_at").order("created_at", { ascending: true });
+  if (error) {
+    document.getElementById("view").innerHTML = `<div class="card"><p style="color:#c0392b;">Fehler beim Laden: ${error.message}</p></div>`;
+    return;
+  }
+  statsData = data || [];
+  renderStatistik();
+}
+
+function periodKeyWeek(dateStr) {
+  return startOfWeek(new Date(dateStr)).toISOString().slice(0, 10);
+}
+
+function periodLabelWeek(key) {
+  const start = new Date(key);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const fmt = (d) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function periodKeyMonth(dateStr) {
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function periodLabelMonth(key) {
+  const [y, m] = key.split("-");
+  const months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  return `${months[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function setStatsPeriod(p) {
+  statsPeriod = p;
+  renderStatistik();
+}
+
+function renderStatistik() {
+  const total = statsData.length;
+  const signed = statsData.filter((s) => s.signed_at).length;
+  const open = total - signed;
+
+  const keyFn = statsPeriod === "woche" ? periodKeyWeek : periodKeyMonth;
+  const labelFn = statsPeriod === "woche" ? periodLabelWeek : periodLabelMonth;
+
+  const groups = {};
+  statsData.forEach((s) => {
+    const key = keyFn(s.created_at);
+    if (!groups[key]) groups[key] = { total: 0, signed: 0 };
+    groups[key].total++;
+    if (s.signed_at) groups[key].signed++;
+  });
+
+  const sortedKeys = Object.keys(groups).sort().reverse();
+
+  const rows = sortedKeys.map((key) => {
+    const g = groups[key];
+    return `
+      <div class="scheine-item">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px;">${labelFn(key)}</div>
+          <div class="muted" style="font-size:13px;">${g.total} Schein(e) &middot; ${g.signed} unterschrieben &middot; ${g.total - g.signed} offen</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("view").innerHTML = `
+    <div class="row" style="margin-bottom:14px;">
+      <div class="card" style="text-align:center;">
+        <div class="muted" style="font-size:12px;">Gesamt</div>
+        <div style="font-size:22px; font-weight:700;">${total}</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="muted" style="font-size:12px;">Unterschrieben</div>
+        <div style="font-size:22px; font-weight:700; color:#1e7a34;">${signed}</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="muted" style="font-size:12px;">Offen</div>
+        <div style="font-size:22px; font-weight:700; color:#8a5a07;">${open}</div>
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:14px;">
+      <button class="tab-btn ${statsPeriod === "woche" ? "active" : ""}" onclick="setStatsPeriod('woche')">Pro Woche</button>
+      <button class="tab-btn ${statsPeriod === "monat" ? "active" : ""}" onclick="setStatsPeriod('monat')">Pro Monat</button>
+    </div>
+
+    <div class="card" style="padding:6px 20px;">
+      ${rows || `<div class="empty-state">Noch keine Daten.</div>`}
+    </div>
+  `;
+}
+
+// ---------- Vorher/Nachher Fotos als PDF ----------
+
+function getImageDimensions(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.width, h: img.height });
+    img.onerror = () => resolve({ w: 100, h: 100 });
+    img.src = src;
+  });
+}
+
+async function generatePhotosPdf(s) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  let vorher = [];
+  let nachher = [];
+  try { vorher = JSON.parse(s.vorher_fotos || "[]"); } catch (e) {}
+  try { nachher = JSON.parse(s.nachher_fotos || "[]"); } catch (e) {}
+
+  const maxW = 180;
+  const maxH = 230;
+  let first = true;
+
+  const addPhotos = async (arr, label) => {
+    for (let i = 0; i < arr.length; i++) {
+      if (!first) doc.addPage();
+      first = false;
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${label} ${i + 1} - ${firstLine(s.adresse) || ""}`, 15, 15);
+      const dims = await getImageDimensions(arr[i]);
+      let w = maxW;
+      let h = (dims.h / dims.w) * w;
+      if (h > maxH) {
+        h = maxH;
+        w = (dims.w / dims.h) * h;
+      }
+      try {
+        doc.addImage(arr[i], "JPEG", 15, 25, w, h);
+      } catch (e) {}
+    }
+  };
+
+  await addPhotos(vorher, "Vorher");
+  await addPhotos(nachher, "Nachher");
+  return doc;
+}
+
+async function downloadPhotosPdf(id) {
+  const s = currentViewScheine && currentViewScheine.id === id ? currentViewScheine : await fetchFullScheine(id);
+  if (!s) return;
+  showToast("PDF wird erstellt...");
+  const doc = await generatePhotosPdf(s);
+  doc.save(`Fotos_${sanitizeFilenamePart(firstLine(s.adresse)) || "Schein"}.pdf`);
+}
+
+async function sharePhotosPdf(id) {
+  const s = currentViewScheine && currentViewScheine.id === id ? currentViewScheine : await fetchFullScheine(id);
+  if (!s) return;
+  showToast("PDF wird erstellt...");
+  const doc = await generatePhotosPdf(s);
+  const name = `Fotos_${sanitizeFilenamePart(firstLine(s.adresse)) || "Schein"}.pdf`;
+  const blob = doc.output("blob");
+  const file = new File([blob], name, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+    } catch (e) {}
+  } else {
+    showToast("Teilen wird hier nicht unterstützt - lade stattdessen herunter");
+    doc.save(name);
+  }
+}
+
+// ---------- Material-Anzeige (Admin, nur lesend) ----------
+
+const MATERIAL_FULL_CATEGORIES = ["graffitientfernung", "sonderreinigung", "grundreinigung"];
+
+function isFullMaterialCategory(kategorie) {
+  return MATERIAL_FULL_CATEGORIES.includes((kategorie || "").trim().toLowerCase());
+}
+
+function hourOptions(selected) {
+  let html = `<option value="">–</option>`;
+  for (let i = 0; i <= 20; i++) {
+    const val = (i * 0.5).toFixed(1).replace(".0", "");
+    const sel = selected && parseFloat(selected) === i * 0.5 ? "selected" : "";
+    html += `<option value="${val}" ${sel}>${val} Std.</option>`;
+  }
+  return html;
+}
+
+function qtyOptions(selected) {
+  let html = `<option value="">–</option>`;
+  for (let i = 1; i <= 10; i++) {
+    const sel = String(selected) === String(i) ? "selected" : "";
+    html += `<option value="${i}" ${sel}>${i}</option>`;
+  }
+  return html;
+}
+
+function renderMaterialSurvey(s) {
+  const full = isFullMaterialCategory(s.kategorie);
+  return `
+    <div class="card" id="materialSurvey">
+      <h2>Kurze Angaben zum Einsatz</h2>
+      <p class="muted" style="margin-top:-4px;">Optional – hilft bei der Material- und Zeitplanung.</p>
+
+      <div class="field">
+        <label>Wie viele Stunden war der Mitarbeiter insgesamt vor Ort?</label>
+        <select id="m_stunden">${hourOptions(s.material_stunden)}</select>
+      </div>
+
+      ${full ? `
+        <div class="section-title" style="margin-top:18px;">Materialverbrauch</div>
+        <div class="qty-row">
+          <span class="qty-label">Graffiti Ex Spray</span>
+          <select id="m_ex_spray">${qtyOptions(s.material_graffiti_ex_spray)}</select>
+        </div>
+        <div class="qty-row">
+          <span class="qty-label">Graffiti Gel</span>
+          <select id="m_gel">${qtyOptions(s.material_graffiti_gel)}</select>
+        </div>
+        <div class="qty-row">
+          <span class="qty-label">Paint Cleaner</span>
+          <select id="m_cleaner">${qtyOptions(s.material_paint_cleaner)}</select>
+        </div>
+
+        <div class="section-title" style="margin-top:18px;">Verwendete Geräte</div>
+        <label class="check-row">
+          <input type="checkbox" id="m_streichen" ${s.material_streichen ? "checked" : ""} />
+          <span class="check-label">Streichen mit Farbe</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="m_hochdruck" ${s.material_hochdruck ? "checked" : ""} />
+          <span class="check-label">Hochdruckreiniger</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="m_sandstrahl" ${s.material_sandstrahl ? "checked" : ""} />
+          <span class="check-label">Sandstrahlgerät</span>
+        </label>
+      ` : `
+        <div class="field" style="margin-top:14px;">
+          <label>Verwendetes Material (optional)</label>
+          <textarea id="m_freitext" rows="2" placeholder="z.B. 2x Reiniger, 1x Lappenpaket">${escapeHtml(s.material_freitext || "")}</textarea>
+        </div>
+      `}
+
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button class="btn btn-sm" onclick="skipMaterialSurvey()">Später ausfüllen</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="saveMaterialSurvey()">Speichern</button>
+      </div>
+    </div>
+  `;
+}
+
+function openMaterialSurvey() {
+  materialSurveyOpen = true;
+  renderViewScheine(currentViewScheine);
+}
+
+function skipMaterialSurvey() {
+  materialSurveyOpen = false;
+  renderViewScheine(currentViewScheine);
+}
+
+async function saveMaterialSurvey() {
+  const full = isFullMaterialCategory(currentViewScheine.kategorie);
+  const payload = {
+    material_erfasst: true,
+    material_stunden: document.getElementById("m_stunden").value || null,
+  };
+  if (full) {
+    payload.material_graffiti_ex_spray = document.getElementById("m_ex_spray").value || null;
+    payload.material_graffiti_gel = document.getElementById("m_gel").value || null;
+    payload.material_paint_cleaner = document.getElementById("m_cleaner").value || null;
+    payload.material_streichen = document.getElementById("m_streichen").checked;
+    payload.material_hochdruck = document.getElementById("m_hochdruck").checked;
+    payload.material_sandstrahl = document.getElementById("m_sandstrahl").checked;
+  } else {
+    payload.material_freitext = document.getElementById("m_freitext").value || null;
+  }
+
+  const { error } = await sb.from("scheine").update(payload).eq("id", currentViewScheine.id);
+  if (error) {
+    showToast("Fehler beim Speichern: " + error.message);
+    return;
+  }
+
+  Object.assign(currentViewScheine, payload);
+  const listEntry = scheine.find((s) => s.id === currentViewScheine.id);
+  if (listEntry) Object.assign(listEntry, payload);
+
+  materialSurveyOpen = false;
+  showToast("Gespeichert");
+  renderViewScheine(currentViewScheine);
+}

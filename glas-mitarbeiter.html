@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Glasreinigung" />
+<meta name="theme-color" content="#1f5d92" />
+<title>Glasreinigung - Meine Touren</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <div class="app-header" style="padding-bottom:28px;">
+    <div class="brand-row"><span class="dot"></span>Glasreinigung</div>
+    <div class="greeting">Meine Touren</div>
+  </div>
+  <div class="app-sheet">
+    <img class="logo-watermark" id="watermarkImg" alt="" />
+    <div class="logo-badge"><img id="badgeLogoImg" alt="Logo" /></div>
+    <div class="app-sheet-content">
+      <div class="wrap" style="max-width:560px; padding:0 18px 24px;">
+        <div id="view"><p class="muted"><span class="spinner"></span>Lade...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/logo-asset.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/glas-shared.js"></script>
+  <script src="js/pdf-template.js"></script>
+  <script src="js/glas-logo-sub.js"></script>
+  <script src="js/glas-pdf-template.js"></script>
+  <script src="js/glas-mitarbeiter.js"></script>
+</body>
+</html>
