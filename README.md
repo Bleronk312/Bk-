@@ -30,6 +30,42 @@ VAPID_PRIVATE_KEY = nLHBAc73y-Q2M8jKrNFefTseZ55EIp2coXVQ9C2L168
 
 ---
 
+## Einzurichten: Automatischer E-Mail-Versand der Scheine (Resend)
+
+Nach der Unterschrift kann optional eine E-Mail-Adresse eingetragen werden – der fertige
+Schein geht dann **automatisch als PDF-Anhang** an den Kunden. Solange das hier nicht
+eingerichtet ist, funktioniert das Feld trotzdem: Es öffnet sich dann das Teilen-Menü als
+Fallback.
+
+**Schritt 1 – Resend-Konto:** Auf https://resend.com kostenlos registrieren (100 Mails/Tag
+gratis, reicht dicke).
+
+**Schritt 2 – Eigene Domain verifizieren** (einmalig, wichtig): Resend-Dashboard →
+**Domains** → "Add Domain" → `gekoclean.de` eintragen. Resend zeigt dir 3 DNS-Einträge
+(SPF/DKIM) – die trägst du dort ein, wo eure Domain verwaltet wird (z.B. IONOS/Strato).
+Nach ein paar Minuten auf "Verify" klicken.
+*Ohne diesen Schritt kann Resend nur an deine eigene Registrierungs-Adresse senden –
+Kunden-Mails brauchen die verifizierte Domain.*
+
+**Schritt 3 – API-Key holen:** Resend-Dashboard → **API Keys** → "Create API Key"
+(Permission: Sending access) → Key kopieren (fängt mit `re_` an).
+
+**Schritt 4 – Edge Function anlegen:** Supabase-Dashboard → **Edge Functions** →
+"Deploy a new function" → Name `send-schein` → Inhalt von
+`supabase_edge_functions/send-schein/index.ts` hineinkopieren → Deploy.
+Falls nach "Verify JWT" gefragt wird: **ausschalten** (wie bei send-push).
+
+**Schritt 5 – Secrets hinterlegen** (Edge Functions → Secrets):
+```
+RESEND_API_KEY = re_dein_key_hier
+MAIL_FROM      = GEKO Clean <scheine@gekoclean.de>
+MAIL_BCC       = info@gekoclean.de   (optional: Blindkopie jedes Versands als Ablage)
+```
+
+Fertig – ab sofort wird jeder Schein mit eingetragener Adresse direkt zugestellt.
+
+---
+
 ## Die üblichen zwei Schritte (kennst du schon)
 
 1. Bei jeder neuen Version: `js/config.js` mit deinen echten Werten füllen (SUPABASE_URL, SUPABASE_ANON_KEY)

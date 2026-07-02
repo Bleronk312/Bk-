@@ -245,11 +245,11 @@ function renderPhotoGallery(label, jsonStr) {
 
 /* ---------------- Optionaler Sofort-Versand des Scheins per E-Mail ---------------- */
 //
-// Direkt nach der Unterschrift kann optional eine E-Mail-Adresse angegeben werden. Ohne
-// eigenen Mail-Server geht der Versand über das Teilen-Menü des Geräts: Auf dem Handy
-// öffnet sich das Share-Sheet mit dem fertigen PDF (dort Mail antippen), die Adresse liegt
-// schon in der Zwischenablage. Am Desktop wird das PDF heruntergeladen und das
-// Mail-Programm mit vorausgefülltem Betreff geöffnet.
+// Direkt nach der Unterschrift kann optional eine E-Mail-Adresse angegeben werden.
+// Der Versand läuft automatisch über die Edge Function "send-schein" (Resend) - der Kunde
+// bekommt das PDF direkt zugestellt, ohne dass jemand etwas tun muss. Ist die Funktion
+// (noch) nicht eingerichtet oder schlägt der Versand fehl, öffnet sich als Fallback das
+// Teilen-Menü des Geräts mit dem fertigen PDF (Adresse liegt in der Zwischenablage).
 
 function istGueltigeEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((v || "").trim());
@@ -259,13 +259,36 @@ async function sendScheinPerMail(email, doc, filename) {
   email = (email || "").trim();
   if (!email) return;
   if (!istGueltigeEmail(email)) { showToast("E-Mail-Adresse sieht ungültig aus – nicht gesendet"); return; }
+
+  // 1) Automatischer Versand über die Edge Function (Resend)
+  try {
+    showToast(`E-Mail an ${email} wird gesendet...`);
+    const pdfBase64 = doc.output("datauristring").split(",")[1];
+    const { data, error } = await sb.functions.invoke("send-schein", {
+      body: {
+        to: email,
+        subject: `Ihr Leistungsnachweis – ${filename.replace(/\.pdf$/i, "").replace(/_/g, " ")}`,
+        filename,
+        pdfBase64,
+      },
+    });
+    if (!error && data && data.ok) {
+      showToast(`✓ E-Mail an ${email} gesendet`);
+      return;
+    }
+    console.error("send-schein fehlgeschlagen:", error || data);
+  } catch (e) {
+    console.error("send-schein nicht erreichbar:", e);
+  }
+
+  // 2) Fallback: Teilen-Menü / Download + Mail-Fenster
   try { await navigator.clipboard.writeText(email); } catch (e) {}
   const betreff = encodeURIComponent(`Leistungsnachweis ${filename.replace(/\.pdf$/i, "")}`);
   try {
     const blob = doc.output("blob");
     const file = new File([blob], filename, { type: "application/pdf" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      showToast(`Adresse ${email} kopiert – im Teilen-Menü Mail wählen und einfügen`);
+      showToast(`Automatischer Versand nicht verfügbar – Adresse ${email} kopiert, im Teilen-Menü Mail wählen`);
       await navigator.share({ files: [file], title: filename });
       return;
     }
