@@ -141,6 +141,7 @@ label {
 }
 .badge-open { background: var(--warning-bg); color: var(--warning-text); }
 .badge-signed { background: var(--success-bg); color: var(--success-text); }
+.badge-danger { background: #fdecea; color: var(--danger); }
 
 .glas-ring {
   width: 46px;

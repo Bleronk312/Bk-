@@ -74,3 +74,74 @@ function glasOptimizeRoute(stops) {
   }
   return [...ordered, ...withoutCoords];
 }
+
+/* ---------------- Fälligkeits-Berechnung (Planungs-System) ---------------- */
+
+function glasTodayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function glasAddDaysIso(iso, days) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Nächstes Datum aus einer festen Monatsliste (z.B. "3,6,9,12"), ausgehend von "vonIso".
+// Liegt kein Monat mehr in diesem Jahr, wird in den ersten Monat des Folgejahres gesprungen.
+function glasNaechsterFesterMonat(feste_monate, vonIso) {
+  const monate = String(feste_monate || "")
+    .split(",")
+    .map((m) => parseInt(m.trim(), 10))
+    .filter((m) => m >= 1 && m <= 12)
+    .sort((a, b) => a - b);
+  if (!monate.length) return null;
+
+  const von = new Date(vonIso + "T00:00:00");
+  const jahr = von.getFullYear();
+  const aktMonat = von.getMonth() + 1;
+
+  const dieserJahr = monate.find((m) => m >= aktMonat);
+  const monat = dieserJahr !== undefined ? dieserJahr : monate[0];
+  const zielJahr = dieserJahr !== undefined ? jahr : jahr + 1;
+  return `${zielJahr}-${String(monat).padStart(2, "0")}-01`;
+}
+
+// Berechnet die Fälligkeit einer Position. Rückgabe: ISO-Datum oder null (kein Intervall
+// hinterlegt = rein manuell, taucht nirgends in Fällig-Listen auf).
+function glasBerechneFaelligkeit(pos) {
+  if (pos.faelligkeit_override) return pos.faelligkeit_override;
+  if (pos.intervall_typ === "rollierend") {
+    const wochen = parseInt(pos.intervall_wochen, 10);
+    if (!wochen) return null;
+    if (!pos.letzte_reinigung) return glasTodayIso(); // noch nie gereinigt -> sofort fällig
+    return glasAddDaysIso(pos.letzte_reinigung, wochen * 7);
+  }
+  if (pos.intervall_typ === "feste_monate") {
+    return glasNaechsterFesterMonat(pos.feste_monate, pos.letzte_reinigung || glasTodayIso());
+  }
+  return null;
+}
+
+// Liefert Fälligkeit + Status ('ueberfaellig' | 'bald' | 'geplant' | null) + Tage-Differenz.
+function glasFaelligkeitStatus(pos) {
+  const faelligkeit = glasBerechneFaelligkeit(pos);
+  if (!faelligkeit) return { faelligkeit: null, status: null, tage: null };
+  const today = glasTodayIso();
+  const tage = Math.round((new Date(faelligkeit) - new Date(today)) / 86400000);
+  const status = tage < 0 ? "ueberfaellig" : tage <= 14 ? "bald" : "geplant";
+  return { faelligkeit, status, tage };
+}
+
+function glasIntervallLabel(pos) {
+  if (pos.intervall_typ === "rollierend") return `alle ${pos.intervall_wochen || "?"} Wochen`;
+  if (pos.intervall_typ === "feste_monate") {
+    const namen = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+    return String(pos.feste_monate || "")
+      .split(",")
+      .map((m) => namen[parseInt(m.trim(), 10) - 1])
+      .filter(Boolean)
+      .join(", ");
+  }
+  return "Kein Intervall";
+}

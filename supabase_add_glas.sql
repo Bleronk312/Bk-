@@ -102,4 +102,42 @@ update glas_positionen set nr = '10' where id = 'pos_default_glas' and nr = '';
 alter table glas_objekte add column if not exists positionen text not null default '';
 alter table glas_stopps add column if not exists positionen text not null default '';
 
+-- ================== Planungs-System (Intervalle, Kalender, Objekt-/Kunden-Seiten) ==================
+
+-- Positionen werden aus dem JSON-Feld "positionen" in eine eigene Tabelle überführt,
+-- weil jede Position ihr eigenes Reinigungsintervall + ihr eigenes "zuletzt gemacht"-Datum
+-- braucht (z.B. Glasreinigung alle 12 Wochen, Hubsteigereinsatz nur fest im März - am selben
+-- Objekt). Das alte JSON-Feld bleibt als Altlast/Fallback bestehen, wird aber nicht mehr
+-- befüllt, sobald ein Objekt einmal auf die neue Tabelle migriert wurde.
+create table if not exists glas_objekt_positionen (
+  id text primary key,
+  objekt_id text not null references glas_objekte(id) on delete cascade,
+  nr text not null default '10',
+  art text not null default '',
+  qm text not null default '',
+  intervall_typ text not null default '',        -- '' (kein Intervall) | 'rollierend' | 'feste_monate'
+  intervall_wochen integer,                       -- nur bei 'rollierend', z.B. 12
+  feste_monate text not null default '',          -- nur bei 'feste_monate', z.B. '3,6,9,12'
+  letzte_reinigung date,                           -- wird automatisch beim Unterschreiben gesetzt
+  faelligkeit_override date,                       -- manuelles Verschieben, hat Vorrang vor Berechnung
+  reihenfolge integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table glas_objekt_positionen enable row level security;
+drop policy if exists "anon_full_access_glas_objekt_positionen" on glas_objekt_positionen;
+create policy "anon_full_access_glas_objekt_positionen" on glas_objekt_positionen for all using (true) with check (true);
+grant select, insert, update, delete on table glas_objekt_positionen to anon, authenticated;
+
+create index if not exists idx_glas_objekt_positionen_objekt on glas_objekt_positionen(objekt_id);
+
+-- Der Positions-Schnappschuss auf einem Stopp (JSON in glas_stopps.positionen) bekommt
+-- zusätzlich ein "id"-Feld je Zeile, das auf glas_objekt_positionen verweist (kann leer sein
+-- bei freien/nicht getrackten Positionen aus einem Einzelschein). So lässt sich beim
+-- Unterschreiben gezielt nur die "letzte_reinigung" der tatsächlich enthaltenen Positionen
+-- aktualisieren, nicht automatisch alle Positionen des Objekts.
+
+-- Freie Einzelscheine: laufen technisch als Mini-Tour mit einem Stopp, damit kein neues
+-- Datenmodell nötig ist, sind aber inhaltlich unabhängig von Terminplanung/Intervallen.
+alter table glas_touren add column if not exists frei boolean not null default false;
 
