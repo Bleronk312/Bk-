@@ -456,6 +456,11 @@ function renderDetail() {
             <button class="btn btn-sm" onclick="cancelSignForm()">Abbrechen</button>
           </div>
 
+          <div class="field">
+            <label>Schein sofort per E-Mail senden an (optional)</label>
+            <input type="email" id="f_email" placeholder="kunde@firma.de – leer lassen = kein Versand" />
+          </div>
+
           <button class="btn btn-primary btn-block" onclick="saveSignature()">Speichern</button>
         </div>
       ` : `
@@ -509,6 +514,7 @@ async function saveSignature() {
   if (!sigPad || sigPad.isEmpty()) { showToast("Bitte unterschreiben"); return; }
 
   const unterschrift = sigPad.toDataURL("image/png");
+  const versandEmail = document.getElementById("f_email")?.value.trim() || "";
 
   const payload = {
     datum,
@@ -546,6 +552,14 @@ async function saveSignature() {
   }
 
   showToast("Gespeichert");
+
+  // Optionaler Sofort-Versand des unterschriebenen Scheins
+  if (versandEmail && currentScheine && typeof generatePdf === "function") {
+    try {
+      const doc = generatePdf(currentScheine);
+      await sendScheinPerMail(versandEmail, doc, `Abnahmeschein_${firstLine(currentScheine.adresse).replace(/[^a-z0-9äöüß]+/gi, "_") || "Schein"}.pdf`);
+    } catch (e) { showToast("PDF-Versand fehlgeschlagen"); }
+  }
   materialSurveyOpen = true;
   renderDetail();
 

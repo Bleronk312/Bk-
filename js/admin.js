@@ -486,6 +486,10 @@ function renderViewScheine(s) {
           <button class="btn btn-sm" onclick="clearSig()">Löschen</button>
           <button class="btn btn-sm" onclick="cancelSignFormAdmin()">Abbrechen</button>
         </div>
+        <div class="field">
+          <label>Schein sofort per E-Mail senden an (optional)</label>
+          <input type="email" id="f_email" placeholder="kunde@firma.de – leer lassen = kein Versand" />
+        </div>
         <button class="btn btn-primary btn-block" onclick="saveSignatureAdmin('${s.id}')">Speichern</button>
       </div>
     ` : ""}
@@ -552,6 +556,7 @@ async function saveSignatureAdmin(id) {
   if (!sigPad || sigPad.isEmpty()) { showToast("Bitte unterschreiben"); return; }
 
   const unterschrift = sigPad.toDataURL("image/png");
+  const versandEmail = document.getElementById("f_email")?.value.trim() || "";
   const payload = {
     datum,
     unterschrift,
@@ -575,6 +580,12 @@ async function saveSignatureAdmin(id) {
   await openView(id);
   materialSurveyOpen = true;
   renderViewScheine(currentViewScheine);
+
+  // Optionaler Sofort-Versand des unterschriebenen Scheins
+  if (versandEmail && currentViewScheine) {
+    const doc = generatePdf(currentViewScheine);
+    await sendScheinPerMail(versandEmail, doc, `Abnahmeschein_${sanitizeFilenamePart(firstLine(currentViewScheine.adresse)) || "Schein"}.pdf`);
+  }
 }
 
 async function openEdit(id) {

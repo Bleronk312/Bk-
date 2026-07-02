@@ -261,7 +261,12 @@ function glasHashFor(page) {
   return `#/tab/${page.tab}`;
 }
 
-function goGlasHome() { glasNavigate({ type: "home" }); }
+// Einmalige Eintritts-Animation nur bei echten Navigationswechseln (nicht beim Tippen
+// in Suchfeldern oder Checkbox-Klicks - dort würde es flackern)
+let glasContentAnimPending = false;
+let glasCalAnimDir = null;
+
+function goGlasHome() { glasContentAnimPending = true; glasNavigate({ type: "home" }); }
 
 function glasNavigate(page) {
   glasPage = page;
@@ -275,6 +280,7 @@ function glasNavigate(page) {
 function goGlasObjekt(id) { glasNavigate({ type: "objekt", id }); }
 function goGlasKunde(id) { glasNavigate({ type: "kunde", id }); }
 function goGlasTab(tab) {
+  glasContentAnimPending = true;
   glasObjektEditing = null;
   glasKundeEditing = null;
   glasShowNewTourForm = false;
@@ -336,6 +342,8 @@ function renderGlasAdmin() {
 function glasUpdateTabContent() {
   const content = document.getElementById("glasTabContent");
   if (!content) { renderGlasAdmin(); return; }
+  content.classList.toggle("glas-content-in", glasContentAnimPending);
+  glasContentAnimPending = false;
   const isHome = glasPage.type === "home";
   const tab = isHome ? "" : glasPage.tab;
 
@@ -764,6 +772,7 @@ function editGlasObjekt(id, opts) {
       kdnr: "",
       ansprechpartner: "",
       telefon: "",
+      hinweise: "",
       positionen: [glasLeerePosition()],
     };
   } else {
@@ -807,8 +816,8 @@ Im Gildehof 8
 45127 Essen">${escapeHtml(o.kunde_adresse)}</textarea>
       </div>
       <div class="field">
-        <label class="muted">Objekt-Name (Kita-Name + Kita-Nr.)</label>
-        <input type="text" id="o_name" value="${escapeHtml(o.name)}" placeholder="St. Anna / 407" />
+        <label class="muted">Objekt-Name</label>
+        <input type="text" id="o_name" value="${escapeHtml(o.name)}" placeholder="z.B. Objekt Musterstraße / Nr. 12" />
       </div>
       <div class="field">
         <label class="muted">Straße + Hausnummer</label>
@@ -840,6 +849,11 @@ Im Gildehof 8
           <label class="muted">Telefon, optional</label>
           <input type="text" id="o_telefon" value="${escapeHtml(o.telefon || "")}" placeholder="0234 12345" />
         </div>
+      </div>
+      <div class="field">
+        <label class="muted">Hinweise für Mitarbeiter (optional)</label>
+        <textarea id="o_hinweise" rows="2" placeholder="z.B. Zugangscode 4711, Hausmeister nur bis 14 Uhr, Parken im Hof">${escapeHtml(o.hinweise || "")}</textarea>
+        <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint deutlich sichtbar am Tour-Stopp in der Mitarbeiter-Ansicht – aber nur, wenn hier etwas steht.</p>
       </div>
       <label class="muted">Positionen &amp; Intervalle</label>
       ${renderPositionenRows(o.positionen)}
@@ -978,6 +992,7 @@ function syncObjektFormFromDom() {
   if (get("o_kdnr") !== undefined) glasObjektEditing.kdnr = get("o_kdnr");
   if (get("o_ansprechpartner") !== undefined) glasObjektEditing.ansprechpartner = get("o_ansprechpartner");
   if (get("o_telefon") !== undefined) glasObjektEditing.telefon = get("o_telefon");
+  if (get("o_hinweise") !== undefined) glasObjektEditing.hinweise = get("o_hinweise");
   const strasse = get("o_strasse");
   const plz = get("o_plz");
   const ort = get("o_ort");
@@ -1009,6 +1024,7 @@ async function saveGlasObjekt() {
   const kdnr = document.getElementById("o_kdnr").value.trim();
   const ansprechpartner = document.getElementById("o_ansprechpartner").value.trim();
   const telefon = document.getElementById("o_telefon").value.trim();
+  const hinweise = document.getElementById("o_hinweise").value.trim();
   const positionen = glasObjektEditing.positionen.filter((p) => p.art || p.qm);
 
   if (!kundeId) { showToast("Bitte einen Kunden auswählen"); return; }
@@ -1048,6 +1064,7 @@ async function saveGlasObjekt() {
     kdnr,
     ansprechpartner,
     telefon,
+    hinweise,
     lat: coords.lat,
     lng: coords.lng,
   };
@@ -1145,6 +1162,7 @@ function renderObjektDetailPage(id) {
       <p class="muted" style="margin:6px 0 0;">Haupt-Kd.-Nr.: ${escapeHtml(glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "–")}${o.kdnr ? ` · Dietrich Kd.-Nr.: ${escapeHtml(o.kdnr)}` : ""}</p>
       ${o.ansprechpartner ? `<p class="muted" style="margin:4px 0 0;">👤 A.P.: ${escapeHtml(o.ansprechpartner)}</p>` : ""}
       ${o.telefon ? `<p class="muted" style="margin:4px 0 0;">📞 Tel.: <a href="tel:${escapeHtml(o.telefon)}">${escapeHtml(o.telefon)}</a></p>` : ""}
+      ${o.hinweise ? `<div class="glas-hinweis-box" style="margin-top:10px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-title">Hinweis fürs Team</p><p class="glas-hinweis-text">${escapeHtml(o.hinweise)}</p></div></div>` : ""}
       <div class="glas-quick-actions">
         <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Einplanen</button>
         ${alleVerschiebbarIds.length ? `<button class="btn btn-sm" onclick='glasOpenVerschieben(${JSON.stringify(o.id)}, ${JSON.stringify(alleVerschiebbarIds)}, "alle")'>🔁 Verschieben</button>` : ""}
@@ -1562,6 +1580,7 @@ function renderTourDetailView() {
               </div>
               <span class="badge ${isDone ? "badge-signed" : "badge-open"}" style="flex-shrink:0;">${isDone ? "Erledigt" : "Offen"}</span>
             </div>
+            ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${isDone ? `
               <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
               <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
@@ -1619,6 +1638,10 @@ function renderAdminSignArea(s) {
         <button class="btn btn-sm" style="margin-top:8px;" onclick="glasAdminSigPad && glasAdminSigPad.clear();">🗑️ Löschen &amp; neu</button>
       </div>
       <input type="hidden" id="as_datum" value="${glasTodayIso()}" />
+      <div class="field">
+        <label class="muted">Schein sofort per E-Mail senden an (optional)</label>
+        <input type="email" id="as_email" placeholder="kunde@firma.de – leer lassen = kein Versand" style="font-size:16px;" />
+      </div>
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasAdminSignature('${s.id}')">✓ Unterschrift speichern</button>
     </div>`;
 }
@@ -1641,6 +1664,7 @@ async function saveGlasAdminSignature(stopId) {
   if (!glasAdminSigPad || glasAdminSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasAdminSigPad.toDataURL("image/png");
+  const versandEmail = document.getElementById("as_email")?.value.trim() || "";
   const stop = glasTourDetailStops.find((s) => s.id === stopId);
   const { error, payload } = await glasSignStop(stopId, stop?.positionen, name, datum, unterschrift);
   if (error) { showToast("Fehler: " + error.message); return; }
@@ -1650,6 +1674,13 @@ async function saveGlasAdminSignature(stopId) {
   glasAdminSignOpenStopId = null;
   await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
+
+  // Optionaler Sofort-Versand des fertigen Scheins
+  if (versandEmail && stop) {
+    const t = glasTouren.find((x) => x.id === glasTourDetailId);
+    const doc = generateGlasPdf(stop, t?.template || "geko", t?.datum);
+    await sendScheinPerMail(versandEmail, doc, glasScheinFilename(stop, t?.template || "geko"));
+  }
 }
 
 function syncNewTourFormFromDom() {
@@ -1971,6 +2002,7 @@ async function createGlasTour() {
         kunde_adresse: o.kunde_adresse,
         ansprechpartner: o.ansprechpartner || "",
         telefon: o.telefon || "",
+        hinweise: o.hinweise || "",
         positionen: JSON.stringify(positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }))),
         lat: o.lat,
         lng: o.lng,
@@ -2110,7 +2142,7 @@ function renderEinzelscheinForm() {
       </div>
       <div class="field">
         <label class="muted">Objekt-Name</label>
-        <input type="text" id="es_objekt_name" value="${escapeHtml(d.objekt)}" placeholder="Kita XY" />
+        <input type="text" id="es_objekt_name" value="${escapeHtml(d.objekt)}" placeholder="z.B. Objekt Musterstraße" />
       </div>
       <div class="field">
         <label class="muted">Adresse</label>
@@ -2288,6 +2320,7 @@ async function saveEinzelschein() {
     kunde_adresse: d.kunde_adresse,
     ansprechpartner: esObjekt?.ansprechpartner || "",
     telefon: esObjekt?.telefon || "",
+    hinweise: esObjekt?.hinweise || "",
     positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng, status: "offen",
   });
   glasBusy = false;
@@ -2578,7 +2611,7 @@ function renderKalenderMonat() {
       const allDone = glasTourAllDone(t);
       return {
         datum: t.datum, datum_bis: t.datum_bis,
-        bg: allDone ? "#d9f2dd" : "#dbe9f8", fg: allDone ? "#1e7a34" : "#1f5d92",
+        bg: allDone ? "#34a853" : "#3b82c4", fg: "#fff",
         label: t.name ? t.name : (t.frei ? "Einzelschein" : "Tour"),
       };
     }),
@@ -2586,7 +2619,7 @@ function renderKalenderMonat() {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
       return {
         datum: t.datum, datum_bis: t.datum_bis,
-        bg: c.bg, fg: c.fg, label: t.titel || "Termin",
+        bg: c.dot, fg: "#fff", label: t.titel || "Termin",
       };
     }),
   ];
@@ -2620,7 +2653,7 @@ function renderKalenderMonat() {
     })
     .join("");
 
-  return `
+  const html = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
@@ -2630,11 +2663,13 @@ function renderKalenderMonat() {
       <div class="glas-cal-grid" style="margin-bottom:4px;">
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
-      <div class="glas-cal-grid">${cellsHtml}</div>
+      <div class="glas-cal-grid${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
       <button class="btn btn-sm" style="margin-top:14px;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = new Date().toISOString().slice(0,10); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
   `;
+  glasCalAnimDir = null;
+  return html;
 }
 
 // Aufklappender "Tages-Reiter" unter dem Kalender: alle Touren + freien Termine des Tages,
@@ -2690,6 +2725,7 @@ function renderKalenderTagPanel(iso) {
 }
 
 function glasKalenderShiftMonth(delta) {
+  glasCalAnimDir = delta > 0 ? "l" : "r";
   let { year, month } = glasKalenderMonth;
   month += delta;
   if (month < 0) { month = 11; year--; }

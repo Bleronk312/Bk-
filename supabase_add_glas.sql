@@ -211,3 +211,9 @@ alter table glas_objekte add column if not exists telefon text not null default 
 alter table glas_stopps add column if not exists ansprechpartner text not null default '';
 alter table glas_stopps add column if not exists telefon text not null default '';
 
+-- Freitext-Hinweise für Mitarbeiter am Objekt (Zugang, Codes, Besonderheiten wie
+-- "Hausmeister nur bis 14 Uhr"). Erscheint prominent am Tour-Stopp - aber nur, wenn
+-- etwas eingetragen ist.
+alter table glas_objekte add column if not exists hinweise text not null default '';
+alter table glas_stopps add column if not exists hinweise text not null default '';
+

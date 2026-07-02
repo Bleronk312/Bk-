@@ -243,6 +243,38 @@ function renderPhotoGallery(label, jsonStr) {
   `;
 }
 
+/* ---------------- Optionaler Sofort-Versand des Scheins per E-Mail ---------------- */
+//
+// Direkt nach der Unterschrift kann optional eine E-Mail-Adresse angegeben werden. Ohne
+// eigenen Mail-Server geht der Versand über das Teilen-Menü des Geräts: Auf dem Handy
+// öffnet sich das Share-Sheet mit dem fertigen PDF (dort Mail antippen), die Adresse liegt
+// schon in der Zwischenablage. Am Desktop wird das PDF heruntergeladen und das
+// Mail-Programm mit vorausgefülltem Betreff geöffnet.
+
+function istGueltigeEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((v || "").trim());
+}
+
+async function sendScheinPerMail(email, doc, filename) {
+  email = (email || "").trim();
+  if (!email) return;
+  if (!istGueltigeEmail(email)) { showToast("E-Mail-Adresse sieht ungültig aus – nicht gesendet"); return; }
+  try { await navigator.clipboard.writeText(email); } catch (e) {}
+  const betreff = encodeURIComponent(`Leistungsnachweis ${filename.replace(/\.pdf$/i, "")}`);
+  try {
+    const blob = doc.output("blob");
+    const file = new File([blob], filename, { type: "application/pdf" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      showToast(`Adresse ${email} kopiert – im Teilen-Menü Mail wählen und einfügen`);
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+  } catch (e) { /* Teilen abgebrochen oder nicht verfügbar -> Desktop-Weg */ }
+  doc.save(filename);
+  showToast(`PDF heruntergeladen – Mail an ${email} öffnet sich, PDF bitte anhängen`);
+  setTimeout(() => { location.href = `mailto:${encodeURIComponent(email)}?subject=${betreff}`; }, 600);
+}
+
 // Speichert Vorher-/Nachher-Fotos sofort auf dem aktuellen Schein, damit sie nicht verloren
 // gehen, wenn man die Seite verlässt bevor unterschrieben wurde.
 async function saveVorherNachherNow() {

@@ -25,7 +25,7 @@ html, body {
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14.5px;
+  font-size: 13.5px;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -60,11 +60,11 @@ body {
   background: var(--blue);
 }
 
-h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.2px; }
-h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; }
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.2px; }
+h2 { font-size: 13.5px; font-weight: 600; margin: 0 0 10px; }
 p { line-height: 1.5; }
 
-.muted { color: var(--text-secondary); font-size: 13px; }
+.muted { color: var(--text-secondary); font-size: 12.5px; }
 
 .card {
   background: var(--card);
@@ -81,7 +81,7 @@ p { line-height: 1.5; }
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   padding: 8px 14px;
   border-radius: 8px;
@@ -102,7 +102,7 @@ p { line-height: 1.5; }
 
 .btn-block { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
 
-.btn-sm { padding: 6px 10px; font-size: 12.5px; }
+.btn-sm { padding: 5px 9px; font-size: 12px; }
 
 input, textarea, select {
   width: 100%;
@@ -206,31 +206,30 @@ label {
 /* Kalender darf die volle Breite nutzen (Handy UND Desktop) */
 .glas-fullwidth .wrap { max-width: none; }
 
-/* ---------------- Monatskalender (echte anklickbare Kacheln) ---------------- */
+/* ---------------- Monatskalender (TimeTree-Optik) ---------------- */
+/* Kein Spalten-Abstand: mehrtägige Balken laufen optisch durch. Keine Tages-Boxen,
+   nur eine feine Linie zwischen den Wochen. Kräftige Farbbalken mit weißem Text. */
 .glas-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  gap: 0;
 }
-/* TimeTree-Stil: hohe, luftige Tageszellen mit kleiner Tageszahl mittig oben und
-   schmalen Ereignis-Balken darunter - viel Weißraum, kaum Rahmen */
 .glas-cal-cell {
-  min-height: 96px;
-  border-radius: 6px;
-  padding: 3px 2px 4px;
+  min-height: 104px;
+  padding: 4px 0 6px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   border: none;
-  border-top: 1px solid #edeff2;
+  border-top: 1px solid #eceef2;
   transition: background 0.12s ease;
   overflow: hidden;
 }
-.glas-cal-cell:hover { background: #f2f5f9; }
+.glas-cal-cell:hover { background: #f5f7fa; }
 .glas-cal-cell.is-selected { background: #eaf2fb; }
-.glas-cal-cell.out-month .glas-cal-daynum { color: #c9ced6; }
-.glas-cal-cell.out-month .glas-cal-chip { opacity: 0.45; }
+.glas-cal-cell.out-month .glas-cal-daynum { color: #cdd2d9; }
+.glas-cal-cell.out-month .glas-cal-chip { opacity: 0.4; }
 .glas-cal-daynum {
   align-self: center;
   display: inline-flex;
@@ -240,27 +239,30 @@ label {
   border-radius: 50%;
   font-size: 12px; font-weight: 500;
   flex-shrink: 0;
-  margin-bottom: 2px;
 }
-.glas-cal-daynum.is-today { background: var(--blue); color: white; font-weight: 700; }
+/* Samstag blau, Sonntag rot - wie im Vorbild */
+.glas-cal-grid .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum { color: #2d7dc4; }
+.glas-cal-grid .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: #d6453b; }
+.glas-cal-daynum.is-today { background: var(--blue); color: white !important; font-weight: 700; }
 .glas-cal-chip {
   font-size: 10px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
   border-radius: 4px;
-  padding: 2px 4px;
+  padding: 2.5px 5px;
+  margin: 0 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -2px; }
-.glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -2px; }
+.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+.glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
 .glas-cal-more { font-size: 9.5px; color: var(--text-secondary); text-align: center; }
 
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
-  .glas-cal-cell { min-height: 132px; padding: 6px 4px; gap: 3px; }
+  .glas-cal-cell { min-height: 138px; padding: 6px 0; gap: 3px; }
   .glas-cal-daynum { width: 26px; height: 26px; font-size: 13.5px; }
   .glas-cal-chip { font-size: 11.5px; padding: 3px 6px; }
 }
@@ -365,6 +367,51 @@ label {
   margin-top: 1px;
 }
 .glas-stop-row.done .glas-stop-num { background: #d9f2dd; border-color: #bfe6c8; color: #1e7a34; }
+
+/* Hinweis-Box für Mitarbeiter am Stopp: bewusst auffällig (gelb + Icon), damit sie
+   niemand übersieht - erscheint nur, wenn am Objekt etwas hinterlegt ist */
+.glas-hinweis-box {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #fff7e0;
+  border: 1px solid #f0dc9c;
+  border-left: 4px solid #e8b931;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+.glas-hinweis-icon { font-size: 17px; line-height: 1.2; flex-shrink: 0; }
+.glas-hinweis-title { margin: 0 0 2px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #8a5a07; }
+.glas-hinweis-text { margin: 0; font-size: 13px; color: #5c4a12; white-space: pre-line; font-weight: 500; }
+
+/* ---------------- Animations-Feinschliff ---------------- */
+/* Suchergebnis-Container werden bei jedem Tastendruck neu gebaut - dort würde die
+   Karten-Eintrittsanimation als Dauerflackern wirken. Deshalb gezielt aus. */
+#scheineListResults .card,
+#offeneListeErgebnisse .card,
+#tourSearchResults .card,
+#glasTabContent .card { animation: none; }
+
+/* Beim Wechseln des Tabs/Inhalts gleitet der neue Inhalt einmal dezent herein */
+.glas-content-in { animation: fadeInUp 0.22s ease both; }
+
+/* Monatswechsel im Kalender: kurzes Hereingleiten aus der Blätter-Richtung */
+@keyframes calSlideL { from { opacity: 0.3; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes calSlideR { from { opacity: 0.3; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.glas-cal-anim-l { animation: calSlideL 0.22s ease both; }
+.glas-cal-anim-r { animation: calSlideR 0.22s ease both; }
+
+/* Aufklappende Einstellungs-Kacheln: Inhalt gleitet sanft auf */
+@keyframes tileOpen { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.glas-settings-tile-body { animation: tileOpen 0.18s ease both; }
+
+/* Hinweis-Box zieht beim Erscheinen einmal kurz die Aufmerksamkeit */
+@keyframes hinweisIn { 0% { opacity: 0; transform: translateY(4px); } 60% { opacity: 1; transform: none; } 75% { transform: scale(1.015); } 100% { transform: none; } }
+.glas-hinweis-box { animation: hinweisIn 0.4s ease both; }
+
+/* Tab-Wechsel-Unterstreichung gleitet statt zu springen */
+.tab-btn { transition: color 0.15s ease, border-color 0.2s ease, background 0.15s ease; }
 .glas-welcome-sub {
   margin: 0;
   color: var(--text-secondary);

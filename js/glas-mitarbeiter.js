@@ -237,6 +237,14 @@ function renderGlasStopsList(t) {
             </div>
             <span class="badge ${isDone ? "badge-signed" : "badge-open"}">${isDone ? "✓ Erledigt" : "Offen"}</span>
           </div>
+          ${s.hinweise ? `
+          <div class="glas-hinweis-box">
+            <span class="glas-hinweis-icon">⚠️</span>
+            <div>
+              <p class="glas-hinweis-title">Hinweis fürs Team</p>
+              <p class="glas-hinweis-text">${escapeHtml(s.hinweise)}</p>
+            </div>
+          </div>` : ""}
           ${(s.ansprechpartner || s.telefon) ? `
           <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
@@ -280,6 +288,10 @@ function renderGlasSignArea(t, s) {
         <button class="btn btn-sm" style="margin-top:8px;" onclick="clearGlasSig()">🗑️ Löschen & neu</button>
       </div>
       <input type="hidden" id="gs_datum" value="${today}" />
+      <div class="field">
+        <label class="muted">Schein sofort per E-Mail senden an (optional)</label>
+        <input type="email" id="gs_email" placeholder="kunde@firma.de – leer lassen = kein Versand" style="font-size:16px;" />
+      </div>
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
     </div>`;
 }
@@ -312,10 +324,12 @@ async function saveGlasSignature(stopId) {
   if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasSigPad.toDataURL("image/png");
+  const versandEmail = document.getElementById("gs_email")?.value.trim() || "";
   let stopRef = null;
+  let tourRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
-    if (stop) stopRef = stop;
+    if (stop) { stopRef = stop; tourRef = t; }
   }
 
   const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift);
@@ -325,6 +339,12 @@ async function saveGlasSignature(stopId) {
   showToast("Gespeichert");
   glasOpenStopId = null;
   renderGlasMa();
+
+  // Optionaler Sofort-Versand des fertigen Scheins
+  if (versandEmail && stopRef && tourRef) {
+    const doc = generateGlasPdf(stopRef, tourRef.template, tourRef.datum);
+    await sendScheinPerMail(versandEmail, doc, glasScheinFilename(stopRef, tourRef.template));
+  }
 }
 
 function downloadGlasPdf(tourId, stopId) {

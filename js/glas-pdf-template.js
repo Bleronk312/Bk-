@@ -24,9 +24,11 @@ const GLAS_TEMPLATES = {
     label: "Dietrich",
     logo: () => (typeof SUB_LOGO_B64 !== "undefined" ? SUB_LOGO_B64 : ""),
     logoTop: { w: 40, h: 9.5 },
+    // 4 TÜV-NORD-Kreise (aus dem Original-Schein gescannt), Seitenverhältnis 4:1 -
+    // klein und rechtsbündig wie auf dem Papier-Vordruck
     badges: () =>
-      typeof SUB_BADGES_B64 !== "undefined" ? [{ src: SUB_BADGES_B64, x: 98, w: 72 }] : [],
-    badgeH: 7.12,
+      typeof SUB_BADGES_B64 !== "undefined" ? [{ src: SUB_BADGES_B64, x: 106, w: 64 }] : [],
+    badgeH: 16,
   },
 };
 
