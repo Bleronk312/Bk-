@@ -149,6 +149,10 @@ function glasStatusBadgeClass(status) {
    ======================================================================== */
 
 async function glasInit() {
+  // Manche Home-Bildschirm-Verknüpfungen verlieren den #-Teil der URL -
+  // ?tab=kalender funktioniert deshalb als gleichwertiger Einstieg.
+  const qTab = new URLSearchParams(location.search).get("tab");
+  if (!location.hash && qTab) location.hash = "#/tab/" + qTab;
   glasPage = glasParseHash();
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen()]);

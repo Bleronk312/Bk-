@@ -1309,3 +1309,22 @@ input, textarea, select {
   color: #8a5a07;
   font-weight: 600;
 }
+
+/* ---------------- App-Modus (vom iPhone-Home-Bildschirm gestartet) ----------------
+   Läuft die Seite als installierte Web-App (ohne Safari-Leisten), zieht sich der
+   blaue Kopf bis unter die Statusleiste (Uhr/Akku stehen auf unserem Blau) und
+   alles wird kompakter, damit z.B. der Kalender sofort ohne Scrollen dasteht. */
+html.app-mode { background: #3a8fd0; }
+html.app-mode body { background: var(--bg); }
+html.app-mode .app-header {
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 20px 38px;
+}
+html.app-mode .app-header .brand-row { margin-bottom: 7px; font-size: 13px; }
+html.app-mode .app-header .greeting { font-size: 16px; }
+/* Das schwebende Logo-Badge braucht im App-Modus keiner - ohne wirkt es
+   aufgeräumter und der Inhalt startet direkt unter dem Kopf */
+html.app-mode .logo-badge { display: none; }
+html.app-mode .app-sheet-content { padding-top: 20px; }
+html.app-mode .glas-logo-left .app-sheet-content,
+html.app-mode body.glas-logo-left .app-sheet-content { padding-top: 20px; }
+html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); }
