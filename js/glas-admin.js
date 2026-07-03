@@ -155,7 +155,7 @@ async function glasInit() {
   if (!location.hash && qTab) location.hash = "#/tab/" + qTab;
   glasPage = glasParseHash();
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
-  await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen()]);
+  await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub()]);
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
   renderGlasAdmin();
   glasGeocodeFehlende();
@@ -184,6 +184,18 @@ async function glasGeocodeFehlende() {
 async function loadGlasTermine() {
   const { data, error } = await sb.from("glas_termine").select("*").order("datum", { ascending: true });
   if (!error) glasTermine = data || [];
+}
+
+let glasMitarbeiter = [];
+let glasUrlaub = [];
+
+async function loadGlasMitarbeiter() {
+  const { data, error } = await sb.from("glas_mitarbeiter").select("*").order("name", { ascending: true });
+  if (!error) glasMitarbeiter = data || [];
+}
+async function loadGlasUrlaub() {
+  const { data, error } = await sb.from("glas_urlaub").select("*").order("von", { ascending: true });
+  if (!error) glasUrlaub = data || [];
 }
 
 // Positionen, die bereits auf einem offenen Stopp einer aktiven Tour stehen: die gelten
@@ -314,6 +326,9 @@ function goGlasKunde(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNa
 function goGlasTab(tab) {
   glasContentAnimPending = true;
   glasAuswahl = { modus: null, ids: new Set() };
+  glasUrlaubEditing = null;
+  glasMaEditing = null;
+  glasUrlaubVerwaltung = false;
   glasObjektEditing = null;
   glasKundeEditing = null;
   glasShowNewTourForm = false;
@@ -355,9 +370,9 @@ function renderGlasAdmin() {
       <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
       <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
-      <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
-      <button class="tab-btn ${tab === "einstellungen" ? "active" : ""}" onclick="goGlasTab('einstellungen')">⚙️ Weitere Einstellungen</button>
+      <button class="tab-btn ${["kunden", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
+    ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}
     ${isHome ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
@@ -385,13 +400,14 @@ function glasUpdateTabContent() {
     : glasGlobalSearch.trim()
     ? renderGlobalSearchResults()
     : tab === "kunden" ? renderKundenTab()
+    : tab === "faellig" ? renderFaelligTab()
     : tab === "kalender" ? renderKalenderTab()
     : tab === "einstellungen" ? renderEinstellungenTab()
     : renderTourenTab();
 
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
-  if (!glasGlobalSearch.trim() && tab === "kalender" && glasKalenderSub === "offen") {
+  if (!glasGlobalSearch.trim() && tab === "faellig") {
     const searchEl = document.getElementById("offen_search");
     if (searchEl) searchEl.oninput = (e) => {
       glasOffeneSearch = e.target.value;
@@ -422,6 +438,30 @@ function focusSearch(id) {
 /* ========================================================================
    Startseite (Hallo GEKO Clean)
    ======================================================================== */
+
+let glasMenuOpen = false;
+
+function glasToggleMenu() { glasMenuOpen = !glasMenuOpen; renderGlasAdmin(); }
+
+// Aufklapp-Menü hinter "☰ Mehr": alles, was nicht in die oberste Reiterzeile passt.
+function renderGlasMehrMenu(tab) {
+  const item = (aktiv, icon, label, onclick) => `
+    <button class="glas-menu-item ${aktiv ? "on" : ""}" onclick="${onclick}">
+      <span>${icon} ${label}</span>${aktiv ? '<span style="color:var(--blue);">●</span>' : '<span style="color:var(--text-secondary);">›</span>'}
+    </button>`;
+  return `
+    <div class="glas-menu-dd">
+      ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
+      ${item(tab === "kunden", "👥", "Kunden", "glasMenuOpen=false; goGlasTab('kunden')")}
+      ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
+      ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
+    </div>`;
+}
+
+// Eigener Reiter für die fälligen Objekte (früher Unterreiter im Kalender).
+function renderFaelligTab() {
+  return renderOffeneListe();
+}
 
 function renderGlasHome() {
   const today = glasTodayIso();
@@ -460,7 +500,7 @@ function renderGlasHome() {
       </div>
 
       <div class="glas-dash-stats glas-dash-stats-2">
-        <div class="glas-stat ${faelligGesamt ? "warn" : ""}" onclick="goGlasTab('kalender'); glasKalenderSub='offen'; renderGlasAdmin();">
+        <div class="glas-stat ${faelligGesamt ? "warn" : ""}" onclick="goGlasTab('faellig')">
           <span class="glas-stat-num">${faelligGesamt}</span>
           <span class="glas-stat-label">Fällig</span>
         </div>
@@ -476,8 +516,10 @@ function renderGlasHome() {
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 4px;">Heute</h2>
-        ${heuteTouren.length || heuteTermine.length
+        <h2 style="margin:0; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasToggleHomeSektion('heute')">
+          <span>Heute</span><span style="color:var(--text-secondary); font-size:13px;">${glasHomeOffen.heute ? "▲" : "▼"}</span>
+        </h2>
+        ${!glasHomeOffen.heute ? "" : (heuteTouren.length || heuteTermine.length
           ? heuteTouren.map(tourZeile).join("") + heuteTermine.map((t) => {
               const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
               return `<div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
@@ -485,16 +527,21 @@ function renderGlasHome() {
                 <div style="flex:1;"><p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p></div>
                 <span style="color:var(--text-secondary);">›</span></div>`;
             }).join("")
-          : `<p class="muted" style="margin:10px 0 2px;">Heute ist nichts geplant. 🎉</p>`}
+          : `<p class="muted" style="margin:10px 0 2px;">Heute ist nichts geplant. 🎉</p>`)}
       </div>
 
       ${naechsteTouren.length ? `
       <div class="card">
-        <h2 style="margin:0 0 4px;">Als Nächstes</h2>
-        ${naechsteTouren.map(tourZeile).join("")}
+        <h2 style="margin:0; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasToggleHomeSektion('naechste')">
+          <span>Als Nächstes</span><span style="color:var(--text-secondary); font-size:13px;">${glasHomeOffen.naechste ? "▲" : "▼"}</span>
+        </h2>
+        ${glasHomeOffen.naechste ? naechsteTouren.map(tourZeile).join("") : ""}
       </div>` : ""}
     </div>`;
 }
+
+let glasHomeOffen = { heute: true, naechste: true };
+function glasToggleHomeSektion(key) { glasHomeOffen[key] = !glasHomeOffen[key]; glasUpdateTabContent(); }
 
 // "Donnerstag, 2. Juli 2026"
 function glasHeuteLangDatum() {
@@ -616,15 +663,15 @@ function renderKundenTab() {
     : `<p class="muted">Keine Kunden gefunden.</p>`;
 
   return `
-    <div style="display:flex; gap:8px; margin:16px 0; align-items:center;">
+    <div style="display:flex; gap:8px; margin:16px 0 10px; align-items:center; flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="editGlasKunde(null)">+ Neuer Kunde</button>
       <button class="btn btn-sm" onclick="editGlasObjekt(null)">+ Neues Objekt</button>
-      ${sortiert.length && !auswahl ? `<button class="btn btn-sm" title="Mehrere auswählen" onclick="glasAuswahlStart('kunden')">☑️ Auswählen</button>` : ""}
-      <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasKundenSort = this.value; renderGlasAdmin();">
-        <option value="az" ${glasKundenSort === "az" ? "selected" : ""}>A–Z</option>
-        <option value="dringend" ${glasKundenSort === "dringend" ? "selected" : ""}>Überfällig zuerst</option>
-        <option value="ok" ${glasKundenSort === "ok" ? "selected" : ""}>OK zuerst</option>
-      </select>
+      ${sortiert.length && !auswahl ? `<button class="btn btn-sm" style="margin-left:auto;" title="Mehrere auswählen" onclick="glasAuswahlStart('kunden')">☑️ Auswählen</button>` : ""}
+    </div>
+    <div class="glas-seg" style="margin-bottom:14px;">
+      <button class="glas-seg-btn ${glasKundenSort === "az" ? "on" : ""}" onclick="glasKundenSort='az'; glasUpdateTabContent();">A–Z</button>
+      <button class="glas-seg-btn ${glasKundenSort === "dringend" ? "on" : ""}" onclick="glasKundenSort='dringend'; glasUpdateTabContent();">Überfällig zuerst</button>
+      <button class="glas-seg-btn ${glasKundenSort === "ok" ? "on" : ""}" onclick="glasKundenSort='ok'; glasUpdateTabContent();">OK zuerst</button>
     </div>
     ${auswahl ? glasAuswahlLeiste() : ""}
     ${rows}
@@ -646,8 +693,9 @@ function glasAuswahlLeiste() {
   const n = glasAuswahl.ids.size;
   const label = glasAuswahl.modus === "touren" ? "🗑️ Ins Archiv" : "🗑️ Löschen";
   return `
-    <div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 14px;">
-      <span style="font-weight:600;">${n} ausgewählt</span>
+    <div class="glas-auswahl-bar">
+      <span class="glas-auswahl-count">${n}</span>
+      <span style="font-weight:600;">ausgewählt</span>
       <button class="btn btn-sm" style="margin-left:auto;" onclick="glasAuswahlEnde()">Abbrechen</button>
       <button class="btn btn-sm" style="background:var(--danger); border-color:var(--danger); color:#fff;" onclick="glasAuswahlLoeschen()" ${n ? "" : "disabled"}>${label}</button>
     </div>`;
@@ -1816,7 +1864,7 @@ function renderTourDetailView() {
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
             ${isDone ? `
-              ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
+              ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
               <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
               <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
             ` : `
@@ -2623,13 +2671,287 @@ function renderKalenderTab() {
   if (glasTerminEditing) return renderTerminForm();
   if (glasTerminViewing) return renderTerminView();
   return `
-    <div style="display:flex; gap:8px; margin:16px 0;">
-      <button class="btn btn-sm ${glasKalenderSub === "kalender" ? "btn-primary" : ""}" style="flex:1; justify-content:center;" onclick="glasKalenderSub = 'kalender'; renderGlasAdmin();">📅 Kalender</button>
-      <button class="btn btn-sm ${glasKalenderSub === "offen" ? "btn-primary" : ""}" style="flex:1; justify-content:center;" onclick="glasKalenderSub = 'offen'; renderGlasAdmin();">⏰ Offene Liste</button>
-      <button class="btn btn-sm" style="flex:0 0 auto; justify-content:center;" onclick="openGlasTermin(null)">+ Termin</button>
+    <div class="glas-seg" style="margin:16px 0 12px;">
+      <button class="glas-seg-btn ${glasKalenderAnsicht === "termine" ? "on" : ""}" onclick="glasKalenderAnsicht='termine'; glasUpdateTabContent();">📅 Termine</button>
+      <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
     </div>
-    ${glasKalenderSub === "offen" ? renderOffeneListe() : renderKalenderMonat()}
+    ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : `
+      <div style="display:flex; justify-content:flex-end; margin:0 0 4px;">
+        <button class="btn btn-sm" onclick="openGlasTermin(null)">+ Termin</button>
+      </div>
+      ${renderKalenderMonat()}
+    `}
   `;
+}
+
+let glasKalenderAnsicht = "termine"; // "termine" | "urlaub"
+let glasUrlaubMaFilter = null;   // ausgewählter Mitarbeiter (id) für Hervorhebung + Statistik
+let glasUrlaubEditing = null;    // Urlaubs-Eintrag im Formular
+let glasMaEditing = null;        // Mitarbeiter im Formular
+let glasUrlaubVerwaltung = false; // Mitarbeiter-Verwaltung offen
+
+const GLAS_MA_FARBEN = ["#3b82c4", "#e0682f", "#8b5cbf", "#2e9e4f", "#c0392b", "#d69e2e", "#0d9488", "#db2777", "#5b6b7b"];
+function glasMaFarbe(maId) {
+  const idx = glasMitarbeiter.findIndex((m) => m.id === maId);
+  return GLAS_MA_FARBEN[(idx < 0 ? 0 : idx) % GLAS_MA_FARBEN.length];
+}
+function glasMaName(maId) {
+  return glasMitarbeiter.find((m) => m.id === maId)?.name || "?";
+}
+
+// Zählt Urlaubstage in mehreren Zeiträumen für ein Jahr, getrennt nach Arbeitswoche:
+// Mo-Fr (ohne Sa+So) und Mo-Sa (ohne So). So sieht man je nach MA-Modell den richtigen Wert.
+function glasZaehleUrlaubstage(ranges, jahr) {
+  let moFr = 0, moSa = 0;
+  ranges.forEach((r) => {
+    let d = new Date(r.von + "T00:00:00");
+    const end = new Date((r.bis || r.von) + "T00:00:00");
+    let guard = 0;
+    while (d <= end && guard++ < 800) {
+      if (d.getFullYear() === jahr) {
+        const wd = d.getDay(); // 0=So ... 6=Sa
+        if (wd !== 0) moSa++;
+        if (wd !== 0 && wd !== 6) moFr++;
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  });
+  return { moFr, moSa };
+}
+
+function renderUrlaubKalender() {
+  if (glasUrlaubEditing) return renderUrlaubForm();
+  if (glasMaEditing !== null) return renderMaForm();
+  if (glasUrlaubVerwaltung) return renderMaVerwaltung();
+
+  // Mitarbeiter-Auswahl (Chips)
+  const chips = `
+    <div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+      <button class="glas-ma-chip ${glasUrlaubMaFilter === null ? "on" : ""}" onclick="glasUrlaubMaFilter=null; glasUpdateTabContent();">Alle</button>
+      ${glasMitarbeiter.map((m) => `
+        <button class="glas-ma-chip ${glasUrlaubMaFilter === m.id ? "on" : ""}" onclick="glasUrlaubMaFilter='${m.id}'; glasUpdateTabContent();">
+          <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)};"></span>${escapeHtml(m.name)}
+        </button>`).join("")}
+      <button class="glas-ma-chip" style="border-style:dashed;" onclick="glasUrlaubVerwaltung=true; renderGlasAdmin();">⚙️ Mitarbeiter</button>
+    </div>`;
+
+  // Statistik-Karte, wenn ein MA ausgewählt ist
+  let statCard = "";
+  if (glasUrlaubMaFilter) {
+    const m = glasMitarbeiter.find((x) => x.id === glasUrlaubMaFilter);
+    const jahr = new Date().getFullYear();
+    const meine = glasUrlaub.filter((u) => u.mitarbeiter_id === glasUrlaubMaFilter);
+    const { moFr, moSa } = glasZaehleUrlaubstage(meine, jahr);
+    const relevant = m && m.arbeitstage === "mo_sa" ? moSa : moFr;
+    const liste = [...meine].sort((a, b) => (a.von || "").localeCompare(b.von || ""));
+    statCard = `
+      <div class="card" style="border-left:4px solid ${glasMaFarbe(glasUrlaubMaFilter)};">
+        <p style="margin:0 0 2px; font-weight:700;">${escapeHtml(m ? m.name : "")} <span class="muted" style="font-weight:400;">· ${m && m.arbeitstage === "mo_sa" ? "arbeitet Mo–Sa" : "arbeitet Mo–Fr"}</span></p>
+        <p class="muted" style="margin:0 0 10px;">Urlaub ${jahr}</p>
+        <div style="display:flex; gap:10px;">
+          <div class="glas-stat ${m && m.arbeitstage !== "mo_sa" ? "" : "muted-stat"}" style="flex:1; ${m && m.arbeitstage === "mo_sa" ? "opacity:0.5;" : ""}">
+            <span class="glas-stat-num">${moFr}</span><span class="glas-stat-label">Tage (Mo–Fr)</span>
+          </div>
+          <div class="glas-stat" style="flex:1; ${m && m.arbeitstage !== "mo_sa" ? "opacity:0.5;" : ""}">
+            <span class="glas-stat-num">${moSa}</span><span class="glas-stat-label">Tage (Mo–Sa)</span>
+          </div>
+        </div>
+        <p class="muted" style="margin:10px 0 6px; font-size:12px;">Für diesen Mitarbeiter zählen die <b>${relevant} Tage (${m && m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"})</b>.</p>
+        ${liste.length ? `<div style="border-top:1px solid var(--border); padding-top:6px;">${liste.map((u) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-top:1px solid var(--border);">
+            <span style="font-size:13px;">${formatGlasDateRange(u.von, u.bis)}${u.notiz ? ` · ${escapeHtml(u.notiz)}` : ""}</span>
+            <span style="display:flex; gap:6px;">
+              <button class="btn btn-sm" onclick="glasOpenUrlaub('${u.id}')">Bearb.</button>
+            </span>
+          </div>`).join("")}</div>` : `<p class="muted" style="margin:6px 0 0;">Noch kein Urlaub eingetragen.</p>`}
+      </div>`;
+  }
+
+  return `
+    ${chips}
+    ${statCard}
+    <div style="display:flex; justify-content:flex-end; margin:0 0 4px;">
+      <button class="btn btn-sm btn-primary" onclick="glasOpenUrlaub(null)">+ Urlaub eintragen</button>
+    </div>
+    ${renderUrlaubMonat()}
+  `;
+}
+
+function renderUrlaubMonat() {
+  const { year, month } = glasKalenderMonth;
+  const monatsNamen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  const todayIso = glasTodayIso();
+  const weeks = glasWeeksInRange({ year, month }, { year, month });
+
+  let urlaube = glasUrlaub;
+  if (glasUrlaubMaFilter) urlaube = urlaube.filter((u) => u.mitarbeiter_id === glasUrlaubMaFilter);
+  const events = urlaube.map((u) => ({
+    datum: u.von, datum_bis: u.bis || u.von,
+    bg: glasMaFarbe(u.mitarbeiter_id), fg: "#fff",
+    label: glasMaName(u.mitarbeiter_id),
+  }));
+
+  const maxChips = 4;
+  const cellsHtml = weeks.flat().map((iso) => {
+    const d = parseInt(iso.slice(8, 10), 10);
+    const isToday = iso === todayIso;
+    const inMonth = parseInt(iso.slice(5, 7), 10) - 1 === month;
+    const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
+    const chips = dayEvents.slice(0, maxChips).map((t) => {
+      const contLeft = t.datum < iso, contRight = (t.datum_bis || t.datum) > iso;
+      return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+    }).join("");
+    const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
+    return `
+      <div class="glas-cal-cell${inMonth ? "" : " out-month"}" onclick="glasOpenUrlaubAmTag('${iso}')">
+        <span class="glas-cal-daynum${isToday ? " is-today" : ""}">${d}</span>
+        ${chips}${more}
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="card glas-cal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:0 6px;">
+        <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
+        <p style="margin:0; font-weight:700; font-size:17px;">${monatsNamen[month]} ${year}</p>
+        <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
+      </div>
+      <div class="glas-cal-grid" style="margin-bottom:4px;">
+        ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
+      </div>
+      <div class="glas-cal-grid">${cellsHtml}</div>
+      <p class="muted" style="margin:10px 6px 0; font-size:12px;">Auf einen Tag tippen, um Urlaub ab diesem Tag einzutragen.</p>
+    </div>`;
+}
+
+function glasOpenUrlaubAmTag(iso) {
+  if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen (⚙️ Mitarbeiter)"); glasUrlaubVerwaltung = true; renderGlasAdmin(); return; }
+  glasUrlaubEditing = { id: null, mitarbeiter_id: glasUrlaubMaFilter || glasMitarbeiter[0].id, von: iso, bis: iso, notiz: "" };
+  renderGlasAdmin();
+}
+function glasOpenUrlaub(id) {
+  if (!id) {
+    if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen (⚙️ Mitarbeiter)"); glasUrlaubVerwaltung = true; renderGlasAdmin(); return; }
+    glasUrlaubEditing = { id: null, mitarbeiter_id: glasUrlaubMaFilter || glasMitarbeiter[0].id, von: glasTodayIso(), bis: glasTodayIso(), notiz: "" };
+  } else {
+    glasUrlaubEditing = { ...glasUrlaub.find((u) => u.id === id) };
+  }
+  renderGlasAdmin();
+}
+
+function renderUrlaubForm() {
+  const u = glasUrlaubEditing;
+  return `
+    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasUrlaubEditing=null; renderGlasAdmin();">&larr; Zurück</button>
+    <div class="card">
+      <h2>${u.id ? "Urlaub bearbeiten" : "Urlaub eintragen"}</h2>
+      <div class="field">
+        <label class="muted">Mitarbeiter</label>
+        <select id="u_ma">${glasMitarbeiter.map((m) => `<option value="${m.id}" ${m.id === u.mitarbeiter_id ? "selected" : ""}>${escapeHtml(m.name)}</option>`).join("")}</select>
+      </div>
+      <div class="row">
+        <div class="field"><label class="muted">Von</label><input type="date" id="u_von" value="${u.von || ""}" /></div>
+        <div class="field"><label class="muted">Bis</label><input type="date" id="u_bis" value="${u.bis || u.von || ""}" /></div>
+      </div>
+      <div class="field"><label class="muted">Notiz (optional)</label><input type="text" id="u_notiz" value="${escapeHtml(u.notiz || "")}" placeholder="z.B. Sommerurlaub" /></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary" onclick="saveGlasUrlaub()">Speichern</button>
+        ${u.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-left:auto;" onclick="deleteGlasUrlaub('${u.id}')">Löschen</button>` : ""}
+      </div>
+    </div>`;
+}
+
+async function saveGlasUrlaub() {
+  const u = glasUrlaubEditing;
+  const mitarbeiter_id = document.getElementById("u_ma").value;
+  const von = document.getElementById("u_von").value;
+  let bis = document.getElementById("u_bis").value || von;
+  if (!von) { showToast("Bitte ein Von-Datum wählen"); return; }
+  if (bis < von) bis = von;
+  const payload = { id: u.id || genCode(), mitarbeiter_id, von, bis, notiz: (document.getElementById("u_notiz").value || "").trim() };
+  const { error } = await sb.from("glas_urlaub").upsert(payload);
+  if (error) { showToast("Fehler: " + error.message + " (SQL schon ausgeführt?)"); return; }
+  showToast("Urlaub gespeichert");
+  glasUrlaubEditing = null;
+  await loadGlasUrlaub();
+  renderGlasAdmin();
+}
+
+async function deleteGlasUrlaub(id) {
+  if (!confirm("Diesen Urlaubseintrag löschen?")) return;
+  const { error } = await sb.from("glas_urlaub").delete().eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Urlaub gelöscht");
+  glasUrlaubEditing = null;
+  await loadGlasUrlaub();
+  renderGlasAdmin();
+}
+
+// ---- Mitarbeiter-Verwaltung ----
+function renderMaVerwaltung() {
+  return `
+    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasUrlaubVerwaltung=false; renderGlasAdmin();">&larr; Zurück zum Urlaubskalender</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="margin:0;">Mitarbeiter</h2>
+      <button class="btn btn-sm btn-primary" onclick="glasMaEditing={id:null,name:'',arbeitstage:'mo_fr'}; renderGlasAdmin();">+ Neuer Mitarbeiter</button>
+    </div>
+    ${glasMitarbeiter.length ? glasMitarbeiter.map((m) => `
+      <div class="card" style="display:flex; align-items:center; gap:10px;">
+        <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)}; width:14px; height:14px;"></span>
+        <div style="flex:1;">
+          <p style="margin:0; font-weight:600;">${escapeHtml(m.name)}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "arbeitet Mo–Sa" : "arbeitet Mo–Fr"}</p>
+        </div>
+        <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
+      </div>`).join("") : `<p class="muted">Noch keine Mitarbeiter angelegt.</p>`}
+  `;
+}
+
+function renderMaForm() {
+  const m = glasMaEditing;
+  return `
+    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasMaEditing=null; renderGlasAdmin();">&larr; Zurück</button>
+    <div class="card">
+      <h2>${m.id ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"}</h2>
+      <div class="field"><label class="muted">Name</label><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>
+      <div class="field">
+        <label class="muted">Arbeitswoche (für die Urlaubstage-Zählung)</label>
+        <select id="ma_tage" style="width:auto;">
+          <option value="mo_fr" ${m.arbeitstage !== "mo_sa" ? "selected" : ""}>Mo–Fr (5-Tage-Woche)</option>
+          <option value="mo_sa" ${m.arbeitstage === "mo_sa" ? "selected" : ""}>Mo–Sa (6-Tage-Woche)</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary" onclick="saveGlasMa()">Speichern</button>
+        ${m.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-left:auto;" onclick="deleteGlasMa('${m.id}')">Löschen</button>` : ""}
+      </div>
+    </div>`;
+}
+
+async function saveGlasMa() {
+  const m = glasMaEditing;
+  const name = (document.getElementById("ma_name").value || "").trim();
+  if (!name) { showToast("Bitte einen Namen eintragen"); return; }
+  const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value };
+  const { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  if (error) { showToast("Fehler: " + error.message + " (SQL schon ausgeführt?)"); return; }
+  showToast("Mitarbeiter gespeichert");
+  glasMaEditing = null;
+  await loadGlasMitarbeiter();
+  renderGlasAdmin();
+}
+
+async function deleteGlasMa(id) {
+  const anzahl = glasUrlaub.filter((u) => u.mitarbeiter_id === id).length;
+  if (!confirm(anzahl ? `Diesen Mitarbeiter inkl. ${anzahl} Urlaubseintrag/-einträgen löschen?` : "Diesen Mitarbeiter löschen?")) return;
+  if (anzahl) await sb.from("glas_urlaub").delete().eq("mitarbeiter_id", id);
+  const { error } = await sb.from("glas_mitarbeiter").delete().eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Mitarbeiter gelöscht");
+  glasMaEditing = null;
+  if (glasUrlaubMaFilter === id) glasUrlaubMaFilter = null;
+  await Promise.all([loadGlasMitarbeiter(), loadGlasUrlaub()]);
+  renderGlasAdmin();
 }
 
 /* ---------------- Freie Termine (TimeTree-artig) ---------------- */
@@ -2916,7 +3238,7 @@ function renderKalenderMonat() {
   // an den Rändern abgerundet, damit es wie ein durchgehender Balken wirkt). Im Kalender
   // selbst ist NICHTS direkt anklickbar außer dem Tag - erst im Tages-Modal wählt man
   // dann Tour oder Termin aus (verhindert Fehlklicks auf dem Handy).
-  const maxChips = 3;
+  const maxChips = 4;
   const cellsHtml = weeks
     .flat()
     .map((iso) => {

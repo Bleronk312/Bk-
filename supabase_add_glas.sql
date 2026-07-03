@@ -267,3 +267,31 @@ begin
     update kunden set bereich = 'graffiti' where bereich = 'beide';
   end if;
 end $$;
+
+-- ============================================================================
+-- Urlaubskalender: Mitarbeiter und ihre Urlaubszeiträume. arbeitstage steuert nur
+-- die Anzeige der Urlaubstage-Zählung (Mo-Fr = 5-Tage-Woche, Mo-Sa = 6-Tage-Woche).
+create table if not exists glas_mitarbeiter (
+  id text primary key,
+  name text not null default '',
+  arbeitstage text not null default 'mo_fr',  -- 'mo_fr' | 'mo_sa'
+  created_at timestamptz not null default now()
+);
+alter table glas_mitarbeiter enable row level security;
+drop policy if exists "anon_full_access_glas_mitarbeiter" on glas_mitarbeiter;
+create policy "anon_full_access_glas_mitarbeiter" on glas_mitarbeiter for all using (true) with check (true);
+grant select, insert, update, delete on table glas_mitarbeiter to anon, authenticated;
+
+create table if not exists glas_urlaub (
+  id text primary key,
+  mitarbeiter_id text not null references glas_mitarbeiter(id) on delete cascade,
+  von date not null,
+  bis date,
+  notiz text not null default '',
+  created_at timestamptz not null default now()
+);
+alter table glas_urlaub enable row level security;
+drop policy if exists "anon_full_access_glas_urlaub" on glas_urlaub;
+create policy "anon_full_access_glas_urlaub" on glas_urlaub for all using (true) with check (true);
+grant select, insert, update, delete on table glas_urlaub to anon, authenticated;
+create index if not exists idx_glas_urlaub_ma on glas_urlaub(mitarbeiter_id);

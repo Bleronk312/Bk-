@@ -276,26 +276,26 @@ label {
 .glas-cal-grid .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: #d6453b; }
 .glas-cal-daynum.is-today { background: var(--blue); color: white !important; font-weight: 700; }
 .glas-cal-chip {
-  font-size: 8.5px;
+  font-size: 7.5px;
   font-weight: 500;
-  letter-spacing: -0.2px;
-  line-height: 1.3;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
   border-radius: 3px;
-  padding: 2px 2px;
+  padding: 1.5px 2px;
   margin: 0 1px;
   white-space: nowrap;
   overflow: hidden; /* hart abschneiden wie TimeTree - die "..." kosten nur Platz */
 }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-.glas-cal-more { font-size: 8.5px; color: var(--text-secondary); text-align: center; }
+.glas-cal-more { font-size: 7.5px; color: var(--text-secondary); text-align: center; }
 
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
   .glas-cal-cell { min-height: 138px; padding: 6px 0; gap: 3px; }
   .glas-cal-daynum { width: 26px; height: 26px; font-size: 13.5px; }
-  .glas-cal-chip { font-size: 10.5px; padding: 2.5px 5px; letter-spacing: 0; }
+  .glas-cal-chip { font-size: 10px; padding: 2.5px 5px; letter-spacing: 0; }
 }
 
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
@@ -1314,8 +1314,15 @@ input, textarea, select {
    Läuft die Seite als installierte Web-App (ohne Safari-Leisten), zieht sich der
    blaue Kopf bis unter die Statusleiste (Uhr/Akku stehen auf unserem Blau) und
    alles wird kompakter, damit z.B. der Kalender sofort ohne Scrollen dasteht. */
-html.app-mode { background: #3a8fd0; }
-html.app-mode body { background: var(--bg); }
+html.app-mode, html.app-mode body { background: var(--bg); }
+/* Nur die Statusleisten-Zone oben bekommt die Kopf-Farbe (kein blauer Rand unten mehr) */
+html.app-mode body::before {
+  content: "";
+  position: fixed; top: 0; left: 0; right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: #1f5d92;
+  z-index: 200;
+}
 html.app-mode .app-header {
   padding: calc(env(safe-area-inset-top, 0px) + 10px) 20px 38px;
 }
@@ -1328,3 +1335,105 @@ html.app-mode .app-sheet-content { padding-top: 20px; }
 html.app-mode .glas-logo-left .app-sheet-content,
 html.app-mode body.glas-logo-left .app-sheet-content { padding-top: 20px; }
 html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56px); }
+
+/* ---------------- Segmentierte Umschalter (Filter, Kalender-Ansicht) ---------------- */
+.glas-seg {
+  display: flex;
+  gap: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+}
+.glas-seg-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.glas-seg-btn.on {
+  background: var(--card);
+  color: var(--blue);
+  box-shadow: 0 1px 3px rgba(20, 30, 50, 0.12);
+}
+
+/* ---------------- "☰ Mehr"-Menü ---------------- */
+.glas-menu-dd {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(20, 30, 50, 0.16);
+  overflow: hidden;
+  margin: -6px 0 16px;
+  animation: glasMenuIn 0.16s ease both;
+}
+@keyframes glasMenuIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.glas-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 14px 16px;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.glas-menu-item:first-child { border-top: none; }
+.glas-menu-item:hover { background: var(--bg); }
+.glas-menu-item.on { color: var(--blue); font-weight: 600; }
+
+/* ---------------- Mehrfach-Auswahl-Leiste (schwebt unten) ---------------- */
+.glas-auswahl-bar {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(20, 30, 50, 0.18);
+  padding: 10px 14px;
+  margin: 4px 0 14px;
+}
+.glas-auswahl-count {
+  flex: 0 0 auto;
+  min-width: 26px; height: 26px;
+  padding: 0 7px;
+  border-radius: 13px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---------------- Urlaubskalender: Mitarbeiter-Chips ---------------- */
+.glas-ma-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 11px;
+  border-radius: 100px;
+  cursor: pointer;
+}
+.glas-ma-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.glas-ma-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }

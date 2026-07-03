@@ -272,7 +272,7 @@ function renderGlasStopDetails(t, s, isDone) {
         ? `
       <div style="margin-top:12px; border-top:1px solid #cdeed3; padding-top:12px;">
         <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(s.datum)}</p>
-        ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
+        ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px; white-space:pre-line;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
       </div>`
@@ -298,12 +298,29 @@ function renderGlasSignForm(s) {
       </div>
       <div class="field">
         <label class="muted">➕ Extra was gemacht? (optional)</label>
-        <textarea id="gs_zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich, 5 Fenster extra"></textarea>
-        <p class="muted" style="margin:4px 0 0; font-size:12px;">Steht danach mit auf dem Abnahmeschein.</p>
+        <div id="gs_zusatz_list">
+          <textarea class="gs-zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich"></textarea>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px;" onclick="glasZusatzAddField()">+ Noch etwas hinzufügen</button>
+        <p class="muted" style="margin:6px 0 0; font-size:12px;">Jede Zeile steht als eigene Position mit auf dem Abnahmeschein.</p>
       </div>
       <input type="hidden" id="gs_datum" value="${today}" />
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
     </div>`;
+}
+
+// Fügt ein weiteres Zusatz-Feld hinzu, ohne die Seite neu zu bauen (Unterschrift bleibt).
+function glasZusatzAddField() {
+  const list = document.getElementById("gs_zusatz_list");
+  if (!list) return;
+  const ta = document.createElement("textarea");
+  ta.className = "gs-zusatz";
+  ta.rows = 2;
+  ta.style.fontSize = "16px";
+  ta.style.marginTop = "8px";
+  ta.placeholder = "z.B. 5 Fenster extra";
+  list.appendChild(ta);
+  ta.focus();
 }
 
 function toggleGlasStop(id) {
@@ -335,7 +352,7 @@ async function saveGlasSignature(stopId) {
   if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasSigPad.toDataURL("image/png");
-  const zusatz = document.getElementById("gs_zusatz")?.value.trim() || "";
+  const zusatz = [...document.querySelectorAll(".gs-zusatz")].map((t) => t.value.trim()).filter(Boolean).join("\n");
   let stopRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);

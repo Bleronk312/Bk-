@@ -192,8 +192,14 @@ function generateGlasPdf(s, templateKey, tourDatum) {
     doc.setFont(FONT, "bold");
     doc.text("Zusätzlich:", posX, by);
     doc.setFont(FONT, "normal");
-    const zusatzLines = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize(String(s.zusatz), 110) : [String(s.zusatz)];
-    zusatzLines.slice(0, 3).forEach((ln) => { doc.text(ln, descX, by); by += L.bulletLineGap; });
+    // Jede eingegebene Zeile ist eine eigene Zusatz-Position
+    const eintraege = String(s.zusatz).split("\n").map((x) => x.trim()).filter(Boolean);
+    let zLines = [];
+    eintraege.forEach((e) => {
+      const wrapped = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize("- " + e, 110) : ["- " + e];
+      zLines = zLines.concat(wrapped);
+    });
+    zLines.slice(0, 6).forEach((ln) => { doc.text(ln, descX, by); by += L.bulletLineGap; });
   }
 
   // "Gesamt Reinigungsfläche" bewusst weiter unten, kurz über dem Hinweistext -
