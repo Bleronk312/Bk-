@@ -12,8 +12,8 @@ document.title = "Glasreinigung - Meine Touren";
 let glasTouren = [];
 let glasMaScreen = "home"; // "home" (Logo-Startseite) | "touren"
 let glasOpenTourId = null; // gerade geöffnete Tour im Vollbild (ersetzt die Liste)
-let glasOpenStopId = null;
-let glasStopsRevealed = false; // "Tour starten" wurde getippt, Stopp-Liste sichtbar
+let glasOpenStopId = null; // aufgeklappter Stopp (Akkordeon)
+let glasSignStopId = null; // Stopp, bei dem gerade das Unterschrift-Formular offen ist
 let glasSigPad = null;
 let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
 
@@ -34,7 +34,7 @@ function glasMaGoHome() {
   glasMaScreen = "home";
   glasOpenTourId = null;
   glasOpenStopId = null;
-  glasStopsRevealed = false;
+  glasSignStopId = null;
   renderGlasMa();
 }
 
@@ -93,7 +93,7 @@ function renderGlasMa() {
     const t = glasTouren.find((x) => x.id === glasOpenTourId);
     if (t) {
       view.innerHTML = renderGlasTourScreen(t);
-      if (glasOpenStopId) setTimeout(() => setupGlasSigPad(), 30);
+      if (glasSignStopId) setTimeout(() => setupGlasSigPad(), 30);
       return;
     }
   }
@@ -176,15 +176,15 @@ function renderGlasTourList() {
 
 function openGlasTour(id) {
   glasOpenTourId = id;
-  glasStopsRevealed = false;
   glasOpenStopId = null;
+  glasSignStopId = null;
   renderGlasMa();
 }
 
 function closeGlasTour() {
   glasOpenTourId = null;
-  glasStopsRevealed = false;
   glasOpenStopId = null;
+  glasSignStopId = null;
   renderGlasMa();
 }
 
@@ -197,85 +197,92 @@ function renderGlasTourScreen(t) {
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
       <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
     </div>
-    ${renderGlasRouteOverview(t)}
-    ${!glasStopsRevealed
-      ? `<button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="glasStopsRevealed = true; renderGlasMa();">▶ Tour starten</button>`
-      : `<button class="btn btn-sm" style="width:100%; justify-content:center; margin-bottom:10px;" onclick="glasStopsRevealed = false; renderGlasMa();">▲ Stopps einklappen</button>${renderGlasStopsList(t)}`
-    }
+    <p class="muted" style="margin:14px 2px 4px; font-size:12.5px;">Auf einen Stopp tippen – dort stehen alle Infos und die Unterschrift.</p>
+    ${renderGlasStopsList(t)}
   `;
 }
 
-function renderGlasRouteOverview(t) {
-  const rows = t.stopps
-    .map((s, idx) => {
-      const isDone = s.status === "erledigt";
-      return `
-        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; ${idx < t.stopps.length - 1 ? "border-bottom:1px solid var(--border);" : ""}">
-          <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : idx + 1}</div>
-          <div style="min-width:0;">
-            <p style="margin:0; font-weight:600; font-size:14px; ${isDone ? "text-decoration:line-through; color:var(--text-secondary);" : ""}">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
-            <p class="muted" style="margin:0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
-          </div>
-        </div>`;
-    })
-    .join("");
-  return `<div class="card" style="margin:14px 0; padding:12px 16px;">${rows}</div>`;
+// Gesamt-qm aus dem Positions-Schnappschuss des Stopps (deutsche Schreibweise)
+function glasStopQm(s) {
+  let sum = 0;
+  try {
+    JSON.parse(s.positionen || "[]").forEach((p) => {
+      sum += parseFloat(String(p.qm || "").replace(",", ".")) || 0;
+    });
+  } catch (e) {}
+  if (!sum) return "";
+  return String(Math.round(sum * 100) / 100).replace(".", ",");
 }
 
+// Jeder Stopp ist eine Karte: zugeklappt nur Objekt, Adresse, qm und ein Vermerk,
+// ob Hinweis/Notiz dran hängt - Tippen klappt alle Details samt Unterschrift auf.
 function renderGlasStopsList(t) {
   return t.stopps
     .map((s, idx) => {
       const isOpen = glasOpenStopId === s.id;
       const isDone = s.status === "erledigt";
-      const links = glasSingleMapLinks(s);
+      const qm = glasStopQm(s);
       return `
-        <div style="border-radius:12px; padding:14px; margin-top:12px; background:${isDone ? "#eaf7ec" : "#f9fafb"}; border:1px solid ${isDone ? "#cdeed3" : "var(--border)"};">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-            <div>
-              <p class="muted" style="margin:0 0 2px; font-size:12.5px;">Stopp ${idx + 1}${s.objekt ? " · " + escapeHtml(s.objekt) : ""}</p>
-              <p style="margin:0; font-weight:600; font-size:15.5px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
+        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "#eaf7ec" : "var(--card)"}; border:1px solid ${isDone ? "#cdeed3" : "var(--border)"};" onclick="toggleGlasStop('${s.id}')">
+          <div style="display:flex; align-items:center; gap:11px;">
+            <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : idx + 1}</div>
+            <div style="flex:1; min-width:0;">
+              <p style="margin:0; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
+              <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
             </div>
-            <span class="badge ${isDone ? "badge-signed" : "badge-open"}">${isDone ? "✓ Erledigt" : "Offen"}</span>
+            <div style="flex-shrink:0; text-align:right;">
+              ${qm ? `<p style="margin:0; font-weight:700; font-size:13.5px; white-space:nowrap;">${qm} qm</p>` : ""}
+              <p style="margin:2px 0 0; font-size:12px;">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}<span style="color:var(--text-secondary);"> ${isOpen ? "▲" : "▼"}</span></p>
+            </div>
           </div>
-          ${s.hinweise ? `
-          <div class="glas-hinweis-box">
-            <span class="glas-hinweis-icon">⚠️</span>
-            <div>
-              <p class="glas-hinweis-title">Hinweis fürs Team</p>
-              <p class="glas-hinweis-text">${escapeHtml(s.hinweise)}</p>
-            </div>
-          </div>` : ""}
-          ${s.notiz ? `<div class="glas-notiz-box">📝 ${escapeHtml(s.notiz)}</div>` : ""}
-          ${(s.ansprechpartner || s.telefon) ? `
-          <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
-            ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
-          </div>` : ""}
-          ${!isDone ? `
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;">
-            <a class="btn btn-sm" href="${links.google}" target="_blank" style="justify-content:center;">🧭 Google</a>
-            <a class="btn btn-sm" href="${links.apple}" style="justify-content:center;">🗺️ Apple</a>
-            <a class="btn btn-sm" href="${links.waze}" style="justify-content:center;">📍 Waze</a>
-          </div>` : ""}
-          ${isDone
-            ? `<button class="btn btn-sm" style="width:100%; justify-content:center; margin-top:10px;" onclick="toggleGlasStop('${s.id}')">${isOpen ? "Schließen" : "Details & PDF"}</button>`
-            : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:10px;" onclick="toggleGlasStop('${s.id}')">${isOpen ? "Schließen" : "✍️ Abnahmeschein unterschreiben"}</button>`
-          }
-          ${isOpen ? renderGlasSignArea(t, s) : ""}
+          ${isOpen ? renderGlasStopDetails(t, s, isDone) : ""}
         </div>`;
     })
     .join("");
 }
 
-function renderGlasSignArea(t, s) {
-  if (s.status === "erledigt") {
-    return `
+function renderGlasStopDetails(t, s, isDone) {
+  const links = glasSingleMapLinks(s);
+  const qm = glasStopQm(s);
+  return `
+    <div style="margin-top:12px; border-top:1px solid ${isDone ? "#cdeed3" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
+      <p style="margin:0; font-weight:600; font-size:15px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
+      ${qm ? `<p class="muted" style="margin:6px 0 0;">Fläche: <b>${qm} qm</b></p>` : ""}
+      ${s.hinweise ? `
+      <div class="glas-hinweis-box">
+        <span class="glas-hinweis-icon">⚠️</span>
+        <div>
+          <p class="glas-hinweis-title">Hinweis fürs Team</p>
+          <p class="glas-hinweis-text">${escapeHtml(s.hinweise)}</p>
+        </div>
+      </div>` : ""}
+      ${s.notiz ? `<div class="glas-notiz-box">📝 ${escapeHtml(s.notiz)}</div>` : ""}
+      ${(s.ansprechpartner || s.telefon) ? `
+      <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
+        ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
+      </div>` : ""}
+      ${!isDone && s.lat ? `
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;">
+        <a class="btn btn-sm" href="${links.google}" target="_blank" style="justify-content:center;">🧭 Google</a>
+        <a class="btn btn-sm" href="${links.apple}" style="justify-content:center;">🗺️ Apple</a>
+        <a class="btn btn-sm" href="${links.waze}" style="justify-content:center;">📍 Waze</a>
+      </div>` : ""}
+      ${isDone
+        ? `
       <div style="margin-top:12px; border-top:1px solid #cdeed3; padding-top:12px;">
-        <p class="muted" style="margin:0 0 8px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
+        <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(s.datum)}</p>
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
-      </div>`;
-  }
+      </div>`
+        : glasSignStopId === s.id
+          ? renderGlasSignForm(s)
+          : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="glasSignStopId = '${s.id}'; renderGlasMa();">✍️ Abnahmeschein unterschreiben</button>`
+      }
+    </div>`;
+}
+
+function renderGlasSignForm(s) {
   const today = todayIso();
   return `
     <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
@@ -289,16 +296,13 @@ function renderGlasSignArea(t, s) {
         <button class="btn btn-sm" style="margin-top:8px;" onclick="clearGlasSig()">🗑️ Löschen & neu</button>
       </div>
       <input type="hidden" id="gs_datum" value="${today}" />
-      <div class="field">
-        <label class="muted">Schein sofort per E-Mail senden an (optional)</label>
-        <input type="email" id="gs_email" placeholder="kunde@firma.de – leer lassen = kein Versand" style="font-size:16px;" />
-      </div>
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
     </div>`;
 }
 
 function toggleGlasStop(id) {
   glasOpenStopId = glasOpenStopId === id ? null : id;
+  glasSignStopId = null;
   renderGlasMa();
 }
 
@@ -325,12 +329,10 @@ async function saveGlasSignature(stopId) {
   if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasSigPad.toDataURL("image/png");
-  const versandEmail = document.getElementById("gs_email")?.value.trim() || "";
   let stopRef = null;
-  let tourRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
-    if (stop) { stopRef = stop; tourRef = t; }
+    if (stop) stopRef = stop;
   }
 
   const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift);
@@ -338,14 +340,10 @@ async function saveGlasSignature(stopId) {
   if (stopRef) Object.assign(stopRef, payload);
 
   showToast("Gespeichert");
-  glasOpenStopId = null;
+  // Stopp bleibt aufgeklappt und zeigt jetzt den grünen "Unterschrieben"-Block
+  glasSignStopId = null;
+  glasOpenStopId = stopId;
   renderGlasMa();
-
-  // Optionaler Sofort-Versand des fertigen Scheins
-  if (versandEmail && stopRef && tourRef) {
-    const doc = generateGlasPdf(stopRef, tourRef.template, tourRef.datum);
-    await sendScheinPerMail(versandEmail, doc, glasScheinFilename(stopRef, tourRef.template));
-  }
 }
 
 function downloadGlasPdf(tourId, stopId) {
