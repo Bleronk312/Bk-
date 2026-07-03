@@ -236,3 +236,19 @@ alter table glas_objekte add column if not exists template text not null default
 delete from glas_objekte where kunde_id <> '' and kunde_id not in (select id from kunden);
 delete from glas_stopps where status <> 'erledigt' and coalesce(objekt_id, '') <> '' and objekt_id not in (select id from glas_objekte);
 delete from glas_touren where id not in (select tour_id from glas_stopps);
+
+-- ============================================================================
+-- Zusatzleistungen: Mitarbeiter können beim Unterschreiben festhalten, was extra
+-- gemacht wurde (z.B. "2 Std. zusätzlich") - steht danach mit auf dem PDF.
+alter table glas_stopps add column if not exists zusatz text not null default '';
+
+-- Benachrichtigungs-Schalter (gelten für alle Admin-Geräte und bleiben dauerhaft an,
+-- bis sie in den Einstellungen wieder ausgeschaltet werden)
+alter table glas_einstellungen add column if not exists push_kalender boolean not null default false;
+alter table glas_einstellungen add column if not exists push_unterschrift boolean not null default false;
+
+-- Push-Fix: Ein Gerät darf Admin- UND Mitarbeiter-Benachrichtigungen gleichzeitig
+-- abonnieren. Bisher überschrieb der Wechsel zwischen den Seiten die Rolle -
+-- DAS war der Grund, warum Benachrichtigungen "immer wieder ausgingen".
+alter table push_subscriptions drop constraint if exists push_subscriptions_endpoint_key;
+create unique index if not exists push_subscriptions_endpoint_role on push_subscriptions(endpoint, role);

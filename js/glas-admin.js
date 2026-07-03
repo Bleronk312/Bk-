@@ -159,6 +159,7 @@ async function glasInit() {
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
   renderGlasAdmin();
   glasGeocodeFehlende();
+  try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("admin"); } catch (e) {}
 }
 
 // Importierte Objekte (z.B. aus der KITA-Excel-Liste) kommen ohne Koordinaten an -
@@ -277,6 +278,7 @@ function glasParseHash() {
   if (kind === "objekt" && id) return { type: "objekt", id };
   if (kind === "kunde" && id) return { type: "kunde", id };
   if (kind === "tab" && id) return { type: "tabs", tab: id };
+  if (kind === "statistik") return { type: "statistik" };
   return { type: "home" };
 }
 
@@ -285,6 +287,7 @@ function glasHashFor(page) {
   if (page.type === "kunde") return `#/kunde/${page.id}`;
   if (page.type === "objekt-form") return location.hash || "#/tab/kunden"; // kein eigener Hash nötig
   if (page.type === "home") return "#/";
+  if (page.type === "statistik") return "#/statistik";
   return `#/tab/${page.tab}`;
 }
 
@@ -339,6 +342,7 @@ function renderGlasAdmin() {
   if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); return; }
   if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); return; }
   if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); return; }
+  if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); return; }
 
   // Startseite (Dashboard) und alle Reiter teilen sich dieselbe Reiter-Leiste, damit die
   // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
@@ -655,6 +659,7 @@ async function glasAuswahlLoeschen() {
     const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).in("id", ids);
     if (error) { showToast("Fehler: " + error.message); return; }
     showToast(`${ids.length} Tour(en) ins Archiv verschoben`);
+    glasPushAnAdmins("push_kalender", "📅 Kalender", `${ids.length} Tour(en) ins Archiv verschoben`);
   } else if (glasAuswahl.modus === "objekte") {
     if (!confirm(`${ids.length} Objekt(e) löschen? Geplante (noch nicht unterschriebene) Termine werden mit entfernt, unterschriebene Scheine bleiben erhalten.`)) return;
     const fehler = await glasDeleteObjekteCascade(ids);
@@ -962,8 +967,9 @@ Im Gildehof 8
         <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint deutlich sichtbar am Tour-Stopp in der Mitarbeiter-Ansicht – aber nur, wenn hier etwas steht.</p>
       </div>
       <div class="field">
-        <label class="muted">Notiz (optional)</label>
-        <textarea id="o_notiz" rows="2" placeholder="Freie Notiz zum Objekt – kann bei der Tourenplanung angehängt werden">${escapeHtml(o.notiz || "")}</textarea>
+        <label class="muted">Standard-Tour-Notiz (optional)</label>
+        <textarea id="o_notiz" rows="2" placeholder="z.B. Schlüssel beim Hausmeister abholen">${escapeHtml(o.notiz || "")}</textarea>
+        <p class="muted" style="margin:4px 0 0; font-size:11.5px;">📝 Erscheint automatisch bei <b>jeder neuen Tour</b> mit diesem Objekt als Stopp-Notiz (Häkchen ist dann schon gesetzt) – im Tour-Formular änderbar.</p>
       </div>
       <label class="muted">Positionen &amp; Intervalle</label>
       ${renderPositionenRows(o.positionen)}
@@ -1484,9 +1490,72 @@ function renderEinstellungenKachel(key, titel, inhaltHtml) {
 
 function renderEinstellungenTab() {
   return `
+    <div class="card" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasOpenStatistik()">
+      <div>
+        <p style="margin:0; font-weight:600;">📊 Statistiken</p>
+        <p class="muted" style="margin:3px 0 0;">Gereinigte qm, Objekte, Kunden, beste Tage &amp; Monate</p>
+      </div>
+      <span style="font-size:18px; color:var(--text-secondary);">›</span>
+    </div>
+    ${renderEinstellungenKachel("push", "🔔 Benachrichtigungen", renderPushEinstellungen())}
     ${renderEinstellungenKachel("positionen", "📋 Positionen", renderPositionenTab())}
     ${renderEinstellungenKachel("archiv", "🗑️ Archiv", renderArchivTab())}
   `;
+}
+
+/* ---------------- Benachrichtigungen (nur Admin) ---------------- */
+
+function renderPushEinstellungen() {
+  const e = glasEinstellungen || {};
+  setTimeout(glasUpdatePushStatus, 80);
+  return `
+    <p class="muted" style="margin:0 0 10px;">Einmal pro Gerät aktivieren – danach bleiben die Benachrichtigungen dauerhaft an und erneuern sich bei jedem Öffnen automatisch. Auf dem iPhone funktioniert das nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
+    <button class="btn btn-primary" onclick="glasPushAktivieren()">🔔 Auf diesem Gerät aktivieren</button>
+    <p class="muted" id="glasPushStatus" style="margin:8px 0 14px; font-size:12px;"></p>
+    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+      <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
+      <span style="font-size:13.5px;">📅 Bei jedem Eintrag / jeder Änderung im Kalender (Touren &amp; Termine)</span>
+    </label>
+    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+      <input type="checkbox" style="width:auto;" ${e.push_unterschrift ? "checked" : ""} onchange="glasSavePushSchalter('push_unterschrift', this.checked)" />
+      <span style="font-size:13.5px;">✍️ Wenn eine Unterschrift eingeht (Mitarbeiter hat abnehmen lassen)</span>
+    </label>
+    <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein – sie kommen morgens gegen 8 Uhr.</p>
+  `;
+}
+
+async function glasPushAktivieren() {
+  if (typeof enablePushNotifications !== "function") { showToast("Push-Skript nicht geladen"); return; }
+  await enablePushNotifications("admin");
+  glasUpdatePushStatus();
+}
+
+async function glasUpdatePushStatus() {
+  const el = document.getElementById("glasPushStatus");
+  if (!el) return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    el.textContent = "❌ Auf diesem Gerät/Browser nicht unterstützt (iPhone: Seite als Home-Bildschirm-App öffnen).";
+    return;
+  }
+  if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+    el.textContent = "🚫 Benachrichtigungen sind in den Geräte-Einstellungen blockiert.";
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("sw.js");
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    el.textContent = sub
+      ? "✅ Auf diesem Gerät aktiv – erneuert sich bei jedem Öffnen von selbst."
+      : "Auf diesem Gerät noch nicht aktiviert.";
+  } catch (e) { el.textContent = ""; }
+}
+
+async function glasSavePushSchalter(schalter, wert) {
+  glasEinstellungen = { ...(glasEinstellungen || {}), id: "default", [schalter]: wert };
+  try { localStorage.setItem("glas_einstellungen", JSON.stringify(glasEinstellungen)); } catch (e) {}
+  const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", [schalter]: wert });
+  if (error) { showToast("Fehler: " + error.message + " (neueste SQL-Datei schon ausgeführt?)"); return; }
+  showToast(wert ? "Eingeschaltet – bleibt dauerhaft an" : "Ausgeschaltet");
 }
 
 function renderGlasStandortContent() {
@@ -1736,6 +1805,7 @@ function renderTourDetailView() {
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
             ${isDone ? `
+              ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
               <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
               <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
             ` : `
@@ -1793,6 +1863,10 @@ function renderAdminSignArea(s) {
       </div>
       <input type="hidden" id="as_datum" value="${glasTodayIso()}" />
       <div class="field">
+        <label class="muted">➕ Extra was gemacht? (optional, steht mit auf dem Schein)</label>
+        <textarea id="as_zusatz" rows="2" placeholder="z.B. 2 Stunden zusätzlich, 5 Fenster extra"></textarea>
+      </div>
+      <div class="field">
         <label class="muted">Schein sofort per E-Mail senden an (optional)</label>
         <input type="email" id="as_email" placeholder="kunde@firma.de – leer lassen = kein Versand" style="font-size:16px;" />
       </div>
@@ -1819,12 +1893,14 @@ async function saveGlasAdminSignature(stopId) {
 
   const unterschrift = glasAdminSigPad.toDataURL("image/png");
   const versandEmail = document.getElementById("as_email")?.value.trim() || "";
+  const zusatz = document.getElementById("as_zusatz")?.value.trim() || "";
   const stop = glasTourDetailStops.find((s) => s.id === stopId);
-  const { error, payload } = await glasSignStop(stopId, stop?.positionen, name, datum, unterschrift);
+  const { error, payload } = await glasSignStop(stopId, stop?.positionen, name, datum, unterschrift, zusatz);
   if (error) { showToast("Fehler: " + error.message); return; }
   if (stop) Object.assign(stop, payload);
 
   showToast("Unterschrieben");
+  glasPushAnAdmins("push_unterschrift", "✍️ Unterschrift eingegangen", `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
   glasAdminSignOpenStopId = null;
   await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
@@ -1936,7 +2012,7 @@ function renderTourSelectedSummary(items) {
           <div style="margin-top:8px;">
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
               <input type="checkbox" style="width:auto;" ${n.use ? "checked" : ""} onchange="glasToggleTourNotiz('${o.id}')" />
-              <span>📝 Notiz an den Stopp anhängen</span>
+              <span>📝 Notiz an den Stopp anhängen${o.notiz ? ` <span class="badge" style="background:#dbe9f8; color:#1f5d92; font-size:10px;">Standard-Notiz vom Objekt – wird angehängt</span>` : ""}</span>
             </label>
             ${n.use ? `<textarea id="tour_notiz_${o.id}" rows="2" style="margin-top:6px; font-size:13px;" placeholder="Notiz für diesen Stopp">${escapeHtml(n.text)}</textarea>` : ""}
           </div>`; })()}
@@ -2078,6 +2154,15 @@ function attachGlasReorderHandlers() {
   });
 }
 
+// Push an alle Admin-Geräte, wenn der jeweilige Schalter (glas_einstellungen) an ist.
+// Läuft komplett im Hintergrund - Fehler stören den normalen Ablauf nie.
+function glasPushAnAdmins(schalter, title, body, url) {
+  try {
+    if (!glasEinstellungen || !glasEinstellungen[schalter]) return;
+    sb.functions.invoke("send-push", { body: { role: "admin", title, body, url: url || "/glas-admin.html#/tab/kalender" } }).catch(() => {});
+  } catch (e) {}
+}
+
 async function createGlasTour() {
   if (glasBusy) return;
   let name = document.getElementById("t_name").value.trim();
@@ -2198,6 +2283,7 @@ async function createGlasTour() {
         ? `Gespeichert – Adresse(n) nicht gefunden, ans Ende gesetzt: ${failedNames.join(", ")}`
         : glasEditingTourId ? "Tour aktualisiert" : "Tour angelegt – erscheint jetzt im Mitarbeiter-Link"
     );
+    glasPushAnAdmins("push_kalender", "📅 Kalender", `${glasEditingTourId ? "Tour geändert" : "Neue Tour"}: ${name} – ${formatGlasDate(datum)}${datumBis ? " bis " + formatGlasDate(datumBis) : ""}`);
     glasSelectedObjekte.clear();
     glasManualOrder = [];
     glasPreselectPositionen = null;
@@ -2239,9 +2325,11 @@ async function editGlasTour(tourId) {
 
 async function deleteGlasTour(tourId) {
   if (!confirm("Diese Tour ins Archiv verschieben? Du kannst sie dort jederzeit wiederherstellen oder endgültig löschen.")) return;
+  const tourName = glasTouren.find((x) => x.id === tourId)?.name || "";
   const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour ins Archiv verschoben");
+  glasPushAnAdmins("push_kalender", "📅 Kalender", `Tour ins Archiv verschoben: ${tourName}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   goGlasTab("touren");
@@ -2251,6 +2339,7 @@ async function restoreGlasTour(tourId) {
   const { error } = await sb.from("glas_touren").update({ archiviert_am: null }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour wiederhergestellt");
+  glasPushAnAdmins("push_kalender", "📅 Kalender", `Tour wiederhergestellt: ${glasTouren.find((x) => x.id === tourId)?.name || ""}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
@@ -2749,10 +2838,12 @@ async function saveGlasTermin() {
     notiz: t.notiz || "",
     anhaenge: JSON.stringify(t.anhaenge || []),
   };
+  const warNeu = !t.id;
   const { error } = await sb.from("glas_termine").upsert(payload);
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
   showToast("Termin gespeichert");
+  glasPushAnAdmins("push_kalender", "📅 Kalender", `${warNeu ? "Neuer Termin" : "Termin geändert"}: ${payload.titel} – ${formatGlasDate(payload.datum)}`);
   glasTerminEditing = null;
   glasKalenderSelectedDay = payload.datum;
   await loadGlasTermine();
@@ -2761,9 +2852,11 @@ async function saveGlasTermin() {
 
 async function deleteGlasTermin(id) {
   if (!confirm("Diesen Termin wirklich löschen?")) return;
+  const geloeschterTitel = glasTermine.find((t) => t.id === id)?.titel || "";
   const { error } = await sb.from("glas_termine").delete().eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Termin gelöscht");
+  glasPushAnAdmins("push_kalender", "📅 Kalender", `Termin gelöscht: ${geloeschterTitel}`);
   glasTerminEditing = null;
   glasTerminViewing = null;
   await loadGlasTermine();
@@ -3059,7 +3152,9 @@ function renderVerschiebePicker() {
         <button class="btn btn-sm" onclick="glasVerschiebeUmTage(14)">+2 Wochen</button>
         <button class="btn btn-sm" onclick="glasVerschiebeUmMonate(1)">+1 Monat</button>
         <button class="btn btn-sm" onclick="glasVerschiebeUmMonate(3)">+3 Monate</button>
+        <button class="btn btn-sm" style="background:var(--success-bg); border-color:#cdeed3; color:var(--success-text);" onclick="glasVerschiebeSchonGereinigt()">✓ Schon gereinigt – nächster Termin</button>
       </div>
+      <p class="muted" style="margin:8px 0 0; font-size:11.5px;">„Schon gereinigt“ vermerkt heute als letzte Reinigung (z.B. ohne Schein erledigt) – die Fälligkeit springt automatisch auf den nächsten regulären Termin.</p>
       <div style="display:flex; gap:8px; align-items:flex-end; margin-top:10px; flex-wrap:wrap;">
         <div class="field" style="margin-bottom:0;">
           <label class="muted">Oder Datum wählen</label>
@@ -3083,6 +3178,20 @@ function glasVerschiebeAufDatum() {
   const val = document.getElementById("verschieben_datum")?.value;
   if (!val) { showToast("Bitte ein Datum wählen"); return; }
   glasSpeichereVerschiebung(val);
+}
+
+// "Schon gereinigt": letzte Reinigung = heute, manuelles Verschieben wird gelöscht -
+// dadurch berechnet sich die nächste Fälligkeit ganz normal aus dem Intervall.
+async function glasVerschiebeSchonGereinigt() {
+  if (!glasVerschiebeTarget) return;
+  const { positionIds } = glasVerschiebeTarget;
+  if (!positionIds.length) { showToast("Bitte mindestens eine Position anhaken"); return; }
+  const { error } = await sb.from("glas_objekt_positionen").update({ letzte_reinigung: glasTodayIso(), faelligkeit_override: null }).in("id", positionIds);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Als gereinigt vermerkt – Fälligkeit springt auf den nächsten Termin");
+  glasVerschiebeTarget = null;
+  await loadGlasObjektPositionen();
+  renderGlasAdmin();
 }
 
 async function glasSpeichereVerschiebung(neuesDatum) {
@@ -3120,6 +3229,173 @@ function glasOffeneZuTourHinzufuegen() {
   glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds) };
   glasShowNewTourForm = true;
   renderGlasAdmin();
+}
+
+/* ========================================================================
+   Statistiken: alles aus den unterschriebenen Stopps (Schnappschüsse) berechnet.
+   Eigene Seite unter #/statistik, erreichbar über "Weitere Einstellungen".
+   ======================================================================== */
+
+let glasStatistikDaten = null;   // alle erledigten Stopps (einmal geladen, dann gecacht)
+let glasStatZeitraum = "12m";    // "12m" | "jahr" | "vorjahr" | "alles"
+let glasStatMetrik = "qm";       // "qm" | "scheine"
+
+function glasOpenStatistik() {
+  glasContentAnimPending = true;
+  if (!glasStatistikDaten) loadGlasStatistik();
+  glasNavigate({ type: "statistik" });
+}
+
+async function loadGlasStatistik() {
+  const { data, error } = await sb
+    .from("glas_stopps")
+    .select("objekt_id, objekt, kunde_adresse, positionen, zusatz, datum, status")
+    .eq("status", "erledigt");
+  glasStatistikDaten = error ? [] : (data || []).filter((x) => x.datum);
+  renderGlasAdmin();
+}
+
+function glasStatQmVon(stop) {
+  let sum = 0;
+  try {
+    JSON.parse(stop.positionen || "[]").forEach((p) => { sum += parseFloat(String(p.qm || "").replace(",", ".")) || 0; });
+  } catch (e) {}
+  return sum;
+}
+
+function glasStatKundeVon(stop) {
+  const o = glasObjekte.find((x) => x.id === stop.objekt_id);
+  if (o && o.kunde_name) return o.kunde_name;
+  return (stop.kunde_adresse || "").split("\n")[0] || "Unbekannt";
+}
+
+function glasStatQmText(qm) {
+  return String(Math.round(qm * 10) / 10).replace(".", ",");
+}
+
+function glasStatZeitraumGrenzen() {
+  const heute = glasTodayIso();
+  const jahr = heute.slice(0, 4);
+  if (glasStatZeitraum === "jahr") return { von: `${jahr}-01-01`, bis: heute, label: `Jahr ${jahr}` };
+  if (glasStatZeitraum === "vorjahr") {
+    const vj = String(Number(jahr) - 1);
+    return { von: `${vj}-01-01`, bis: `${vj}-12-31`, label: `Jahr ${vj}` };
+  }
+  if (glasStatZeitraum === "alles") return { von: "0000-01-01", bis: "9999-12-31", label: "Gesamter Zeitraum" };
+  return { von: glasAddMonthsIso(heute, -12), bis: heute, label: "Letzte 12 Monate" };
+}
+
+const GLAS_STAT_MONATE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+function glasStatMonatLabel(ym) {
+  return `${GLAS_STAT_MONATE[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
+}
+
+function renderStatistikPage() {
+  if (glasStatistikDaten === null) {
+    return `
+      <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück</button>
+      <p class="muted"><span class="spinner"></span> Statistiken werden berechnet...</p>`;
+  }
+
+  const { von, bis, label } = glasStatZeitraumGrenzen();
+  const rows = glasStatistikDaten.filter((x) => x.datum >= von && x.datum <= bis);
+
+  // KPIs
+  let qmGesamt = 0;
+  const objekte = new Set();
+  const kunden = new Set();
+  rows.forEach((x) => {
+    qmGesamt += glasStatQmVon(x);
+    objekte.add(x.objekt_id || x.objekt);
+    kunden.add(glasStatKundeVon(x));
+  });
+
+  const metrikVon = (x) => (glasStatMetrik === "qm" ? glasStatQmVon(x) : 1);
+  const metrikText = (wert) => (glasStatMetrik === "qm" ? `${glasStatQmText(wert)} qm` : `${wert} Schein${wert === 1 ? "" : "e"}`);
+
+  // Gruppierungen: Monat, Tag, Objekt
+  const proMonat = new Map();
+  const proTag = new Map();
+  const proObjekt = new Map();
+  rows.forEach((x) => {
+    const m = x.datum.slice(0, 7);
+    proMonat.set(m, (proMonat.get(m) || 0) + metrikVon(x));
+    proTag.set(x.datum, (proTag.get(x.datum) || 0) + metrikVon(x));
+    const key = x.objekt || "?";
+    proObjekt.set(key, (proObjekt.get(key) || 0) + metrikVon(x));
+  });
+
+  const monate = [...proMonat.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxMonat = Math.max(1, ...monate.map(([, w]) => w));
+  const besterTag = [...proTag.entries()].sort((a, b) => b[1] - a[1])[0];
+  const besterMonat = [...monate].sort((a, b) => b[1] - a[1])[0];
+  const topObjekte = [...proObjekt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const kpi = (wert, beschriftung) => `
+    <div class="card" style="text-align:center; margin-bottom:0;">
+      <p style="margin:0; font-size:21px; font-weight:800; color:var(--blue);">${wert}</p>
+      <p class="muted" style="margin:3px 0 0;">${beschriftung}</p>
+    </div>`;
+
+  return `
+    <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück zu den Einstellungen</button>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
+      <h1 style="margin:0;">📊 Statistiken</h1>
+      <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasStatZeitraum = this.value; renderGlasAdmin();">
+        <option value="12m" ${glasStatZeitraum === "12m" ? "selected" : ""}>Letzte 12 Monate</option>
+        <option value="jahr" ${glasStatZeitraum === "jahr" ? "selected" : ""}>Dieses Jahr</option>
+        <option value="vorjahr" ${glasStatZeitraum === "vorjahr" ? "selected" : ""}>Letztes Jahr</option>
+        <option value="alles" ${glasStatZeitraum === "alles" ? "selected" : ""}>Alles</option>
+      </select>
+      <select style="width:auto; font-size:13px;" onchange="glasStatMetrik = this.value; renderGlasAdmin();">
+        <option value="qm" ${glasStatMetrik === "qm" ? "selected" : ""}>nach qm</option>
+        <option value="scheine" ${glasStatMetrik === "scheine" ? "selected" : ""}>nach Scheinen</option>
+      </select>
+    </div>
+    <p class="muted" style="margin:0 0 10px;">${label} · nur unterschriebene Abnahmen zählen</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+      ${kpi(glasStatQmText(qmGesamt) + " qm", "gereinigte Fläche")}
+      ${kpi(String(rows.length), "Abnahmescheine")}
+      ${kpi(String(objekte.size), "verschiedene Objekte")}
+      ${kpi(String(kunden.size), "verschiedene Kunden")}
+    </div>
+
+    <div class="card">
+      <h2>Verlauf pro Monat</h2>
+      ${monate.length ? monate.map(([ym, wert]) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:3px 0;">
+          <span class="muted" style="flex:0 0 52px; font-size:12px;">${glasStatMonatLabel(ym)}</span>
+          <div style="flex:1; background:var(--bg); border-radius:5px; overflow:hidden;">
+            <div style="width:${Math.max(2, Math.round((wert / maxMonat) * 100))}%; background:var(--blue); border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(wert * 10) / 10)}</div>
+          </div>
+        </div>`).join("") : `<p class="muted">Noch keine unterschriebenen Abnahmen in diesem Zeitraum.</p>`}
+    </div>
+
+    ${rows.length ? `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+      <div class="card" style="margin-bottom:0;">
+        <p class="muted" style="margin:0 0 4px;">🏆 Bester Tag</p>
+        <p style="margin:0; font-weight:700;">${besterTag ? formatGlasDate(besterTag[0]) : "–"}</p>
+        <p class="muted" style="margin:2px 0 0;">${besterTag ? metrikText(Math.round(besterTag[1] * 10) / 10) : ""}</p>
+      </div>
+      <div class="card" style="margin-bottom:0;">
+        <p class="muted" style="margin:0 0 4px;">🏆 Bester Monat</p>
+        <p style="margin:0; font-weight:700;">${besterMonat ? glasStatMonatLabel(besterMonat[0]) : "–"}</p>
+        <p class="muted" style="margin:2px 0 0;">${besterMonat ? metrikText(Math.round(besterMonat[1] * 10) / 10) : ""}</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Top-Objekte</h2>
+      ${topObjekte.map(([nameObj, wert], i) => `
+        <div style="display:flex; justify-content:space-between; gap:10px; padding:8px 0; ${i ? "border-top:1px solid var(--border);" : ""}">
+          <span style="font-size:13.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${i + 1}. ${escapeHtml(nameObj)}</span>
+          <span style="font-weight:700; font-size:13px; white-space:nowrap;">${metrikText(Math.round(wert * 10) / 10)}</span>
+        </div>`).join("")}
+    </div>` : ""}
+  `;
 }
 
 glasInit();

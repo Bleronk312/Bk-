@@ -207,9 +207,14 @@ function glasIntervallLabel(pos) {
 // Markiert einen Stopp als unterschrieben und setzt "zuletzt gereinigt" nur für die
 // Positionen zurück, die tatsächlich auf diesem Schein enthalten waren (nicht automatisch
 // für alle Positionen des Objekts) - inkl. Zurücksetzen einer evtl. manuellen Verschiebung.
-async function glasSignStop(stopId, positionenJson, name, datum, unterschrift) {
-  const payload = { name, datum, unterschrift, status: "erledigt", signed_at: new Date().toISOString() };
-  const { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+async function glasSignStop(stopId, positionenJson, name, datum, unterschrift, zusatz) {
+  const payload = { name, datum, unterschrift, status: "erledigt", signed_at: new Date().toISOString(), zusatz: (zusatz || "").trim() };
+  let { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+  if (error && /zusatz/.test(error.message || "")) {
+    // Spalte existiert noch nicht (SQL-Datei nicht ausgeführt) - ohne Zusatz speichern
+    delete payload.zusatz;
+    ({ error } = await sb.from("glas_stopps").update(payload).eq("id", stopId));
+  }
   if (error) return { error };
 
   try {

@@ -272,6 +272,7 @@ function renderGlasStopDetails(t, s, isDone) {
         ? `
       <div style="margin-top:12px; border-top:1px solid #cdeed3; padding-top:12px;">
         <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(s.datum)}</p>
+        ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
       </div>`
@@ -294,6 +295,11 @@ function renderGlasSignForm(s) {
         <label class="muted">Unterschrift</label>
         <canvas id="gs_sigCanvas" style="width:100%; height:180px; border:1px solid var(--border); border-radius:10px; background:white; touch-action:none;"></canvas>
         <button class="btn btn-sm" style="margin-top:8px;" onclick="clearGlasSig()">🗑️ Löschen & neu</button>
+      </div>
+      <div class="field">
+        <label class="muted">➕ Extra was gemacht? (optional)</label>
+        <textarea id="gs_zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich, 5 Fenster extra"></textarea>
+        <p class="muted" style="margin:4px 0 0; font-size:12px;">Steht danach mit auf dem Abnahmeschein.</p>
       </div>
       <input type="hidden" id="gs_datum" value="${today}" />
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
@@ -329,17 +335,19 @@ async function saveGlasSignature(stopId) {
   if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
 
   const unterschrift = glasSigPad.toDataURL("image/png");
+  const zusatz = document.getElementById("gs_zusatz")?.value.trim() || "";
   let stopRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
     if (stop) stopRef = stop;
   }
 
-  const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift);
+  const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift, zusatz);
   if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
   if (stopRef) Object.assign(stopRef, payload);
 
   showToast("Gespeichert");
+  glasPushUnterschriftAnAdmin(stopRef, name, zusatz);
   // Stopp bleibt aufgeklappt und zeigt jetzt den grünen "Unterschrieben"-Block
   glasSignStopId = null;
   glasOpenStopId = stopId;
@@ -352,6 +360,23 @@ function downloadGlasPdf(tourId, stopId) {
   if (!s) return;
   const doc = generateGlasPdf(s, t.template, t.datum);
   doc.save(glasScheinFilename(s, t.template));
+}
+
+// Meldet dem Admin eine frisch eingegangene Unterschrift (wenn der Schalter in den
+// Admin-Einstellungen an ist). Fehler hier dürfen den Mitarbeiter nie stören.
+async function glasPushUnterschriftAnAdmin(stop, name, zusatz) {
+  try {
+    const { data } = await sb.from("glas_einstellungen").select("push_unterschrift").eq("id", "default").limit(1);
+    if (!data || !data[0] || !data[0].push_unterschrift) return;
+    sb.functions.invoke("send-push", {
+      body: {
+        role: "admin",
+        title: "✍️ Unterschrift eingegangen",
+        body: `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`,
+        url: "/glas-admin.html#/tab/touren",
+      },
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 glasMaInit();

@@ -186,6 +186,16 @@ function generateGlasPdf(s, templateKey, tourDatum) {
     by += L.bulletLineGap;
   });
 
+  // Zusatzleistungen, die der Mitarbeiter vor Ort eingetragen hat (z.B. Extra-Stunden)
+  if (s.zusatz) {
+    by += 2;
+    doc.setFont(FONT, "bold");
+    doc.text("Zusätzlich:", posX, by);
+    doc.setFont(FONT, "normal");
+    const zusatzLines = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize(String(s.zusatz), 110) : [String(s.zusatz)];
+    zusatzLines.slice(0, 3).forEach((ln) => { doc.text(ln, descX, by); by += L.bulletLineGap; });
+  }
+
   // "Gesamt Reinigungsfläche" bewusst weiter unten, kurz über dem Hinweistext -
   // dort, wo genug Platz ist, unabhängig davon wie viele Positionen es gibt
   if (gesamtQm > 0) {

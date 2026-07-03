@@ -13,6 +13,7 @@ function initHeader() {
 }
 try { initHeader(); } catch (e) { console.error("Header-Init fehlgeschlagen:", e); }
 try { checkPushStatus(); } catch (e) {}
+try { autoRenewPushSubscription("mitarbeiter"); } catch (e) {}
 
 function updateHeaderStat(openCount) {
   const stat = document.getElementById("headerStat");

@@ -30,6 +30,27 @@ VAPID_PRIVATE_KEY = nLHBAc73y-Q2M8jKrNFefTseZ55EIp2coXVQ9C2L168
 
 ---
 
+## Update Juli 2026: Benachrichtigungen überarbeitet (2 Schritte)
+
+Die Push-Benachrichtigungen bleiben jetzt dauerhaft an: Jedes Öffnen der Seite
+erneuert die Anmeldung automatisch, und ein Gerät kann Admin- UND
+Mitarbeiter-Benachrichtigungen gleichzeitig haben (der Wechsel zwischen den
+Seiten hat sie bisher gegenseitig überschrieben - deshalb "gingen sie immer aus").
+
+1. **SQL ausführen**: den neuesten Block am Ende von `supabase_add_glas.sql`
+   (Zusatzleistungen-Spalte, Benachrichtigungs-Schalter, Push-Fix).
+2. **Edge Function neu deployen**: Inhalt von
+   `supabase_edge_functions/daily-reminders/index.ts` im Supabase-Dashboard in die
+   bestehende Funktion `daily-reminders` kopieren -> Deploy. Sie schickt jetzt
+   zusätzlich die Glas-Termin-Erinnerungen (⏰ am Termin einstellbar) und morgens
+   eine Übersicht der heutigen Glas-Touren.
+
+Danach in der Glas-Verwaltung unter **Weitere Einstellungen -> 🔔 Benachrichtigungen**
+einmal pro Gerät aktivieren und die Schalter (Kalender-Änderungen / Unterschriften)
+einschalten - die gelten dann dauerhaft für alle Admin-Geräte.
+Wichtig fürs iPhone: Benachrichtigungen funktionieren nur, wenn die Seite als
+App auf dem Home-Bildschirm liegt (Teilen -> "Zum Home-Bildschirm").
+
 ## Einzurichten: Automatischer E-Mail-Versand der Scheine (Resend)
 
 Nach der Unterschrift kann optional eine E-Mail-Adresse eingetragen werden – der fertige

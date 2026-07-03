@@ -64,22 +64,70 @@ Deno.serve(async (_req) => {
       .filter((s) => berlinDateString(new Date(s.termin)) === today)
       .sort((a, b) => new Date(a.termin) - new Date(b.termin));
 
-    if (todays.length === 0) {
-      return new Response(JSON.stringify({ message: "Keine Termine heute, keine Benachrichtigung gesendet" }));
+    let gesendet = 0;
+
+    if (todays.length > 0) {
+      const lines = todays.map((s) => {
+        const strasse = (s.adresse || "").split("\n")[0];
+        return `${berlinTimeString(new Date(s.termin))} – ${strasse}`;
+      });
+      const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
+      const body = lines.join("\n");
+      await sendToRole(supabase, "admin", title, body);
+      await sendToRole(supabase, "mitarbeiter", title, body);
+      gesendet += todays.length;
     }
 
-    const lines = todays.map((s) => {
-      const strasse = (s.adresse || "").split("\n")[0];
-      return `${berlinTimeString(new Date(s.termin))} – ${strasse}`;
+    // ---- Glasreinigung: Erinnerungen für Kalender-Termine (nur Admin) ----
+    // erinnerung: '' | 'same_day' | '1d' | '2d' | '7d' (X Tage vor dem Termin-Datum)
+    const offsets: Record<string, number> = { same_day: 0, "1d": 1, "2d": 2, "7d": 7 };
+    const { data: glasTermine } = await supabase
+      .from("glas_termine")
+      .select("titel, datum, erinnerung, notiz");
+
+    const faellig = (glasTermine || []).filter((t) => {
+      if (!t.datum || !(t.erinnerung in offsets)) return false;
+      const d = new Date(t.datum + "T12:00:00Z");
+      d.setUTCDate(d.getUTCDate() - offsets[t.erinnerung]);
+      return d.toISOString().slice(0, 10) === today;
     });
 
-    const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
-    const body = lines.join("\n");
+    for (const t of faellig) {
+      const [y, m, d] = t.datum.split("-");
+      const wann = t.erinnerung === "same_day" ? "Heute" : `Am ${d}.${m}.${y}`;
+      await sendToRole(
+        supabase,
+        "admin",
+        `⏰ Erinnerung: ${t.titel}`,
+        `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`
+      );
+      gesendet++;
+    }
 
-    await sendToRole(supabase, "admin", title, body);
-    await sendToRole(supabase, "mitarbeiter", title, body);
+    // ---- Glasreinigung: heutige Touren als Morgen-Übersicht (nur Admin) ----
+    const { data: glasTouren } = await supabase
+      .from("glas_touren")
+      .select("name, datum, datum_bis, archiviert_am")
+      .is("archiviert_am", null);
 
-    return new Response(JSON.stringify({ notified: todays.length }), {
+    const heutigeTouren = (glasTouren || []).filter(
+      (t) => t.datum && t.datum <= today && today <= (t.datum_bis || t.datum)
+    );
+    if (heutigeTouren.length > 0) {
+      await sendToRole(
+        supabase,
+        "admin",
+        `🚐 ${heutigeTouren.length} Glas-Tour${heutigeTouren.length === 1 ? "" : "en"} heute`,
+        heutigeTouren.map((t) => t.name || t.datum).join("\n")
+      );
+      gesendet += heutigeTouren.length;
+    }
+
+    if (gesendet === 0) {
+      return new Response(JSON.stringify({ message: "Nichts fällig heute, keine Benachrichtigung gesendet" }));
+    }
+
+    return new Response(JSON.stringify({ notified: gesendet }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
