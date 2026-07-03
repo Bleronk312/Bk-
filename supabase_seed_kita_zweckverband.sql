@@ -8,8 +8,9 @@
 alter table glas_objekte add column if not exists template text not null default 'geko';
 
 -- Kunde anlegen, falls es ihn noch nicht gibt
-insert into kunden (id, name, adresse, kdnr)
-select 'kunde-kita-zweckverband', 'KITA Zweckverband', '', ''
+alter table kunden add column if not exists bereich text not null default 'beide';
+insert into kunden (id, name, adresse, kdnr, bereich)
+select 'kunde-kita-zweckverband', 'KITA Zweckverband', '', '', 'glas'
 where not exists (select 1 from kunden where name ilike '%zweckverband%');
 
 -- Bochum: St. Peter und Paul / 401

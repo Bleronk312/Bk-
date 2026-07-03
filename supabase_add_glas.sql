@@ -252,3 +252,18 @@ alter table glas_einstellungen add column if not exists push_unterschrift boolea
 -- DAS war der Grund, warum Benachrichtigungen "immer wieder ausgingen".
 alter table push_subscriptions drop constraint if exists push_subscriptions_endpoint_key;
 create unique index if not exists push_subscriptions_endpoint_role on push_subscriptions(endpoint, role);
+
+-- ============================================================================
+-- Kunden-Trennung: Graffiti und Glasreinigung sehen jeweils nur ihre eigenen
+-- Kunden ('graffiti' | 'glas' | 'beide'). Die einmalige Zuordnung des Bestands
+-- läuft nur beim ALLERERSTEN Ausführen (wenn die Spalte neu entsteht):
+-- Kunden mit Glas-Objekten -> 'glas', alle anderen -> 'graffiti'.
+-- Danach frei änderbar über das Kunden-Formular in beiden Apps.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'kunden' and column_name = 'bereich') then
+    alter table kunden add column bereich text not null default 'beide';
+    update kunden set bereich = 'glas' where id in (select kunde_id from glas_objekte where coalesce(kunde_id, '') <> '');
+    update kunden set bereich = 'graffiti' where bereich = 'beide';
+  end if;
+end $$;

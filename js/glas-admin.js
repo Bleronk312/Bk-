@@ -244,7 +244,9 @@ function glasGetObjektPositionen(objektId) {
 
 async function loadGlasKunden() {
   const { data, error } = await sb.from("kunden").select("*").order("name", { ascending: true });
-  if (!error) glasKunden = data || [];
+  // Kunden sind nach Bereich getrennt: hier nur Glasreinigung (+ "beide"); Altbestand
+  // ohne Bereich-Spalte (SQL noch nicht ausgeführt) bleibt überall sichtbar.
+  if (!error) glasKunden = (data || []).filter((k) => !k.bereich || k.bereich === "glas" || k.bereich === "beide");
 }
 
 async function loadGlasObjekte() {
@@ -693,11 +695,12 @@ function syncKundeFormFromDom() {
   if (get("k_name") !== undefined) glasKundeEditing.name = get("k_name");
   if (get("k_adresse") !== undefined) glasKundeEditing.adresse = get("k_adresse");
   if (get("k_kdnr") !== undefined) glasKundeEditing.kdnr = get("k_kdnr");
+  if (get("k_bereich") !== undefined) glasKundeEditing.bereich = get("k_bereich");
 }
 
 function editGlasKunde(id) {
   if (id === null) {
-    glasKundeEditing = { id: null, name: "", adresse: "", kdnr: "" };
+    glasKundeEditing = { id: null, name: "", adresse: "", kdnr: "", bereich: "glas" };
   } else {
     glasKundeEditing = { ...glasKunden.find((k) => k.id === id) };
   }
@@ -718,6 +721,14 @@ function renderKundeForm() {
       <div class="field"><label class="muted">Adresse</label><textarea id="k_adresse" rows="3" placeholder="Im Gildehof 8
 45127 Essen">${escapeHtml(k.adresse)}</textarea></div>
       <div class="field"><label class="muted">Haupt-Kd.-Nr. (erscheint auf den Abnahmescheinen)</label><input type="text" id="k_kdnr" value="${escapeHtml(k.kdnr)}" /></div>
+      <div class="field">
+        <label class="muted">Bereich (wo dieser Kunde auftaucht)</label>
+        <select id="k_bereich" style="width:auto;">
+          <option value="glas" ${(k.bereich || "glas") === "glas" ? "selected" : ""}>Glasreinigung</option>
+          <option value="graffiti" ${k.bereich === "graffiti" ? "selected" : ""}>Graffiti / Sonderreinigung</option>
+          <option value="beide" ${k.bereich === "beide" ? "selected" : ""}>Beide Bereiche</option>
+        </select>
+      </div>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-primary" onclick="saveGlasKunde()" ${glasBusy ? "disabled" : ""}>${glasBusy ? '<span class="spinner"></span> Speichere...' : "Speichern"}</button>
         <button class="btn btn-sm" onclick="cancelGlasKundeEdit()">Abbrechen</button>
@@ -733,7 +744,7 @@ async function saveGlasKunde() {
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   glasBusy = true;
   renderGlasAdmin();
-  const payload = { id: glasKundeEditing.id || genCode(), name, adresse: (glasKundeEditing.adresse || "").trim(), kdnr: (glasKundeEditing.kdnr || "").trim() };
+  const payload = { id: glasKundeEditing.id || genCode(), name, adresse: (glasKundeEditing.adresse || "").trim(), kdnr: (glasKundeEditing.kdnr || "").trim(), bereich: glasKundeEditing.bereich || "glas" };
   const { error } = await sb.from("kunden").upsert(payload);
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }

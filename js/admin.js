@@ -329,7 +329,9 @@ function renderScheineItem(s) {
 
 async function loadKundenData() {
   const { data, error } = await sb.from("kunden").select("*").order("name", { ascending: true });
-  if (!error) kunden = data || [];
+  // Kunden sind nach Bereich getrennt: hier nur Graffiti (+ "beide"); Altbestand ohne
+  // Bereich-Spalte (SQL noch nicht ausgeführt) bleibt überall sichtbar.
+  if (!error) kunden = (data || []).filter((k) => !k.bereich || k.bereich === "graffiti" || k.bereich === "beide");
 }
 
 async function loadKategorienData() {
@@ -1022,7 +1024,7 @@ function renderKundenList() {
 }
 
 function openKundeEdit(id) {
-  const k = id ? kunden.find((x) => x.id === id) : { id: genCode(), name: "", adresse: "", kdnr: "" };
+  const k = id ? kunden.find((x) => x.id === id) : { id: genCode(), name: "", adresse: "", kdnr: "", bereich: "graffiti" };
   document.getElementById("view").innerHTML = `
     <button class="btn btn-sm" onclick="switchTab('kunden')" style="margin-bottom:14px;">&larr; Zurück</button>
     <div class="card">
@@ -1039,6 +1041,14 @@ function openKundeEdit(id) {
         <label>Kd.-Nr.</label>
         <input id="k_kdnr" value="${escapeHtml(k.kdnr)}" placeholder="1012" />
       </div>
+      <div class="field">
+        <label>Bereich (wo dieser Kunde auftaucht)</label>
+        <select id="k_bereich" style="width:auto;">
+          <option value="graffiti" ${(k.bereich || "graffiti") === "graffiti" ? "selected" : ""}>Graffiti / Sonderreinigung</option>
+          <option value="glas" ${k.bereich === "glas" ? "selected" : ""}>Glasreinigung</option>
+          <option value="beide" ${k.bereich === "beide" ? "selected" : ""}>Beide Bereiche</option>
+        </select>
+      </div>
       <button class="btn btn-primary btn-block" onclick="saveKunde('${k.id}')">Speichern</button>
     </div>
   `;
@@ -1050,6 +1060,7 @@ async function saveKunde(id) {
     name: document.getElementById("k_name").value,
     adresse: document.getElementById("k_adresse").value,
     kdnr: document.getElementById("k_kdnr").value,
+    bereich: document.getElementById("k_bereich")?.value || "graffiti",
   };
   const { error } = await sb.from("kunden").upsert(payload);
   if (error) { showToast("Fehler: " + error.message); return; }
