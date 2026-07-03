@@ -222,3 +222,17 @@ alter table glas_stopps add column if not exists hinweise text not null default 
 alter table glas_objekte add column if not exists notiz text not null default '';
 alter table glas_stopps add column if not exists notiz text not null default '';
 
+
+-- ============================================================================
+-- Schein-Vorlage je Objekt ('geko' oder 'sub' = Dietrich). Wird beim
+-- "Schein erstellen", bei Einzelscheinen und bei der Tourenplanung
+-- automatisch vorausgewählt.
+alter table glas_objekte add column if not exists template text not null default 'geko';
+
+-- Aufräumen von Altbeständen: Objekte gelöschter Kunden, offene Stopps gelöschter
+-- Objekte und dadurch leer gewordene Touren entfernen. Ab jetzt räumt die App beim
+-- Löschen selbst auf - dieser Block bereinigt nur, was früher liegen geblieben ist.
+-- Sicher mehrfach ausführbar. Unterschriebene Scheine bleiben unangetastet.
+delete from glas_objekte where kunde_id <> '' and kunde_id not in (select id from kunden);
+delete from glas_stopps where status <> 'erledigt' and coalesce(objekt_id, '') <> '' and objekt_id not in (select id from glas_objekte);
+delete from glas_touren where id not in (select tour_id from glas_stopps);

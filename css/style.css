@@ -203,17 +203,39 @@ label {
 .glas-logo-left .app-header { padding-bottom: 52px; }
 .glas-logo-left .app-sheet-content { padding-top: 66px; }
 
-/* Kalender darf die volle Breite nutzen (Handy UND Desktop) - auf dem Handy komplett
-   randlos wie TimeTree, damit pro Tagesspalte maximal viel Text lesbar ist */
-.glas-fullwidth .wrap { max-width: none; }
-@media (max-width: 759px) {
-  .glas-fullwidth .wrap { padding-left: 2px; padding-right: 2px; }
+/* Kalender darf die volle Breite nutzen (Handy UND Desktop) - aber nur das
+   Kalender-Raster selbst bricht aus der Spalte aus: Reiter, Suche & Co. bleiben
+   mittig in der normalen Breite (Desktop-Fix: Reiter sprangen nach links). */
+.glas-fullwidth { overflow-x: hidden; }
+.glas-fullwidth .glas-cal-card {
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
 }
 .glas-cal-card {
   padding: 10px 0 12px;
   border: none;
   background: transparent;
 }
+
+/* Mehrfach-Auswahl (Kunden / Objekte / Touren): runde Checkbox links auf der Karte */
+.glas-pick {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #fff;
+  background: var(--card);
+}
+.glas-pick.on {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.glas-pick.on::after { content: "\2713"; }
 
 /* ---------------- Monatskalender (TimeTree-Optik) ---------------- */
 /* Kein Spalten-Abstand: mehrtägige Balken laufen optisch durch. Keine Tages-Boxen,

@@ -55,6 +55,7 @@ let glasKalenderMonth = (() => { const d = new Date(); return { year: d.getFullY
 let glasKalenderSelectedDay = null;
 let glasOffeneSearch = "";
 let glasOffeneSelected = new Set(); // Set von "objektId::positionId"
+let glasAuswahl = { modus: null, ids: new Set() }; // Mehrfach-Auswahl: 'kunden' | 'objekte' | 'touren'
 
 let glasShowEinzelschein = false;
 
@@ -153,6 +154,26 @@ async function glasInit() {
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen()]);
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
   renderGlasAdmin();
+  glasGeocodeFehlende();
+}
+
+// Importierte Objekte (z.B. aus der KITA-Excel-Liste) kommen ohne Koordinaten an -
+// die holen wir hier still im Hintergrund nach, damit Navigation und Route sofort
+// funktionieren. Nominatim erlaubt max. 1 Anfrage pro Sekunde.
+async function glasGeocodeFehlende() {
+  const fehlende = glasObjekte.filter((o) => !o.lat && (o.adresse || "").trim());
+  let ergaenzt = 0;
+  for (const o of fehlende) {
+    try {
+      const { strasse, plz, ort } = glasSplitAdresse(o.adresse);
+      const coords = await glasGeocode(`${strasse}, ${plz} ${ort}`);
+      if (!coords || !coords.lat) continue;
+      const { error } = await sb.from("glas_objekte").update({ lat: coords.lat, lng: coords.lng }).eq("id", o.id);
+      if (!error) { o.lat = coords.lat; o.lng = coords.lng; ergaenzt++; }
+      await new Promise((r) => setTimeout(r, 1100));
+    } catch (e) { /* nächster Versuch beim nächsten Laden der Seite */ }
+  }
+  if (ergaenzt && !glasObjektEditing && !glasKundeEditing && !glasShowNewTourForm && !glasShowEinzelschein) renderGlasAdmin();
 }
 
 async function loadGlasTermine() {
@@ -279,10 +300,11 @@ function glasNavigate(page) {
   else renderGlasAdmin();
 }
 
-function goGlasObjekt(id) { glasNavigate({ type: "objekt", id }); }
-function goGlasKunde(id) { glasNavigate({ type: "kunde", id }); }
+function goGlasObjekt(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
+function goGlasKunde(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "kunde", id }); }
 function goGlasTab(tab) {
   glasContentAnimPending = true;
+  glasAuswahl = { modus: null, ids: new Set() };
   glasObjektEditing = null;
   glasKundeEditing = null;
   glasShowNewTourForm = false;
@@ -567,12 +589,14 @@ function renderKundenTab() {
     return diff || a.k.name.localeCompare(b.k.name, "de");
   });
 
+  const auswahl = glasAuswahl.modus === "kunden";
   const rows = sortiert.length
     ? sortiert.map(({ k, status }) => {
         const objekte = glasObjekte.filter((o) => o.kunde_id === k.id);
         return `
-          <div class="card" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="goGlasKunde('${k.id}')">
-            <div>
+          <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${k.id}')` : `goGlasKunde('${k.id}')`}">
+            ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(k.id) ? "on" : ""}"></span>` : ""}
+            <div style="flex:1;">
               <p style="margin:0; font-weight:600;">${glasStatusDot(status)}${escapeHtml(k.name)}</p>
               <p class="muted" style="margin:3px 0 0;">${objekte.length} Objekt(e)</p>
             </div>
@@ -585,14 +609,73 @@ function renderKundenTab() {
     <div style="display:flex; gap:8px; margin:16px 0; align-items:center;">
       <button class="btn btn-primary" onclick="editGlasKunde(null)">+ Neuer Kunde</button>
       <button class="btn btn-sm" onclick="editGlasObjekt(null)">+ Neues Objekt</button>
+      ${sortiert.length && !auswahl ? `<button class="btn btn-sm" title="Mehrere auswählen" onclick="glasAuswahlStart('kunden')">☑️ Auswählen</button>` : ""}
       <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasKundenSort = this.value; renderGlasAdmin();">
         <option value="az" ${glasKundenSort === "az" ? "selected" : ""}>A–Z</option>
         <option value="dringend" ${glasKundenSort === "dringend" ? "selected" : ""}>Überfällig zuerst</option>
         <option value="ok" ${glasKundenSort === "ok" ? "selected" : ""}>OK zuerst</option>
       </select>
     </div>
+    ${auswahl ? glasAuswahlLeiste() : ""}
     ${rows}
   `;
+}
+
+/* ========================================================================
+   Mehrfach-Auswahl (Kunden / Objekte / Touren): auswählen und gesammelt löschen
+   ======================================================================== */
+
+function glasAuswahlStart(modus) { glasAuswahl = { modus, ids: new Set() }; renderGlasAdmin(); }
+function glasAuswahlEnde() { glasAuswahl = { modus: null, ids: new Set() }; renderGlasAdmin(); }
+function glasAuswahlToggle(id) {
+  if (glasAuswahl.ids.has(id)) glasAuswahl.ids.delete(id); else glasAuswahl.ids.add(id);
+  renderGlasAdmin();
+}
+
+function glasAuswahlLeiste() {
+  const n = glasAuswahl.ids.size;
+  const label = glasAuswahl.modus === "touren" ? "🗑️ Ins Archiv" : "🗑️ Löschen";
+  return `
+    <div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 14px;">
+      <span style="font-weight:600;">${n} ausgewählt</span>
+      <button class="btn btn-sm" style="margin-left:auto;" onclick="glasAuswahlEnde()">Abbrechen</button>
+      <button class="btn btn-sm" style="background:var(--danger); border-color:var(--danger); color:#fff;" onclick="glasAuswahlLoeschen()" ${n ? "" : "disabled"}>${label}</button>
+    </div>`;
+}
+
+async function glasAuswahlLoeschen() {
+  const ids = [...glasAuswahl.ids];
+  if (!ids.length) return;
+  if (glasAuswahl.modus === "touren") {
+    if (!confirm(`${ids.length} Tour(en) ins Archiv verschieben? Du kannst sie dort wiederherstellen oder endgültig löschen.`)) return;
+    const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).in("id", ids);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast(`${ids.length} Tour(en) ins Archiv verschoben`);
+  } else if (glasAuswahl.modus === "objekte") {
+    if (!confirm(`${ids.length} Objekt(e) löschen? Geplante (noch nicht unterschriebene) Termine werden mit entfernt, unterschriebene Scheine bleiben erhalten.`)) return;
+    const fehler = await glasDeleteObjekteCascade(ids);
+    if (fehler) { showToast("Fehler: " + fehler); return; }
+    showToast(`${ids.length} Objekt(e) gelöscht`);
+  } else if (glasAuswahl.modus === "kunden") {
+    const objektIds = glasObjekte.filter((o) => ids.includes(o.kunde_id)).map((o) => o.id);
+    if (!confirm(`${ids.length} Kunde(n) inkl. ${objektIds.length} Objekt(en) löschen? Geplante (noch nicht unterschriebene) Termine werden mit entfernt.`)) return;
+    const fehler = await glasDeleteObjekteCascade(objektIds);
+    if (fehler) { showToast("Fehler: " + fehler); return; }
+    const { error } = await sb.from("kunden").delete().in("id", ids);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast(`${ids.length} Kunde(n) gelöscht`);
+  }
+  glasAuswahl = { modus: null, ids: new Set() };
+  await glasReloadNachLoeschen();
+  renderGlasAdmin();
+}
+
+// Nach Lösch-Aktionen alles neu laden, was Objekte/Touren anzeigt (Startseite,
+// Offene Liste, Kalender), damit nirgendwo Reste hängen bleiben.
+async function glasReloadNachLoeschen() {
+  glasKundeTermineCache = {};
+  glasObjektDetailHistory = {};
+  await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasEingeplantePositionen()]);
 }
 
 function syncKundeFormFromDom() {
@@ -653,16 +736,18 @@ async function saveGlasKunde() {
 }
 
 async function deleteGlasKunde(id) {
-  const objekteCount = glasObjekte.filter((o) => o.kunde_id === id).length;
-  const msg = objekteCount
-    ? `Dieser Kunde hat noch ${objekteCount} Objekt(e). Die Objekte bleiben erhalten, sind danach aber nicht mehr über diesen Kunden auffindbar. Trotzdem löschen?`
+  const objekte = glasObjekte.filter((o) => o.kunde_id === id);
+  const msg = objekte.length
+    ? `Diesen Kunden inkl. seiner ${objekte.length} Objekt(e) löschen? Geplante (noch nicht unterschriebene) Termine werden überall mit entfernt, unterschriebene Scheine bleiben erhalten.`
     : "Diesen Kunden wirklich löschen?";
   if (!confirm(msg)) return;
+  const fehler = await glasDeleteObjekteCascade(objekte.map((o) => o.id));
+  if (fehler) { showToast("Fehler: " + fehler); return; }
   const { error } = await sb.from("kunden").delete().eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Kunde gelöscht");
   glasKundeEditing = null;
-  await loadGlasKunden();
+  await glasReloadNachLoeschen();
   goGlasTab("kunden");
 }
 
@@ -705,12 +790,15 @@ function renderKundeDetailPage(id) {
       <button class="btn btn-sm ${glasKundeSubTab === "termine" ? "btn-primary" : ""}" style="flex:1; justify-content:center;" onclick="glasKundeSubTab = 'termine'; if (!glasKundeTermineCache['${id}']) loadGlasKundeTermine('${id}'); renderGlasAdmin();">📅 Termine</button>
     </div>
     ${glasKundeSubTab === "termine" ? renderKundeTermine(id) : `
+      ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
       <div class="card" style="padding:6px 18px;">
         ${objekte.length ? objekte.map((o) => {
           const status = glasObjektStatus(o.id);
+          const auswahl = glasAuswahl.modus === "objekte";
           return `
-          <div style="border-top:1px solid var(--border); padding:12px 4px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goGlasObjekt('${o.id}')">
-            <div>
+          <div style="border-top:1px solid var(--border); padding:12px 4px; display:flex; gap:10px; justify-content:space-between; align-items:center; cursor:pointer;" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
+            ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(o.id) ? "on" : ""}"></span>` : ""}
+            <div style="flex:1;">
               <p style="margin:0; font-weight:500;">${glasStatusDot(status)}${escapeHtml(o.name)}</p>
               <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
             </div>
@@ -718,7 +806,10 @@ function renderKundeDetailPage(id) {
           </div>`;
         }).join("") : `<p class="muted" style="padding:10px 0;">Noch keine Objekte für diesen Kunden angelegt.</p>`}
       </div>
-      <button class="btn btn-primary" onclick="editGlasObjekt(null, {presetKundeId:'${k.id}', returnTo:{type:'kunde', id:'${k.id}'}})">+ Neues Objekt für diesen Kunden</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary" onclick="editGlasObjekt(null, {presetKundeId:'${k.id}', returnTo:{type:'kunde', id:'${k.id}'}})">+ Neues Objekt für diesen Kunden</button>
+        ${objekte.length && glasAuswahl.modus !== "objekte" ? `<button class="btn btn-sm" title="Mehrere auswählen" onclick="glasAuswahlStart('objekte')">☑️ Auswählen</button>` : ""}
+      </div>
     `}
   `;
 }
@@ -776,6 +867,7 @@ function editGlasObjekt(id, opts) {
       telefon: "",
       hinweise: "",
       notiz: "",
+      template: "geko",
       positionen: [glasLeerePosition()],
     };
   } else {
@@ -842,6 +934,13 @@ Im Gildehof 8
           <input type="text" id="o_kdnr" value="${escapeHtml(o.kdnr)}" placeholder="3806 590 00" />
           <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint nur auf Scheinen mit dem Dietrich-Template. Leer lassen = Haupt-Kd.-Nr. des Kunden wird verwendet. Das GEKO-Template nutzt immer die Haupt-Kd.-Nr.</p>
         </div>
+      </div>
+      <div class="field">
+        <label class="muted">Schein-Vorlage (wird bei Touren &amp; Scheinen automatisch vorausgewählt)</label>
+        <select id="o_template" style="width:auto;">
+          <option value="geko" ${o.template === "sub" ? "" : "selected"}>GEKO Clean</option>
+          <option value="sub" ${o.template === "sub" ? "selected" : ""}>Dietrich (SUB)</option>
+        </select>
       </div>
       <div class="row">
         <div class="field">
@@ -1001,6 +1100,7 @@ function syncObjektFormFromDom() {
   if (get("o_telefon") !== undefined) glasObjektEditing.telefon = get("o_telefon");
   if (get("o_hinweise") !== undefined) glasObjektEditing.hinweise = get("o_hinweise");
   if (get("o_notiz") !== undefined) glasObjektEditing.notiz = get("o_notiz");
+  if (get("o_template") !== undefined) glasObjektEditing.template = get("o_template");
   const strasse = get("o_strasse");
   const plz = get("o_plz");
   const ort = get("o_ort");
@@ -1075,6 +1175,7 @@ async function saveGlasObjekt() {
     telefon,
     hinweise,
     notiz,
+    template: glasObjektEditing.template === "sub" ? "sub" : "geko",
     lat: coords.lat,
     lng: coords.lng,
   };
@@ -1120,15 +1221,40 @@ async function saveGlasObjekt() {
   goGlasObjekt(objektId);
 }
 
+// Löscht Objekte inkl. aller offenen (noch nicht unterschriebenen) Stopps. Touren, die
+// dadurch komplett leer werden, verschwinden mit - sonst blieben leere Balken im
+// Kalender stehen. Unterschriebene Scheine bleiben als Schnappschuss erhalten.
+// Gibt bei Fehler die Fehlermeldung zurück, sonst null.
+async function glasDeleteObjekteCascade(objektIds) {
+  if (!objektIds.length) return null;
+  const { data: stopps, error: stoppErr } = await sb.from("glas_stopps").select("id, tour_id, status, objekt_id").in("objekt_id", objektIds);
+  if (stoppErr) return stoppErr.message;
+  const offene = (stopps || []).filter((s) => s.status !== "erledigt");
+  if (offene.length) {
+    const { error } = await sb.from("glas_stopps").delete().in("id", offene.map((s) => s.id));
+    if (error) return error.message;
+    const tourIds = [...new Set(offene.map((s) => s.tour_id).filter(Boolean))];
+    if (tourIds.length) {
+      const { data: rest } = await sb.from("glas_stopps").select("id, tour_id").in("tour_id", tourIds);
+      const nochBelegt = new Set((rest || []).map((s) => s.tour_id));
+      const leere = tourIds.filter((tid) => !nochBelegt.has(tid));
+      if (leere.length) await sb.from("glas_touren").delete().in("id", leere);
+    }
+  }
+  await sb.from("glas_objekt_positionen").delete().in("objekt_id", objektIds);
+  const { error: objErr } = await sb.from("glas_objekte").delete().in("id", objektIds);
+  return objErr ? objErr.message : null;
+}
+
 async function deleteGlasObjekt(id) {
-  if (!confirm("Dieses Objekt wirklich löschen? (Bereits erstellte Touren bleiben erhalten)")) return;
+  if (!confirm("Dieses Objekt wirklich löschen? Geplante (noch nicht unterschriebene) Termine werden überall mit entfernt, unterschriebene Scheine bleiben erhalten.")) return;
   const kundeId = glasObjekte.find((o) => o.id === id)?.kunde_id;
-  const { error } = await sb.from("glas_objekte").delete().eq("id", id);
-  if (error) { showToast("Fehler: " + error.message); return; }
+  const fehler = await glasDeleteObjekteCascade([id]);
+  if (fehler) { showToast("Fehler: " + fehler); return; }
   showToast("Objekt gelöscht");
   glasObjektEditing = null;
-  await Promise.all([loadGlasObjekte(), loadGlasObjektPositionen()]);
-  if (kundeId) goGlasKunde(kundeId); else goGlasTab("kunden");
+  await glasReloadNachLoeschen();
+  if (kundeId && glasKunden.some((k) => k.id === kundeId)) goGlasKunde(kundeId); else goGlasTab("kunden");
 }
 
 /* ========================================================================
@@ -1178,8 +1304,8 @@ function renderObjektDetailPage(id) {
         <button class="btn btn-sm" onclick="glasJetztPlanen('${o.id}', null)">📅 Einplanen</button>
         ${alleVerschiebbarIds.length ? `<button class="btn btn-sm" onclick='glasOpenVerschieben(${JSON.stringify(o.id)}, ${JSON.stringify(alleVerschiebbarIds)}, "alle")'>🔁 Verschieben</button>` : ""}
         <select id="objekt_schein_template_${o.id}" style="width:auto;">
-          <option value="geko">Vorlage: GEKO</option>
-          <option value="sub">Vorlage: Dietrich</option>
+          <option value="geko" ${o.template === "sub" ? "" : "selected"}>Vorlage: GEKO</option>
+          <option value="sub" ${o.template === "sub" ? "selected" : ""}>Vorlage: Dietrich</option>
         </select>
         <button class="btn btn-sm" onclick="downloadBlankGlasSchein('${o.id}')">📄 Schein erstellen</button>
         ${o.lat ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank">🧭 Navigation</a>` : `<span class="muted">⚠️ Nicht geocodiert</span>`}
@@ -1282,6 +1408,13 @@ function downloadBlankGlasSchein(objektId) {
    direkt in ein vorausgefülltes neues-Tour-Formular.
    ======================================================================== */
 
+// Schein-Vorlage, die für eine Objektauswahl vorausgewählt wird: sind alle gewählten
+// Objekte Dietrich-Objekte (template 'sub'), startet die Tour direkt mit Dietrich.
+function glasTemplateFuerObjekte(objektIds) {
+  const objs = [...objektIds].map((oid) => glasObjekte.find((o) => o.id === oid)).filter(Boolean);
+  return objs.length && objs.every((o) => o.template === "sub") ? "sub" : "geko";
+}
+
 function glasJetztPlanen(objektId, positionIds) {
   glasTourNotizen = new Map();
   const alle = glasGetObjektPositionen(objektId);
@@ -1292,7 +1425,7 @@ function glasJetztPlanen(objektId, positionIds) {
   glasRoutingMode = "manual";
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]) };
   glasShowEinzelschein = false;
   glasTourDetailId = null;
   glasShowNewTourForm = true;
@@ -1491,10 +1624,12 @@ function renderTourenCard(t) {
   const stops = t.glas_stopps || [];
   const done = stops.filter((s) => s.status === "erledigt").length;
   const allDone = glasTourAllDone(t);
+  const auswahl = glasAuswahl.modus === "touren";
   return `
-    <div class="card" style="cursor:pointer; ${allDone ? "background:#f2faf3;" : ""}" onclick="openGlasTourDetail('${t.id}')">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
+    <div class="card" style="cursor:pointer; ${allDone ? "background:#f2faf3;" : ""}" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
+      <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
+        ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>` : ""}
+        <div style="flex:1;">
           <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.frei ? ` <span class="badge badge-open">Einzelschein</span>` : ""}</p>
           <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${stops.length} Stopp(s) · ${done}/${stops.length} erledigt</p>
         </div>
@@ -1512,7 +1647,9 @@ function renderTourenListView() {
     <div style="display:flex; gap:8px; margin:16px 0;">
       <button class="btn btn-primary" onclick="glasStartNewTourForm();">+ Neue Tour anlegen</button>
       <button class="btn btn-sm" onclick="openGlasEinzelschein()">+ Einzelnen Schein erstellen</button>
+      ${(offen.length || erledigt.length) && glasAuswahl.modus !== "touren" ? `<button class="btn btn-sm" title="Mehrere auswählen" style="margin-left:auto;" onclick="glasAuswahlStart('touren')">☑️</button>` : ""}
     </div>
+    ${glasAuswahl.modus === "touren" ? glasAuswahlLeiste() : ""}
     ${offen.length ? offen.map(renderTourenCard).join("") : `<p class="muted">Keine offenen Touren.</p>`}
     ${erledigt.length ? `
       <p class="glas-section-title" style="cursor:pointer;" onclick="glasTourenErledigtExpanded = !glasTourenErledigtExpanded; renderGlasAdmin();">
@@ -1844,6 +1981,10 @@ function glasToggleTourObjekt(id) {
     glasInitTourNotiz(id);
   }
   syncNewTourFormFromDom();
+  // Erstes Objekt einer neuen Tour bestimmt die vorausgewählte Schein-Vorlage
+  if (!glasEditingTourId && glasSelectedObjekte.size === 1 && glasSelectedObjekte.has(id)) {
+    glasNewTour.template = glasTemplateFuerObjekte([id]);
+  }
   renderGlasAdmin();
 }
 
@@ -2135,6 +2276,7 @@ function openGlasEinzelschein() {
     objekt: "",
     adresse: "",
     kdnr: "",
+    template: "geko",
     positionen: [{ nr: "", art: "", qm: "", custom: false }],
   };
   renderGlasAdmin();
@@ -2196,8 +2338,8 @@ function renderEinzelscheinForm() {
         <div class="field">
           <label class="muted">Template</label>
           <select id="es_template">
-            <option value="geko">GEKO Clean</option>
-            <option value="sub">Subunternehmen (Dietrich)</option>
+            <option value="geko" ${d.template === "sub" ? "" : "selected"}>GEKO Clean</option>
+            <option value="sub" ${d.template === "sub" ? "selected" : ""}>Subunternehmen (Dietrich)</option>
           </select>
         </div>
       </div>
@@ -2270,6 +2412,7 @@ function syncEsFromDom() {
   d.objekt = document.getElementById("es_objekt_name")?.value ?? d.objekt;
   d.adresse = document.getElementById("es_adresse")?.value ?? d.adresse;
   d.kdnr = document.getElementById("es_kdnr")?.value ?? d.kdnr;
+  d.template = document.getElementById("es_template")?.value ?? d.template;
 }
 
 function addEsPositionRow() {
@@ -2304,6 +2447,7 @@ function onEsObjektChange() {
     glasEinzelscheinData.objekt = o.name;
     glasEinzelscheinData.adresse = o.adresse;
     glasEinzelscheinData.kdnr = o.kdnr;
+    glasEinzelscheinData.template = o.template === "sub" ? "sub" : "geko";
     const positionen = glasGetObjektPositionen(o.id);
     if (positionen.length) {
       glasEinzelscheinData.positionen = positionen.map((p) => ({
@@ -2969,7 +3113,7 @@ function glasOffeneZuTourHinzufuegen() {
   glasPreselectPositionen = map;
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds) };
   glasShowNewTourForm = true;
   renderGlasAdmin();
 }
