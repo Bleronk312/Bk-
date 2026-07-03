@@ -32,7 +32,6 @@ let glasSelectedObjekte = new Set();
 let glasTourSearch = "";
 let glasShowNewTourForm = false;
 let glasTourDetailId = null;
-let glasRoutingMode = "manual"; // Smart-Sortierung entfernt - immer manuelle Reihenfolge
 let glasManualOrder = []; // Array von Objekt-IDs in der vom Admin festgelegten Reihenfolge
 let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), gesetzt bei "Jetzt planen"
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
@@ -50,7 +49,6 @@ let glasKundeEditing = null; // null | {id:null,...} | {...}
 let glasObjektDetailHistory = {}; // objekt_id -> Array Stopps (Cache)
 let glasObjektDetailShowAllHistory = false;
 
-let glasKalenderSub = "kalender"; // "kalender" | "offen"
 let glasKalenderMonth = (() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; })();
 let glasKalenderSelectedDay = null;
 let glasOffeneSearch = "";
@@ -313,6 +311,7 @@ let glasCalAnimDir = null;
 function goGlasHome() { glasContentAnimPending = true; glasNavigate({ type: "home" }); }
 
 function glasNavigate(page) {
+  glasMenuOpen = false; // offenes ☰-Menü schließt bei jeder Navigation
   glasPage = page;
   glasGlobalSearch = ""; // alte Suche nicht über die Navigation hinweg stehen lassen
   if (page.type === "objekt-form") { renderGlasAdmin(); return; }
@@ -335,7 +334,6 @@ function goGlasTab(tab) {
   glasShowEinzelschein = false;
   glasTourDetailId = null;
   glasPositionEditingId = null;
-  glasRoutingMode = "manual";
   glasManualOrder = [];
   glasNavigate({ type: "tabs", tab });
 }
@@ -1491,7 +1489,6 @@ function glasJetztPlanen(objektId, positionIds) {
   glasSelectedObjekte = new Set([objektId]);
   glasManualOrder = [objektId];
   glasPreselectPositionen = new Map([[objektId, new Set(ids)]]);
-  glasRoutingMode = "manual";
   glasEditingTourId = null;
   glasTourSearch = "";
   glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]) };
@@ -1502,28 +1499,21 @@ function glasJetztPlanen(objektId, positionIds) {
 }
 
 /* ========================================================================
-   Weitere Einstellungen (Standort + Positionen + Archiv zusammengefasst)
+   Weitere Einstellungen (Benachrichtigungen + Positionen + Archiv als Kacheln)
    ======================================================================== */
 
 let glasEinstellungen = { id: "default", standort_adresse: "", standort_lat: null, standort_lng: null };
-let glasStandortBusy = false;
 
 async function loadGlasEinstellungen() {
   // localStorage zuerst (funktioniert immer, auch wenn die Supabase-Tabelle fehlt),
-  // Supabase überschreibt danach, wenn vorhanden - so ist der Standort geräteübergreifend
+  // Supabase überschreibt danach, wenn vorhanden - so sind die Einstellungen geräteübergreifend
   // UND lokal sofort da.
   try {
     const local = JSON.parse(localStorage.getItem("glas_einstellungen") || "null");
-    if (local) {
-      glasEinstellungen = local;
-      glasSetBase(local.standort_lat, local.standort_lng);
-    }
+    if (local) glasEinstellungen = local;
   } catch (e) {}
   const { data, error } = await sb.from("glas_einstellungen").select("*").eq("id", "default").limit(1);
-  if (!error && data && data[0]) {
-    glasEinstellungen = data[0];
-    glasSetBase(glasEinstellungen.standort_lat, glasEinstellungen.standort_lng);
-  }
+  if (!error && data && data[0]) glasEinstellungen = data[0];
 }
 
 // Die drei Bereiche stehen als einklappbare Kacheln da (statt alles auf einmal auszubreiten)
@@ -1615,49 +1605,6 @@ async function glasSavePushSchalter(schalter, wert) {
   const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", [schalter]: wert });
   if (error) { showToast("Fehler: " + error.message + " (neueste SQL-Datei schon ausgeführt?)"); return; }
   showToast(wert ? "Eingeschaltet – bleibt dauerhaft an" : "Ausgeschaltet");
-}
-
-function renderGlasStandortContent() {
-  const hatKoordinaten = glasEinstellungen.standort_lat && glasEinstellungen.standort_lng;
-  return `
-      <p class="muted" style="margin:0 0 10px;">Ausgangspunkt, von dem aus "🧠 Smart sortieren" die Reihenfolge der Tour-Stopps berechnet (z.B. euer Betriebssitz/Lager).</p>
-      <div class="field">
-        <label class="muted">Adresse</label>
-        <textarea id="einst_standort_adresse" rows="2" placeholder="Musterstraße 1&#10;44787 Bochum">${escapeHtml(glasEinstellungen.standort_adresse || "")}</textarea>
-      </div>
-      <button class="btn btn-sm" onclick="saveGlasStandort()" ${glasStandortBusy ? "disabled" : ""}>
-        ${glasStandortBusy ? `<span class="spinner"></span> Wird gespeichert...` : "Speichern & Geocodieren"}
-      </button>
-      ${hatKoordinaten
-        ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">✓ Koordinaten hinterlegt (${glasEinstellungen.standort_lat.toFixed(4)}, ${glasEinstellungen.standort_lng.toFixed(4)})</p>`
-        : `<p class="muted" style="margin:8px 0 0; font-size:12px;">⚠️ Noch keine Adresse hinterlegt – die Routenoptimierung nutzt bis dahin einen Standard-Startpunkt.</p>`}`;
-}
-
-async function saveGlasStandort() {
-  const adresse = document.getElementById("einst_standort_adresse")?.value.trim();
-  if (!adresse) { showToast("Bitte eine Adresse eintragen"); return; }
-  glasStandortBusy = true;
-  renderGlasAdmin();
-  try {
-    const { lat, lng } = await glasGeocode(adresse);
-    const payload = { id: "default", standort_adresse: adresse, standort_lat: lat, standort_lng: lng };
-    glasEinstellungen = payload;
-    glasSetBase(lat, lng);
-    // Lokal IMMER speichern (übersteht Neuladen auch ohne Supabase-Tabelle) ...
-    try { localStorage.setItem("glas_einstellungen", JSON.stringify(payload)); } catch (e) {}
-    // ... und zusätzlich in Supabase, wenn die Tabelle existiert.
-    const { error } = await sb.from("glas_einstellungen").upsert(payload);
-    if (error) {
-      showToast("Standort lokal gespeichert (Supabase-Tabelle fehlt noch – siehe SQL-Datei)");
-    } else {
-      showToast("Standort gespeichert");
-    }
-  } catch (e) {
-    showToast("Adresse konnte nicht gefunden werden: " + e.message);
-  } finally {
-    glasStandortBusy = false;
-    renderGlasAdmin();
-  }
 }
 
 let glasPositionEditingId = null; // null = keine Bearbeitung, "" = neu, sonst id
@@ -1795,7 +1742,6 @@ function glasStartNewTourForm() {
   glasTourNotizen = new Map();
   glasShowNewTourForm = true;
   glasEditingTourId = null;
-  glasRoutingMode = "manual";
   glasManualOrder = [];
   glasSelectedObjekte.clear();
   glasPreselectPositionen = null;
@@ -2249,7 +2195,7 @@ async function createGlasTour() {
   }
 
   glasBusy = true;
-  glasProgressText = "Route wird optimiert...";
+  glasProgressText = "Tour wird gespeichert...";
   renderGlasAdmin();
 
   try {
@@ -2374,7 +2320,6 @@ async function editGlasTour(tourId) {
   glasPreselectPositionen = null;
   glasTourNotizen = new Map();
   glasEditingTourId = tourId;
-  glasRoutingMode = "manual"; // bestehende Reihenfolge nicht überraschend neu optimieren
   glasTourSearch = "";
   glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko" };
   glasShowNewTourForm = true;
@@ -2642,6 +2587,7 @@ async function saveEinzelschein() {
     id: tourId, name: `Einzelschein – ${d.objekt}`, datum: datum || null, template, frei: true,
   });
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
+  glasPushAnAdmins("push_kalender", "📅 Kalender", `Einzelschein angelegt: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
 
   const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
   const { error: stoppErr } = await sb.from("glas_stopps").insert({
@@ -2747,7 +2693,7 @@ function renderUrlaubKalender() {
         <p style="margin:0 0 2px; font-weight:700;">${escapeHtml(m ? m.name : "")} <span class="muted" style="font-weight:400;">· ${m && m.arbeitstage === "mo_sa" ? "arbeitet Mo–Sa" : "arbeitet Mo–Fr"}</span></p>
         <p class="muted" style="margin:0 0 10px;">Urlaub ${jahr}</p>
         <div style="display:flex; gap:10px;">
-          <div class="glas-stat ${m && m.arbeitstage !== "mo_sa" ? "" : "muted-stat"}" style="flex:1; ${m && m.arbeitstage === "mo_sa" ? "opacity:0.5;" : ""}">
+          <div class="glas-stat" style="flex:1; ${m && m.arbeitstage === "mo_sa" ? "opacity:0.5;" : ""}">
             <span class="glas-stat-num">${moFr}</span><span class="glas-stat-label">Tage (Mo–Fr)</span>
           </div>
           <div class="glas-stat" style="flex:1; ${m && m.arbeitstage !== "mo_sa" ? "opacity:0.5;" : ""}">
@@ -2967,7 +2913,6 @@ function openGlasTermin(id, presetDatum) {
     glasTerminViewing = t;
     glasTerminEditing = null;
   }
-  glasKalenderSub = "kalender";
   renderGlasAdmin();
 }
 

@@ -1,26 +1,5 @@
 // Gemeinsame Hilfsfunktionen für das Glasreinigungs-Modul:
-// Geocoding (OpenStreetMap Nominatim, kostenlos, kein API-Key) + Routenoptimierung.
-
-// Basis-Standort (Startpunkt der Touren für "Smart sortieren"). Standardwert, bis unter
-// "Weitere Einstellungen" ein eigener Standort hinterlegt und geocodiert wurde (siehe
-// glasSetBase, wird beim Laden von glas_einstellungen in glas-admin.js aufgerufen).
-let GLAS_BASE = { lat: 50.7374, lng: 7.0982 };
-
-function glasSetBase(lat, lng) {
-  if (lat && lng) GLAS_BASE = { lat, lng };
-}
-
-function glasHaversineKm(a, b) {
-  const R = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const la1 = (a.lat * Math.PI) / 180;
-  const la2 = (b.lat * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
+// Geocoding (OpenStreetMap Nominatim, kostenlos, kein API-Key), Fälligkeiten, PDF-Namen.
 
 async function glasGeocodeRaw(query) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
@@ -52,33 +31,6 @@ async function glasGeocode(address) {
     if (i < attempts.length - 1) await new Promise((r) => setTimeout(r, 600));
   }
   throw new Error("Adresse nicht gefunden: " + address);
-}
-
-// stops: Array von Objekten mit .lat/.lng (z.B. glas_objekte-Zeilen).
-// Stopps ohne Koordinaten (Geocoding fehlgeschlagen) werden ans Ende gehängt,
-// statt die Berechnung abzubrechen.
-function glasOptimizeRoute(stops) {
-  const withCoords = stops.filter((s) => s.lat && s.lng);
-  const withoutCoords = stops.filter((s) => !s.lat || !s.lng);
-
-  const remaining = [...withCoords];
-  const ordered = [];
-  let current = GLAS_BASE;
-  while (remaining.length) {
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    remaining.forEach((s, idx) => {
-      const d = glasHaversineKm(current, s);
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = idx;
-      }
-    });
-    const next = remaining.splice(bestIdx, 1)[0];
-    ordered.push(next);
-    current = next;
-  }
-  return [...ordered, ...withoutCoords];
 }
 
 /* ---------------- Fälligkeits-Berechnung (Planungs-System) ---------------- */
@@ -254,27 +206,3 @@ function glasWeeksInRange(vonMonat, bisMonat) {
   return weeks;
 }
 
-// Greedy Intervall-Zuordnung: verteilt Touren, die in dieser Woche sichtbar sind, auf möglichst
-// wenige "Zeilen" (Lanes), ohne dass sich zwei Touren in derselben Zeile überschneiden.
-function glasAssignLanes(touren, weekDays) {
-  const items = [];
-  touren.forEach((t) => {
-    const startCol = weekDays.findIndex((d) => d >= t.datum && d <= (t.datum_bis || t.datum));
-    if (startCol === -1) return;
-    let endCol = startCol;
-    for (let i = weekDays.length - 1; i > startCol; i--) {
-      if (weekDays[i] <= (t.datum_bis || t.datum) && weekDays[i] >= t.datum) { endCol = i; break; }
-    }
-    items.push({ tour: t, startCol, endCol });
-  });
-  items.sort((a, b) => a.startCol - b.startCol || (b.endCol - b.startCol) - (a.endCol - a.startCol));
-
-  const laneEnds = [];
-  items.forEach((it) => {
-    let lane = laneEnds.findIndex((end) => end < it.startCol);
-    if (lane === -1) { lane = laneEnds.length; laneEnds.push(it.endCol); }
-    else laneEnds[lane] = it.endCol;
-    it.lane = lane;
-  });
-  return items;
-}
