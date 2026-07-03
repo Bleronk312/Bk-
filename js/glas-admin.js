@@ -373,7 +373,7 @@ function renderGlasAdmin() {
       <button class="tab-btn ${["kunden", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}
-    ${isHome ? "" : renderGlobalSearchBar()}
+    ${isHome || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
   glasUpdateTabContent();
@@ -2671,16 +2671,14 @@ function renderKalenderTab() {
   if (glasTerminEditing) return renderTerminForm();
   if (glasTerminViewing) return renderTerminView();
   return `
-    <div class="glas-seg" style="margin:16px 0 12px;">
-      <button class="glas-seg-btn ${glasKalenderAnsicht === "termine" ? "on" : ""}" onclick="glasKalenderAnsicht='termine'; glasUpdateTabContent();">📅 Termine</button>
-      <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
-    </div>
-    ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : `
-      <div style="display:flex; justify-content:flex-end; margin:0 0 4px;">
-        <button class="btn btn-sm" onclick="openGlasTermin(null)">+ Termin</button>
+    <div style="display:flex; gap:8px; align-items:center; margin:12px 0 10px;">
+      <div class="glas-seg" style="flex:1;">
+        <button class="glas-seg-btn ${glasKalenderAnsicht === "termine" ? "on" : ""}" onclick="glasKalenderAnsicht='termine'; glasUpdateTabContent();">📅 Termine</button>
+        <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
       </div>
-      ${renderKalenderMonat()}
-    `}
+      ${glasKalenderAnsicht === "termine" ? `<button class="btn btn-sm" style="flex:0 0 auto;" onclick="openGlasTermin(null)">+ Termin</button>` : ""}
+    </div>
+    ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : renderKalenderMonat()}
   `;
 }
 

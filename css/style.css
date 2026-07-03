@@ -1324,7 +1324,14 @@ html.app-mode body::before {
   z-index: 200;
 }
 html.app-mode .app-header {
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 20px 38px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 20px 34px;
+}
+/* Auf der Kalenderseite im App-Modus alles oben so knapp wie möglich, damit der
+   Monat fast bündig startet und den Schirm füllt (TimeTree-Gefühl) */
+html.app-mode body.glas-fullwidth .app-sheet-content { padding-top: 14px; }
+html.app-mode .glas-cal-cell { min-height: 116px; }
+@media (min-width: 760px) {
+  html.app-mode .glas-cal-cell { min-height: 132px; }
 }
 html.app-mode .app-header .brand-row { margin-bottom: 7px; font-size: 13px; }
 html.app-mode .app-header .greeting { font-size: 16px; }
