@@ -1946,7 +1946,7 @@ function renderNewTourForm() {
       <div class="row">
         <div class="field">
           <label class="muted">Datum (Start)</label>
-          <input type="date" id="t_datum" value="${glasNewTour.datum || new Date().toISOString().slice(0, 10)}" />
+          <input type="date" id="t_datum" value="${glasNewTour.datum || glasTodayIso()}" />
         </div>
         <div class="field">
           <label class="muted">Bis (optional, für mehrtägige Touren)</label>
@@ -2430,7 +2430,7 @@ function renderEinzelscheinForm() {
       <div class="row">
         <div class="field">
           <label class="muted">Datum</label>
-          <input type="date" id="es_datum" value="${new Date().toISOString().slice(0, 10)}" />
+          <input type="date" id="es_datum" value="${glasTodayIso()}" />
         </div>
         <div class="field">
           <label class="muted">Template</label>
@@ -3217,7 +3217,7 @@ function renderKalenderMonat() {
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
       <div class="glas-cal-grid${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
-      <button class="btn btn-sm" style="margin:12px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = new Date().toISOString().slice(0,10); renderGlasAdmin();">Heute</button>
+      <button class="btn btn-sm" style="margin:12px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
   `;

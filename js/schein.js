@@ -101,7 +101,7 @@ async function init() {
   }
 
   const { data, error } = await sb.from("scheine")
-    .select("id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, monat, kdnr, datum, unterschrift_name, anhang_name, anhang_type, interne_notiz, created_at, signed_at, termin, material_erfasst")
+    .select("id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, monat, kdnr, datum, unterschrift_name, anhang_name, anhang_type, interne_notiz, created_at, signed_at, termin, material_erfasst, material_stunden, material_graffiti_ex_spray, material_graffiti_gel, material_paint_cleaner, material_streichen, material_hochdruck, material_sandstrahl, material_freitext")
     .eq("id", id).maybeSingle();
 
   if (error || !data) {
@@ -220,6 +220,15 @@ function render() {
       `}
     ` : `
       <div id="photoSectionWrap">${renderPhotoSection()}</div>
+
+      ${materialSurveyOpen ? renderMaterialSurvey(s) : !s.material_erfasst ? `
+        <div class="material-reminder">
+          <span>📦 Material eintragen (jederzeit möglich)</span>
+          <button class="btn btn-sm" onclick="openMaterialSurvey()">Jetzt eintragen</button>
+        </div>
+      ` : `
+        <button class="btn btn-sm" onclick="openMaterialSurvey()" style="margin-bottom:14px;">📦 Material-Angaben bearbeiten</button>
+      `}
 
       ${signFormOpen ? `
       <div class="card" id="signForm">

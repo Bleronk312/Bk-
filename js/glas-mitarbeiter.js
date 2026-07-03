@@ -20,7 +20,8 @@ let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
 
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date(); // lokale Zeit - toISOString() wäre UTC und nachts einen Tag daneben
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
 async function glasMaInit() {
@@ -74,7 +75,7 @@ function renderGlasMa() {
   const view = document.getElementById("view");
 
   if (glasMaScreen === "home") {
-    const heute = glasTouren.filter((t) => t.datum === todayIso()).length;
+    const heute = glasTouren.filter((t) => t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum)).length;
     view.innerHTML = `
       <div class="glas-welcome">
         <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
@@ -124,7 +125,7 @@ function glasTourProgress(t) {
 
 function renderGlasTourCard(t) {
   const { total, done, allDone, pct } = glasTourProgress(t);
-  const isToday = t.datum === todayIso();
+  const isToday = !!t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum);
   const ringColor = allDone ? "#1e7a34" : "var(--blue)";
   const border = allDone ? "#cdeed3" : isToday ? "var(--blue)" : "var(--border)";
   const bg = allDone ? "#f2faf3" : isToday ? "#eaf2fb" : "var(--card)";
@@ -147,7 +148,9 @@ function renderGlasTourList() {
   const kommend = [];
   const frueher = [];
   glasTouren.forEach((t) => {
-    if (t.datum === today) heute.push(t);
+    // Mehrtägige Touren zählen an JEDEM Tag ihres Zeitraums als "Heute" -
+    // sonst verschwindet eine gestern gestartete Tour in "Frühere Touren"
+    if (t.datum && t.datum <= today && today <= (t.datum_bis || t.datum)) heute.push(t);
     else if (t.datum && t.datum > today) kommend.push(t);
     else frueher.push(t);
   });

@@ -72,7 +72,7 @@ const GLAS_MONATE = [
 ];
 
 function glasMonatJahr(isoDate) {
-  const d = isoDate ? new Date(isoDate) : new Date();
+  const d = isoDate ? new Date(isoDate + "T00:00:00") : new Date(); // lokal parsen, nicht UTC
   return `${GLAS_MONATE[d.getMonth()]} ${d.getFullYear()}`;
 }
 
@@ -254,11 +254,7 @@ function generateGlasPdf(s, templateKey, tourDatum) {
   return doc;
 }
 
-function formatGlasDate(iso) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
-}
+// formatGlasDate kommt aus js/glas-shared.js (beide Glas-Seiten laden das vorher)
 
 // Einheitlicher Dateiname für alle Abnahmescheine: LN_<Kd.-Nr.>_<Straße>.pdf
 // (LN = Leistungsnachweis). Straße = erste Adresszeile. Kd.-Nr. nach gleicher Logik wie im

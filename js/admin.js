@@ -1157,7 +1157,8 @@ async function loadStatistik() {
 }
 
 function periodKeyWeek(dateStr) {
-  return startOfWeek(new Date(dateStr)).toISOString().slice(0, 10);
+  const d = startOfWeek(new Date(dateStr)); // lokal formatieren, toISOString() wäre UTC (Vortag)
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
 function periodLabelWeek(key) {

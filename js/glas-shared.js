@@ -35,20 +35,23 @@ async function glasGeocode(address) {
 
 /* ---------------- Fälligkeits-Berechnung (Planungs-System) ---------------- */
 
+// WICHTIG: alle Datums-Helfer rechnen in LOKALER Zeit (glasIsoFromDate), nie über
+// toISOString() - das ist UTC und lag in Deutschland (UTC+1/+2) je nach Uhrzeit
+// bzw. bei Mitternachts-Daten IMMER einen Tag daneben.
 function glasTodayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return glasIsoFromDate(new Date());
 }
 
 function glasAddDaysIso(iso, days) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return glasIsoFromDate(d);
 }
 
 function glasAddMonthsIso(iso, months) {
   const d = new Date(iso + "T00:00:00");
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  return glasIsoFromDate(d);
 }
 
 function formatGlasDate(iso) {
