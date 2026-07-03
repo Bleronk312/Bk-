@@ -48,7 +48,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
     }
 
-    const payload = JSON.stringify({ title, body: body || "", url: url || "/" });
+    // Fallback-URL STRENG nach Rolle trennen: Mitarbeiter dürfen über eine
+    // Benachrichtigung niemals in der Admin-Ansicht landen ("/" leitet zu admin.html!)
+    const fallbackUrl = role === "admin" ? "/admin.html" : "/mitarbeiter.html";
+    const payload = JSON.stringify({ title, body: body || "", url: url || fallbackUrl });
 
     const results = await Promise.allSettled(
       (subs || []).map((sub) =>

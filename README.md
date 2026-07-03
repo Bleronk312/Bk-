@@ -39,11 +39,14 @@ Seiten hat sie bisher gegenseitig überschrieben - deshalb "gingen sie immer aus
 
 1. **SQL ausführen**: den neuesten Block am Ende von `supabase_add_glas.sql`
    (Zusatzleistungen-Spalte, Benachrichtigungs-Schalter, Push-Fix).
-2. **Edge Function neu deployen**: Inhalt von
-   `supabase_edge_functions/daily-reminders/index.ts` im Supabase-Dashboard in die
-   bestehende Funktion `daily-reminders` kopieren -> Deploy. Sie schickt jetzt
-   zusätzlich die Glas-Termin-Erinnerungen (⏰ am Termin einstellbar) und morgens
-   eine Übersicht der heutigen Glas-Touren.
+2. **ZWEI Edge Functions neu deployen** (Supabase-Dashboard, Inhalt reinkopieren -> Deploy):
+   - `supabase_edge_functions/daily-reminders/index.ts` - schickt jetzt zusätzlich
+     die Glas-Termin-Erinnerungen (⏰ am Termin einstellbar) und morgens eine
+     Übersicht der heutigen Glas-Touren.
+   - `supabase_edge_functions/send-push/index.ts` - **wichtiger Sicherheits-Fix**:
+     Benachrichtigungen öffnen beim Antippen jetzt streng die zur Rolle passende
+     Seite. Vorher öffneten sie "/" und landeten damit in der ADMIN-Ansicht -
+     auch bei Mitarbeitern!
 
 Danach in der Glas-Verwaltung unter **Weitere Einstellungen -> 🔔 Benachrichtigungen**
 einmal pro Gerät aktivieren und die Schalter (Kalender-Änderungen / Unterschriften)

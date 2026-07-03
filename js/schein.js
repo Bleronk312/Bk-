@@ -359,6 +359,7 @@ async function saveSignature() {
         role: "admin",
         title: "✅ Schein unterschrieben!",
         body: `${firstLine(currentScheine.adresse) || "Ein Abnahmeschein"} wurde gerade von ${name} unterschrieben.`,
+        url: "/admin.html",
       },
     });
   } catch (e) {}

@@ -28,9 +28,11 @@ function berlinTimeString(date) {
   }).format(date);
 }
 
-async function sendToRole(supabase, role, title, body) {
+async function sendToRole(supabase, role, title, body, url) {
   const { data: subs } = await supabase.from("push_subscriptions").select("*").eq("role", role);
-  const payload = JSON.stringify({ title, body, url: "/" });
+  // Niemals "/" als Ziel: index.html leitet zu admin.html weiter - Mitarbeiter
+  // bekommen immer ihre eigene Seite als Ziel.
+  const payload = JSON.stringify({ title, body, url: url || (role === "admin" ? "/admin.html" : "/mitarbeiter.html") });
   await Promise.allSettled(
     (subs || []).map((sub) =>
       webpush.sendNotification(
@@ -73,8 +75,8 @@ Deno.serve(async (_req) => {
       });
       const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
       const body = lines.join("\n");
-      await sendToRole(supabase, "admin", title, body);
-      await sendToRole(supabase, "mitarbeiter", title, body);
+      await sendToRole(supabase, "admin", title, body, "/admin.html");
+      await sendToRole(supabase, "mitarbeiter", title, body, "/mitarbeiter.html");
       gesendet += todays.length;
     }
 
@@ -99,7 +101,8 @@ Deno.serve(async (_req) => {
         supabase,
         "admin",
         `⏰ Erinnerung: ${t.titel}`,
-        `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`
+        `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`,
+        "/glas-admin.html#/tab/kalender"
       );
       gesendet++;
     }
@@ -118,7 +121,8 @@ Deno.serve(async (_req) => {
         supabase,
         "admin",
         `🚐 ${heutigeTouren.length} Glas-Tour${heutigeTouren.length === 1 ? "" : "en"} heute`,
-        heutigeTouren.map((t) => t.name || t.datum).join("\n")
+        heutigeTouren.map((t) => t.name || t.datum).join("\n"),
+        "/glas-admin.html#/tab/touren"
       );
       gesendet += heutigeTouren.length;
     }

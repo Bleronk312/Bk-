@@ -866,6 +866,7 @@ async function saveScheine(id) {
           role: "mitarbeiter",
           title: "📋 Neuer Schein verfügbar!",
           body: `${firstLine(payload.adresse) || "Ein neuer Auftrag"} wartet auf dich.`,
+          url: "/mitarbeiter.html",
         },
       });
     } catch (e) {}

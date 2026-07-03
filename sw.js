@@ -10,7 +10,9 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "",
     icon: "/icons/icon-192.png",
-    data: { url: data.url || "/" },
+    // Ohne Ziel-URL IMMER auf die Mitarbeiter-Seite - "/" würde zu admin.html
+    // weiterleiten und Mitarbeiter in die Admin-Ansicht lassen
+    data: { url: data.url || "/mitarbeiter.html" },
   };
 
   event.waitUntil(
@@ -22,7 +24,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  const url = (event.notification.data && event.notification.data.url) || "/mitarbeiter.html";
   event.waitUntil(
     clients.matchAll({ type: "window" }).then((clientList) => {
       for (const client of clientList) {
