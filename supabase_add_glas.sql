@@ -217,3 +217,8 @@ alter table glas_stopps add column if not exists telefon text not null default '
 alter table glas_objekte add column if not exists hinweise text not null default '';
 alter table glas_stopps add column if not exists hinweise text not null default '';
 
+-- Freie Notiz je Objekt. Erscheint bei der Tourenplanung und kann dort pro Tour per
+-- Häkchen an den Stopp angehängt (und vorher noch angepasst) werden.
+alter table glas_objekte add column if not exists notiz text not null default '';
+alter table glas_stopps add column if not exists notiz text not null default '';
+

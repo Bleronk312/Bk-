@@ -207,7 +207,7 @@ function renderPhotoSection() {
     const arr = which === "vorher" ? vorherFotos : nachherFotos;
     const thumbs = arr.map((src, i) => `
       <div class="photo-thumb">
-        <img src="${src}" />
+        <img src="${src}" onclick="openPhotoViewer('${which}', ${i})" />
         <button class="remove-btn" onclick="removePhoto('${which}', ${i})">&times;</button>
       </div>
     `).join("");
@@ -220,6 +220,8 @@ function renderPhotoSection() {
       <input type="file" id="photoInput_${which}" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(event, '${which}')" />
     `;
   };
+  photoViewerSets["vorher"] = () => vorherFotos;
+  photoViewerSets["nachher"] = () => nachherFotos;
   return `
     <div class="card">
       ${renderRow("Vorher-Fotos (optional)", "vorher")}
@@ -234,13 +236,87 @@ function renderPhotoSection() {
 function renderPhotoGallery(label, jsonStr) {
   const arr = parsePhotoJson(jsonStr);
   if (!arr.length) return "";
-  const thumbs = arr.map((src) => `<div class="photo-thumb"><img src="${src}" /></div>`).join("");
+  const key = "galerie_" + label.replace(/[^a-z]/gi, "");
+  photoViewerSets[key] = () => arr;
+  const thumbs = arr.map((src, i) => `<div class="photo-thumb"><img src="${src}" onclick="openPhotoViewer('${key}', ${i})" /></div>`).join("");
   return `
     <div class="card">
       <div class="muted" style="margin-bottom:8px;">${label}</div>
       <div class="photo-grid">${thumbs}</div>
     </div>
   `;
+}
+
+/* ---------------- Foto-Vorschau (Vollbild-Lightbox mit Swipe) ---------------- */
+//
+// Tipp auf ein Foto öffnet es groß; wischen (oder ‹ ›) blättert durch die Bilder der
+// jeweiligen Gruppe, ✕ oder Tipp auf den Hintergrund schließt.
+
+const photoViewerSets = {}; // key -> Funktion, die das aktuelle Foto-Array liefert
+let photoViewerState = null; // { key, index }
+
+function openPhotoViewer(key, index) {
+  const getArr = photoViewerSets[key];
+  if (!getArr || !getArr().length) return;
+  photoViewerState = { key, index: Math.max(0, Math.min(index, getArr().length - 1)) };
+  let el = document.getElementById("photoViewer");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "photoViewer";
+    el.className = "photo-viewer";
+    el.innerHTML = `
+      <button class="pv-close" onclick="closePhotoViewer()">&times;</button>
+      <button class="pv-nav pv-prev" onclick="stepPhotoViewer(-1)">&#8249;</button>
+      <img class="pv-img" alt="" />
+      <button class="pv-nav pv-next" onclick="stepPhotoViewer(1)">&#8250;</button>
+      <div class="pv-counter"></div>
+    `;
+    el.addEventListener("click", (e) => { if (e.target === el) closePhotoViewer(); });
+    // Swipe (Touch)
+    let startX = null;
+    el.addEventListener("touchstart", (e) => { startX = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (startX === null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) stepPhotoViewer(dx < 0 ? 1 : -1);
+      startX = null;
+    }, { passive: true });
+    document.body.appendChild(el);
+  }
+  el.style.display = "flex";
+  document.body.style.overflow = "hidden";
+  updatePhotoViewer();
+}
+
+function updatePhotoViewer(richtung) {
+  if (!photoViewerState) return;
+  const arr = photoViewerSets[photoViewerState.key]();
+  const el = document.getElementById("photoViewer");
+  if (!el || !arr.length) return closePhotoViewer();
+  const img = el.querySelector(".pv-img");
+  img.classList.remove("pv-slide-l", "pv-slide-r");
+  void img.offsetWidth; // Animation neu starten
+  if (richtung) img.classList.add(richtung > 0 ? "pv-slide-l" : "pv-slide-r");
+  img.src = arr[photoViewerState.index];
+  el.querySelector(".pv-counter").textContent = `${photoViewerState.index + 1} / ${arr.length}`;
+  el.querySelector(".pv-prev").style.visibility = photoViewerState.index > 0 ? "visible" : "hidden";
+  el.querySelector(".pv-next").style.visibility = photoViewerState.index < arr.length - 1 ? "visible" : "hidden";
+}
+
+function stepPhotoViewer(delta) {
+  if (!photoViewerState) return;
+  const arr = photoViewerSets[photoViewerState.key]();
+  const next = photoViewerState.index + delta;
+  if (next < 0 || next >= arr.length) return;
+  photoViewerState.index = next;
+  updatePhotoViewer(delta);
+}
+
+function closePhotoViewer() {
+  const el = document.getElementById("photoViewer");
+  if (el) el.style.display = "none";
+  document.body.style.overflow = "";
+  photoViewerState = null;
 }
 
 /* ---------------- Optionaler Sofort-Versand des Scheins per E-Mail ---------------- */

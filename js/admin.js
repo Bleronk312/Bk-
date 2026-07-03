@@ -450,14 +450,14 @@ function renderViewScheine(s) {
     ${signed && !photoEditOpen ? renderPhotoGallery("Vorher-Fotos", s.vorher_fotos) : ""}
     ${signed && !photoEditOpen ? renderPhotoGallery("Nachher-Fotos", s.nachher_fotos) : ""}
     ${signed && !photoEditOpen ? `<button class="btn btn-sm" onclick="openPhotoEditAdmin()" style="margin-bottom:14px;">📷 Fotos bearbeiten</button>` : ""}
-    ${signed ? (materialSurveyOpen ? renderMaterialSurvey(s) : !s.material_erfasst ? `
+    ${materialSurveyOpen ? renderMaterialSurvey(s) : !s.material_erfasst ? `
       <div class="material-reminder">
-        <span>📦 Hier noch Material eintragen!</span>
+        <span>📦 Material eintragen (jederzeit möglich)</span>
         <button class="btn btn-sm" onclick="openMaterialSurvey()">Jetzt eintragen</button>
       </div>
     ` : `
       <button class="btn btn-sm" onclick="openMaterialSurvey()" style="margin-bottom:14px;">📦 Material-Angaben bearbeiten</button>
-    `) : ""}
+    `}
     ${signed && (s.vorher_fotos || s.nachher_fotos) ? `
       <div class="scheine-actions" style="margin-bottom:14px;">
         <button class="btn btn-sm" onclick="downloadPhotosPdf('${s.id}')">Fotos als PDF speichern</button>

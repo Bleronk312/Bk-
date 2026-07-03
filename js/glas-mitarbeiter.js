@@ -245,6 +245,7 @@ function renderGlasStopsList(t) {
               <p class="glas-hinweis-text">${escapeHtml(s.hinweise)}</p>
             </div>
           </div>` : ""}
+          ${s.notiz ? `<div class="glas-notiz-box">📝 ${escapeHtml(s.notiz)}</div>` : ""}
           ${(s.ansprechpartner || s.telefon) ? `
           <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
