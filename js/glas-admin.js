@@ -2639,10 +2639,10 @@ function renderKalenderTab() {
         <button class="glas-seg-btn ${glasKalenderAnsicht === "termine" ? "on" : ""}" onclick="glasKalenderAnsicht='termine'; glasUpdateTabContent();">📅 Termine</button>
         <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
       </div>
-      ${glasKalenderAnsicht === "termine" ? `<button class="btn btn-sm" style="flex:0 0 auto;" onclick="openGlasTermin(null)">+ Termin</button>` : ""}
       ${glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender" ? `<button class="btn btn-sm" style="flex:0 0 auto;" title="Zur Verwaltung" onclick="goGlasHome()">⚙️</button>` : ""}
     </div>
     ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : renderKalenderMonat()}
+    ${glasKalenderAnsicht === "termine" ? `<button class="glas-fab" title="Termin eintragen" onclick="openGlasTermin(null)">+</button>` : ""}
   `;
 }
 
@@ -2922,6 +2922,7 @@ async function deleteGlasMa(id) {
 // erst über den expliziten "Bearbeiten"-Button geht es in den Bearbeitungsmodus. Ein neuer
 // Termin (id === null) springt weiterhin direkt ins leere Formular.
 function openGlasTermin(id, presetDatum) {
+  glasTerminMenuOpen = false;
   if (id === null) {
     glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "blau", erinnerung: "", notiz: "", anhaenge: [] };
     glasTerminViewing = null;
@@ -2977,37 +2978,37 @@ function renderTerminForm() {
     .map((f) => {
       const c = GLAS_TERMIN_FARBEN[f];
       const active = t.farbe === f;
-      return `<button type="button" onclick="setGlasTerminFarbe('${f}')" style="width:34px; height:34px; border-radius:50%; border:${active ? "3px solid var(--text)" : "2px solid var(--border)"}; background:${c.dot}; cursor:pointer; transition:transform 0.15s ease; ${active ? "transform:scale(1.12);" : ""}"></button>`;
+      return `<button type="button" onclick="setGlasTerminFarbe('${f}')" style="width:26px; height:26px; border-radius:50%; border:${active ? "3px solid var(--text)" : "2px solid var(--border)"}; background:${c.dot}; cursor:pointer; flex:0 0 auto; ${active ? "transform:scale(1.15);" : ""} transition:transform 0.15s ease;"></button>`;
     })
     .join("");
+  const notizSichtbar = !!(t.notiz || t.__notizOffen);
 
   return `
-    <div class="card glas-screen-in" style="margin-top:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+    <div class="glas-termin-sheet glas-screen-in">
+      <div class="glas-sheet-top">
         <button class="btn btn-sm" onclick="closeGlasTermin()">✕</button>
-        <h2 style="margin:0;">${t.id ? "Termin bearbeiten" : "Neuer Termin"}</h2>
-        <button class="btn btn-sm btn-primary" onclick="saveGlasTermin()" ${glasBusy ? "disabled" : ""}>Speichern</button>
+        <button class="btn btn-primary" style="border-radius:100px; padding:8px 18px;" onclick="saveGlasTermin()" ${glasBusy ? "disabled" : ""}>Speichern</button>
       </div>
-      <div class="field">
-        <input type="text" id="tm_titel" value="${escapeHtml(t.titel)}" placeholder="Titel" style="font-size:19px; font-weight:600; border:none; border-bottom:1px solid var(--border); border-radius:0; padding-left:2px;" />
+      <input type="text" id="tm_titel" class="glas-sheet-titel" value="${escapeHtml(t.titel)}" placeholder="Titel" />
+
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">📅</span>
+        <span>Beginn</span>
+        <input type="date" id="tm_datum" value="${t.datum || ""}" style="width:auto; margin-left:auto;" />
       </div>
-      <div class="row">
-        <div class="field">
-          <label class="muted">Beginn</label>
-          <input type="date" id="tm_datum" value="${t.datum || ""}" />
-        </div>
-        <div class="field">
-          <label class="muted">Ende (optional)</label>
-          <input type="date" id="tm_datum_bis" value="${t.datum_bis || ""}" />
-        </div>
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico"></span>
+        <span class="muted">Ende <span style="font-size:11px;">(optional)</span></span>
+        <input type="date" id="tm_datum_bis" value="${t.datum_bis || ""}" style="width:auto; margin-left:auto;" />
       </div>
-      <div class="field">
-        <label class="muted">Farbe</label>
-        <div style="display:flex; gap:10px; padding:4px 0;">${farbChips}</div>
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">🏷️</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">${farbChips}</div>
       </div>
-      <div class="field">
-        <label class="muted">⏰ Erinnerung</label>
-        <select id="tm_erinnerung">
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">⏰</span>
+        <span>Erinnerung</span>
+        <select id="tm_erinnerung" style="width:auto; margin-left:auto;">
           <option value="" ${!t.erinnerung ? "selected" : ""}>Keine</option>
           <option value="same_day" ${t.erinnerung === "same_day" ? "selected" : ""}>Am selben Tag</option>
           <option value="1d" ${t.erinnerung === "1d" ? "selected" : ""}>1 Tag vorher</option>
@@ -3015,24 +3016,43 @@ function renderTerminForm() {
           <option value="7d" ${t.erinnerung === "7d" ? "selected" : ""}>1 Woche vorher</option>
         </select>
       </div>
-      <div class="field">
-        <label class="muted">📝 Notiz</label>
-        <textarea id="tm_notiz" rows="4" placeholder="Notiz hinzufügen...">${escapeHtml(t.notiz)}</textarea>
-      </div>
-      <div class="field">
-        <label class="muted">📎 Anhänge (Fotos, werden automatisch komprimiert)</label>
-        <input type="file" accept="image/*" multiple onchange="handleGlasTerminFiles(this.files); this.value='';" />
-        ${(t.anhaenge || []).length ? `
-        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;">
+
+      ${notizSichtbar ? `
+      <div class="glas-sheet-row" style="align-items:flex-start;">
+        <span class="glas-sheet-ico">📝</span>
+        <textarea id="tm_notiz" rows="3" placeholder="Notiz..." style="border:none; padding:2px 0; background:transparent; border-radius:0;">${escapeHtml(t.notiz)}</textarea>
+      </div>` : ""}
+
+      ${(t.anhaenge || []).length ? `
+      <div class="glas-sheet-row" style="align-items:flex-start;">
+        <span class="glas-sheet-ico">📎</span>
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
           ${t.anhaenge.map((a, i) => `
             <div style="position:relative; width:64px; height:64px;">
               <img src="${a.dataUrl}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" />
               <button type="button" class="glas-pos-remove" style="top:-8px; right:-8px;" title="Anhang entfernen" onclick="removeGlasTerminAnhang(${i})">✕</button>
             </div>`).join("")}
-        </div>` : ""}
+        </div>
+      </div>` : ""}
+
+      <!-- Optionale Extras als +Chips (wie TimeTree): erst beim Antippen erscheint das Feld -->
+      <div class="glas-sheet-chips">
+        <span style="color:var(--danger); font-weight:700; font-size:17px;">+</span>
+        ${!notizSichtbar ? `<button class="glas-sheet-chip" onclick="glasTerminChipNotiz()">📝 Notiz</button>` : ""}
+        <button class="glas-sheet-chip" onclick="document.getElementById('tm_file').click()">📎 Datei</button>
       </div>
-      ${t.id ? `<button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasTermin('${t.id}')">Termin löschen</button>` : ""}
+      <input type="file" id="tm_file" accept="image/*" multiple style="display:none;" onchange="handleGlasTerminFiles(this.files); this.value='';" />
+
+      ${t.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-top:18px;" onclick="deleteGlasTermin('${t.id}')">Termin löschen</button>` : ""}
     </div>`;
+}
+
+// "+ Notiz"-Chip: blendet das Notizfeld ein und springt direkt hinein
+function glasTerminChipNotiz() {
+  syncTerminFormFromDom();
+  glasTerminEditing.__notizOffen = true;
+  renderGlasAdmin();
+  setTimeout(() => document.getElementById("tm_notiz")?.focus(), 60);
 }
 
 // Bilder werden vor dem Speichern per Canvas client-seitig stark verkleinert/komprimiert
@@ -3089,28 +3109,67 @@ function removeGlasTerminAnhang(idx) {
 
 // Read-only "Ansehen"-Ansicht: Öffnen eines bestehenden Termins zeigt zuerst nur diese
 // Übersicht, Bearbeiten ist ein expliziter Schritt (statt sofort ins Formular zu springen).
+let glasTerminMenuOpen = false;
+
+// "Sa. 11. Juli 2026" - großes Datum wie im TimeTree-Detail
+function glasDatumGross(iso) {
+  if (!iso) return "";
+  const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  const mo = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  const d = new Date(iso + "T00:00:00");
+  return `${wt[d.getDay()]}. ${d.getDate()}. ${mo[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 function renderTerminView() {
   const t = glasTerminViewing;
   const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
   const erinnerungLabel = { same_day: "Am selben Tag", "1d": "1 Tag vorher", "2d": "2 Tage vorher", "7d": "1 Woche vorher" }[t.erinnerung] || "Keine";
+  const mehrtaegig = t.datum_bis && t.datum_bis !== t.datum;
   return `
-    <div class="card glas-screen-in" style="margin-top:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <button class="btn btn-sm" onclick="closeGlasTermin()">✕</button>
-        <button class="btn btn-sm btn-primary" onclick="editGlasTerminFromView()">✏️ Bearbeiten</button>
+    <div class="glas-termin-sheet glas-screen-in">
+      <div class="glas-sheet-top">
+        <button class="btn btn-sm" onclick="closeGlasTermin()">←</button>
+        <div style="position:relative;">
+          <button class="btn btn-sm" onclick="glasTerminMenuOpen = !glasTerminMenuOpen; renderGlasAdmin();">⋯</button>
+          ${glasTerminMenuOpen ? `
+          <div class="glas-menu-dd" style="position:absolute; right:0; top:38px; min-width:180px; margin:0; z-index:50;">
+            <button class="glas-menu-item" onclick="glasTerminMenuOpen=false; editGlasTerminFromView();"><span>✏️ Bearbeiten</span></button>
+            <button class="glas-menu-item" style="color:var(--danger);" onclick="glasTerminMenuOpen=false; deleteGlasTermin('${t.id}');"><span>🗑️ Löschen</span></button>
+          </div>` : ""}
+        </div>
       </div>
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-        <span style="width:14px; height:14px; border-radius:50%; background:${c.dot}; flex:0 0 auto;"></span>
-        <h2 style="margin:0;">${escapeHtml(t.titel)}</h2>
-      </div>
-      <p class="muted" style="margin:6px 0 0;">${formatGlasDateRange(t.datum, t.datum_bis)}</p>
-      <p class="muted" style="margin:4px 0 0;">⏰ Erinnerung: ${erinnerungLabel}</p>
-      ${t.notiz ? `<p style="margin:14px 0 0; font-size:14px; background:${c.bg}; color:${c.fg}; border-radius:8px; padding:10px 12px; white-space:pre-line;">${escapeHtml(t.notiz)}</p>` : ""}
+
       ${(t.anhaenge || []).length ? `
-      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;">
-        ${t.anhaenge.map((a) => `<a href="${a.dataUrl}" target="_blank"><img src="${a.dataUrl}" style="width:76px; height:76px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" /></a>`).join("")}
+      <div style="display:flex; gap:10px; overflow-x:auto; margin:0 0 14px; -webkit-overflow-scrolling:touch;">
+        ${t.anhaenge.map((a) => `<a href="${a.dataUrl}" target="_blank" style="flex:0 0 auto;"><img src="${a.dataUrl}" style="height:130px; border-radius:12px; border:1px solid var(--border);" /></a>`).join("")}
       </div>` : ""}
-      <button class="btn btn-sm" style="color:var(--danger); margin-top:16px;" onclick="deleteGlasTermin('${t.id}')">Termin löschen</button>
+
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="width:5px; align-self:stretch; border-radius:3px; background:${c.dot}; flex:0 0 auto;"></span>
+        <h2 style="margin:0; font-size:20px;">${escapeHtml(t.titel)}</h2>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:14px; margin:16px 0 4px; padding:0 2px;">
+        <div>
+          <p class="muted" style="margin:0; font-size:12px;">${t.datum ? t.datum.slice(0, 4) : ""}</p>
+          <p style="margin:0; font-weight:700; font-size:${mehrtaegig ? "16px" : "19px"};">${glasDatumGross(t.datum)}</p>
+        </div>
+        ${mehrtaegig ? `
+        <span style="color:${c.dot}; font-size:18px;">›</span>
+        <div>
+          <p class="muted" style="margin:0; font-size:12px;">${t.datum_bis.slice(0, 4)}</p>
+          <p style="margin:0; font-weight:700; font-size:16px;">${glasDatumGross(t.datum_bis)}</p>
+        </div>` : ""}
+      </div>
+
+      <div class="glas-sheet-row" style="margin-top:12px;">
+        <span class="glas-sheet-ico">⏰</span><span>${erinnerungLabel}</span>
+      </div>
+      ${t.notiz ? `
+      <div class="glas-sheet-row" style="align-items:flex-start;">
+        <span class="glas-sheet-ico">📝</span>
+        <p style="margin:0; font-size:14px; white-space:pre-line;">${escapeHtml(t.notiz)}</p>
+      </div>` : ""}
     </div>`;
 }
 
@@ -3169,6 +3228,14 @@ function glasTourenAmTag(iso) {
 // die über die Tage laufen, auf die sie fallen (statt nur einem Punkt pro Tag). Mehrere
 // Touren in derselben Woche stapeln sich in eigenen Zeilen ("Lanes"), wenn sie sich
 // überschneiden.
+// ISO-Kalenderwoche (Mo-So) für die KW-Spalte am linken Kalenderrand
+function glasIsoWeek(iso) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+
 // Versteckte Kalender-Suche (🔍) + Urlaubs-Einblendung (🏖️, bleibt gemerkt)
 let glasKalSearchOpen = false;
 let glasKalSearch = "";
@@ -3268,8 +3335,7 @@ function renderKalenderMonat() {
   // dann Tour oder Termin aus (verhindert Fehlklicks auf dem Handy).
   const maxChips = 4;
   const cellsHtml = weeks
-    .flat()
-    .map((iso) => {
+    .map((week) => `<div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>` + week.map((iso) => {
       const d = parseInt(iso.slice(8, 10), 10);
       const isToday = iso === todayIso;
       const isSelected = iso === glasKalenderSelectedDay;
@@ -3288,7 +3354,7 @@ function renderKalenderMonat() {
           <span class="glas-cal-daynum${isToday ? " is-today" : ""}">${d}</span>
           ${chips}${more}
         </div>`;
-    })
+    }).join(""))
     .join("");
 
   const html = `
@@ -3305,10 +3371,11 @@ function renderKalenderMonat() {
         <input type="text" id="kal_search" placeholder="🔍 Termin, Tour, Objekt, Kunde suchen..." value="${escapeHtml(glasKalSearch)}" />
         <div id="kalSearchResults">${renderKalenderSuchErgebnisse()}</div>
       </div>` : ""}
-      <div class="glas-cal-grid" style="margin-bottom:4px;">
+      <div class="glas-cal-grid with-kw" style="margin-bottom:4px;">
+        <div></div>
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
-      <div class="glas-cal-grid${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
+      <div class="glas-cal-grid with-kw${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
       <button class="btn btn-sm" style="margin:12px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}

@@ -277,6 +277,20 @@ label {
 /* Samstag blau, Sonntag rot - wie im Vorbild */
 .glas-cal-grid .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum { color: #2d7dc4; }
 .glas-cal-grid .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: #d6453b; }
+/* Mit KW-Spalte hat jede Zeile 8 Zellen - Sa/So verschieben sich entsprechend */
+.glas-cal-grid.with-kw { grid-template-columns: 17px repeat(7, 1fr); }
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum,
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: inherit; }
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n-1) .glas-cal-daynum { color: #2d7dc4; }
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n) .glas-cal-daynum { color: #d6453b; }
+.glas-cal-kw {
+  border-top: 1px solid #eceef2;
+  padding-top: 7px;
+  text-align: center;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: #b6bdc7;
+}
 .glas-cal-daynum.is-today { background: var(--blue); color: white !important; font-weight: 700; }
 .glas-cal-chip {
   font-size: 7.5px;
@@ -1459,3 +1473,80 @@ body.glas-cal-pur .app-sheet-content,
 html.app-mode body.glas-cal-pur .app-sheet-content {
   padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
 }
+
+/* ---------------- Termin-Formular & -Detail im TimeTree-Stil ---------------- */
+.glas-termin-sheet {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 18px 18px;
+  margin-top: 14px;
+  box-shadow: 0 4px 24px rgba(20, 30, 50, 0.08);
+}
+.glas-sheet-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.glas-sheet-titel {
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 6px 2px 14px !important;
+  font-size: 23px !important;
+  font-weight: 700;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.glas-sheet-titel:focus { box-shadow: none !important; }
+.glas-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14.5px;
+}
+.glas-sheet-row textarea { flex: 1; font-size: 14.5px; }
+.glas-sheet-row input[type="date"], .glas-sheet-row select { font-size: 14px; padding: 6px 9px; }
+.glas-sheet-ico { flex: 0 0 22px; text-align: center; font-size: 15px; }
+.glas-sheet-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 0 2px;
+  border-top: 1px solid var(--border);
+}
+.glas-sheet-chip {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 100px;
+  cursor: pointer;
+}
+.glas-sheet-chip:hover { background: var(--card); }
+
+/* Schwebender +Knopf unten rechts (wie TimeTree) */
+.glas-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(31, 93, 146, 0.4);
+  z-index: 40;
+  transition: transform 0.15s ease;
+}
+.glas-fab:active { transform: scale(0.92); }
