@@ -214,7 +214,10 @@ label {
 .glas-cal-card {
   padding: 10px 0 12px;
   border: none;
-  background: transparent;
+  /* fester Hintergrund + weicher Schatten: der Kalender liegt wie ein Blatt auf der
+     Seite, statt dass das Wasserzeichen durchscheint */
+  background: var(--card);
+  box-shadow: 0 2px 18px rgba(20, 30, 50, 0.09);
 }
 
 /* Mehrfach-Auswahl (Kunden / Objekte / Touren): runde Checkbox links auf der Karte */
@@ -1444,3 +1447,15 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 }
 .glas-ma-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 .glas-ma-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+/* ---------------- Reine Kalender-App (?app=kalender vom Home-Bildschirm) ----------------
+   Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich
+   auf dem Kalender-Tab - navigiert man weg, erscheint die normale Oberfläche. Der
+   blaue Statusleisten-Streifen oben kommt aus html.app-mode body::before. */
+body.glas-cal-pur .app-header { display: none; }
+body.glas-cal-pur .tabs { display: none; }
+body.glas-cal-pur .app-sheet { margin-top: 0; border-radius: 0; }
+body.glas-cal-pur .app-sheet-content,
+html.app-mode body.glas-cal-pur .app-sheet-content {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+}

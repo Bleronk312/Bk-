@@ -146,11 +146,18 @@ function glasStatusBadgeClass(status) {
    Init & Laden
    ======================================================================== */
 
+// Reine Kalender-App: die Home-Bildschirm-Verknüpfung mit ?app=kalender zeigt den
+// Kalender ohne Kopf und Reiter (wie TimeTree). Gilt nur, solange man im Kalender ist -
+// navigiert man von dort weg (z.B. Tour aus dem Tages-Fenster), erscheint die normale
+// Oberfläche mit allen Reitern, und der Kalender-Reiter führt zurück in die Pur-Ansicht.
+const glasCalApp = new URLSearchParams(location.search).get("app") === "kalender";
+
 async function glasInit() {
   // Manche Home-Bildschirm-Verknüpfungen verlieren den #-Teil der URL -
   // ?tab=kalender funktioniert deshalb als gleichwertiger Einstieg.
   const qTab = new URLSearchParams(location.search).get("tab");
   if (!location.hash && qTab) location.hash = "#/tab/" + qTab;
+  if (glasCalApp && !location.hash) location.hash = "#/tab/kalender";
   glasPage = glasParseHash();
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub()]);
@@ -353,6 +360,7 @@ function renderGlasAdmin() {
 
   // Kalender darf die ganze Breite nutzen, alle anderen Seiten bleiben schmal/zentriert
   document.body.classList.toggle("glas-fullwidth", glasPage.type === "tabs" && glasPage.tab === "kalender");
+  document.body.classList.toggle("glas-cal-pur", glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender");
 
   if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); return; }
   if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); return; }
@@ -405,6 +413,15 @@ function glasUpdateTabContent() {
 
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
+  if (tab === "kalender") {
+    attachGlasCalSwipe();
+    const ks = document.getElementById("kal_search");
+    if (ks) ks.oninput = (e) => {
+      glasKalSearch = e.target.value;
+      const box = document.getElementById("kalSearchResults");
+      if (box) box.innerHTML = renderKalenderSuchErgebnisse();
+    };
+  }
   if (!glasGlobalSearch.trim() && tab === "faellig") {
     const searchEl = document.getElementById("offen_search");
     if (searchEl) searchEl.oninput = (e) => {
@@ -2623,6 +2640,7 @@ function renderKalenderTab() {
         <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
       </div>
       ${glasKalenderAnsicht === "termine" ? `<button class="btn btn-sm" style="flex:0 0 auto;" onclick="openGlasTermin(null)">+ Termin</button>` : ""}
+      ${glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender" ? `<button class="btn btn-sm" style="flex:0 0 auto;" title="Zur Verwaltung" onclick="goGlasHome()">⚙️</button>` : ""}
     </div>
     ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : renderKalenderMonat()}
   `;
@@ -3151,6 +3169,64 @@ function glasTourenAmTag(iso) {
 // die über die Tage laufen, auf die sie fallen (statt nur einem Punkt pro Tag). Mehrere
 // Touren in derselben Woche stapeln sich in eigenen Zeilen ("Lanes"), wenn sie sich
 // überschneiden.
+// Versteckte Kalender-Suche (🔍) + Urlaubs-Einblendung (🏖️, bleibt gemerkt)
+let glasKalSearchOpen = false;
+let glasKalSearch = "";
+let glasKalUrlaubEinblenden = (() => { try { return localStorage.getItem("glas_kal_urlaub") !== "0"; } catch (e) { return true; } })();
+
+function glasToggleKalSearch() {
+  glasKalSearchOpen = !glasKalSearchOpen;
+  if (!glasKalSearchOpen) glasKalSearch = "";
+  glasUpdateTabContent();
+  if (glasKalSearchOpen) setTimeout(() => document.getElementById("kal_search")?.focus(), 60);
+}
+
+function glasToggleKalUrlaub() {
+  glasKalUrlaubEinblenden = !glasKalUrlaubEinblenden;
+  try { localStorage.setItem("glas_kal_urlaub", glasKalUrlaubEinblenden ? "1" : "0"); } catch (e) {}
+  glasUpdateTabContent();
+}
+
+// Sucht Termine, Touren und Objekte - direkt aus dem Kalender heraus
+function renderKalenderSuchErgebnisse() {
+  const q = glasKalSearch.trim().toLowerCase();
+  if (q.length < 2) return `<p class="muted" style="margin:8px 2px 2px;">Mindestens 2 Zeichen eingeben…</p>`;
+  const termine = glasTermine.filter((t) => (t.titel || "").toLowerCase().includes(q)).slice(0, 8);
+  const touren = glasTouren.filter((t) => !t.archiviert_am && (t.name || "").toLowerCase().includes(q)).slice(0, 8);
+  const objekte = glasObjekte.filter((o) => `${o.name} ${o.kunde_name} ${o.kdnr}`.toLowerCase().includes(q)).slice(0, 8);
+  if (!termine.length && !touren.length && !objekte.length) return `<p class="muted" style="margin:8px 2px 2px;">Keine Treffer für „${escapeHtml(glasKalSearch)}".</p>`;
+  const row = (onclick, farbe, titel, sub) => `
+    <div style="display:flex; align-items:center; gap:10px; padding:9px 2px; border-top:1px solid var(--border); cursor:pointer;" onclick="${onclick}">
+      <span style="width:4px; align-self:stretch; border-radius:2px; background:${farbe}; flex-shrink:0;"></span>
+      <div style="flex:1; min-width:0;">
+        <p style="margin:0; font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${titel}</p>
+        ${sub ? `<p class="muted" style="margin:1px 0 0; font-size:12px;">${sub}</p>` : ""}
+      </div>
+      <span style="color:var(--text-secondary);">›</span>
+    </div>`;
+  return `<div style="margin-top:6px;">
+    ${termine.map((t) => { const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau; return row(`openGlasTermin('${t.id}')`, c.dot, `📌 ${escapeHtml(t.titel)}`, formatGlasDateRange(t.datum, t.datum_bis)); }).join("")}
+    ${touren.map((t) => row(`glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}')`, "#3b82c4", `🚐 ${escapeHtml(t.name || "Tour")}`, formatGlasDateRange(t.datum, t.datum_bis))).join("")}
+    ${objekte.map((o) => row(`goGlasObjekt('${o.id}')`, "#8b9bb0", `🏢 ${escapeHtml(o.name)}`, escapeHtml(o.kunde_name || ""))).join("")}
+  </div>`;
+}
+
+// Wischen über den Kalender blättert die Monate (zusätzlich zu den Pfeilen)
+function attachGlasCalSwipe() {
+  const el = document.querySelector(".glas-cal-card");
+  if (!el || el.__swipeAttached) return;
+  el.__swipeAttached = true;
+  let sx = null, sy = null;
+  el.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  el.addEventListener("touchend", (e) => {
+    if (sx === null) return;
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    sx = sy = null;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) glasKalenderShiftMonth(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
 function renderKalenderMonat() {
   const { year, month } = glasKalenderMonth; // month: 0-11
   const monatsNamen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -3175,6 +3251,15 @@ function renderKalenderMonat() {
         bg: c.dot, fg: "#fff", label: t.titel || "Termin",
       };
     }),
+    // Urlaube (einblendbar über 🏖️): bewusst dezenter gestylt als Touren/Termine -
+    // heller Hintergrund in der Mitarbeiter-Farbe mit feinem Rand
+    ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => {
+      const c = glasMaFarbe(u.mitarbeiter_id);
+      return {
+        datum: u.von, datum_bis: u.bis || u.von,
+        bg: `${c}26`, fg: c, ring: `${c}66`, label: glasMaName(u.mitarbeiter_id),
+      };
+    }) : []),
   ];
 
   // Pro Tag die Events sammeln (mehrtägige erscheinen auf jedem betroffenen Tag als Chip,
@@ -3194,7 +3279,7 @@ function renderKalenderMonat() {
       const chips = dayEvents.slice(0, maxChips).map((t) => {
         const contLeft = t.datum < iso;
         const contRight = (t.datum_bis || t.datum) > iso;
-        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};${t.ring ? ` box-shadow: inset 0 0 0 1px ${t.ring};` : ""}">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
       }).join("");
       const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
 
@@ -3208,11 +3293,18 @@ function renderKalenderMonat() {
 
   const html = `
     <div class="card glas-cal-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:0 6px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; padding:0 8px;">
+        <p style="margin:0; font-weight:700; font-size:17px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${monatsNamen[month]} ${year}</p>
+        <button class="btn btn-sm${glasKalSearchOpen ? " btn-primary" : ""}" title="Suchen" onclick="glasToggleKalSearch()">🔍</button>
+        <button class="btn btn-sm${glasKalUrlaubEinblenden ? " btn-primary" : ""}" title="Urlaube ein-/ausblenden" onclick="glasToggleKalUrlaub()">🏖️</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
-        <p style="margin:0; font-weight:700; font-size:17px;">${monatsNamen[month]} ${year}</p>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
       </div>
+      ${glasKalSearchOpen ? `
+      <div style="padding:0 8px 10px;">
+        <input type="text" id="kal_search" placeholder="🔍 Termin, Tour, Objekt, Kunde suchen..." value="${escapeHtml(glasKalSearch)}" />
+        <div id="kalSearchResults">${renderKalenderSuchErgebnisse()}</div>
+      </div>` : ""}
       <div class="glas-cal-grid" style="margin-bottom:4px;">
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
@@ -3261,6 +3353,22 @@ function renderKalenderTagPanel(iso) {
       </div>`;
   }).join("");
 
+  const urlaubeAmTag = glasKalUrlaubEinblenden
+    ? glasUrlaub.filter((u) => u.von && iso >= u.von && iso <= (u.bis || u.von))
+    : [];
+  const urlaubRows = urlaubeAmTag.map((u) => {
+    const c = glasMaFarbe(u.mitarbeiter_id);
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasKalenderSelectedDay=null; glasKalenderAnsicht='urlaub'; glasUrlaubMaFilter='${u.mitarbeiter_id}'; renderGlasAdmin();">
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${c};"></span>
+        <div style="flex:1; min-width:0;">
+          <p style="margin:0; font-weight:600;">🏖️ ${escapeHtml(glasMaName(u.mitarbeiter_id))} im Urlaub</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(u.von, u.bis)}${u.notiz ? " · " + escapeHtml(u.notiz) : ""}</p>
+        </div>
+        <span style="color:var(--text-secondary);">›</span>
+      </div>`;
+  }).join("");
+
   return `
     <div class="modal-overlay" onclick="if(event.target===this){glasKalenderSelectedDay=null; renderGlasAdmin();}">
       <div class="modal-box glas-day-modal-box glas-screen-in">
@@ -3271,8 +3379,8 @@ function renderKalenderTagPanel(iso) {
             <button class="btn btn-sm" onclick="glasKalenderSelectedDay=null; renderGlasAdmin();">✕</button>
           </div>
         </div>
-        ${tourRows}${terminRows}
-        ${!touren.length && !termine.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
+        ${tourRows}${terminRows}${urlaubRows}
+        ${!touren.length && !termine.length && !urlaubeAmTag.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
       </div>
     </div>`;
 }
