@@ -12,7 +12,65 @@
   --warning-text: #8a5a07;
   --danger: #c0392b;
   --radius: 10px;
+  /* Semantik-Töne, die vorher hart im Code standen - nötig für den Dunkelmodus */
+  --success-border: #cdeed3;
+  --info-bg: #eaf2fb;
+  --info-border: #c7dcf2;
+  --tint-ueberfaellig-bg: #fdf3f1; --tint-ueberfaellig-bd: #f3c9c2;
+  --tint-bald-bg: #fefaf1;        --tint-bald-bd: #f0dca6;
+  --tint-faellig-bg: #eaf5f8;     --tint-faellig-bd: #c3e2ea;
 }
+
+/* ---------------- Dunkelmodus (folgt dem Handy oder der Wahl in den Einstellungen;
+   html.dark wird ganz früh im <head> gesetzt, damit nichts hell aufblitzt) ---------------- */
+html.dark {
+  --blue: #4a97d6;
+  --blue-dark: #2d7dc4;
+  --bg: #10151c;
+  --card: #1b232e;
+  --border: #2b3644;
+  --text: #e7ecf2;
+  --text-secondary: #94a0af;
+  --success-bg: #17301f;
+  --success-text: #74d091;
+  --warning-bg: #33290f;
+  --warning-text: #e5b95e;
+  --danger: #e26557;
+  --success-border: #2a4a34;
+  --info-bg: #16283a;
+  --info-border: #24405c;
+  --tint-ueberfaellig-bg: #33201c; --tint-ueberfaellig-bd: #55322b;
+  --tint-bald-bg: #2f2814;        --tint-bald-bd: #4d421f;
+  --tint-faellig-bg: #16303a;     --tint-faellig-bd: #24485a;
+}
+html.dark input, html.dark textarea, html.dark select {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+  color-scheme: dark; /* native Datums-/Auswahlelemente in dunkel */
+}
+/* Unterschrift bleibt IMMER auf weißem Grund (landet so im PDF) - inline background:white
+   auf den Canvas-Elementen gewinnt ohnehin, hier nur zur Sicherheit */
+html.dark canvas { background: #fff; }
+html.dark .modal-box { background: var(--card); }
+html.dark .highlight-box { background: #1d2a38; }
+html.dark .material-reminder { background: var(--warning-bg); border-color: #4d421f; }
+html.dark .ptr-indicator { background: var(--card); }
+html.dark .logo-watermark { opacity: 0.05; }
+html.dark .glas-hinweis-box { background: #322a10; border-color: #4d421f; border-left-color: #b98f1f; }
+html.dark .glas-hinweis-box .glas-hinweis-title { color: #e5b95e; }
+html.dark .glas-notiz-box { background: #18242f; border-color: #27394b; }
+html.dark .glas-cal-cell { border-top-color: var(--border); }
+html.dark .glas-cal-cell:hover { background: #1e2833; }
+html.dark .glas-cal-cell.is-selected { background: #1d3450; }
+html.dark .glas-cal-cell.out-month .glas-cal-daynum { color: #46525f; }
+html.dark .glas-cal-kw { border-top-color: var(--border); color: #4d5a68; }
+html.dark .glas-seg-btn.on { background: #26313f; }
+html.dark .glas-menu-item:hover { background: #222c38; }
+html.dark .glas-sheet-chip:hover { background: #26313f; }
+html.dark .week-heading { color: var(--text-secondary); }
+html.dark .cal-chip { filter: brightness(0.92); }
+html.dark .scheine-item { border-color: var(--border); }
 
 * { box-sizing: border-box; }
 
@@ -747,7 +805,7 @@ label {
 a { color: var(--blue); text-decoration: none; }
 
 .highlight-box {
-  background: #eaf3fb;
+  background: var(--info-bg);
   border-radius: 6px;
   padding: 7px 10px;
   margin-bottom: 12px;
@@ -961,7 +1019,7 @@ a { color: var(--blue); text-decoration: none; }
   padding: 20px;
 }
 .modal-box {
-  background: white;
+  background: var(--card);
   border-radius: 14px;
   padding: 22px 20px;
   max-width: 320px;
@@ -1550,3 +1608,7 @@ html.app-mode body.glas-cal-pur .app-sheet-content {
   transition: transform 0.15s ease;
 }
 .glas-fab:active { transform: scale(0.92); }
+
+/* Interne-Notiz-Karte (Graffiti): vorher fixe Gelbtöne, jetzt themefähig */
+.glas-warncard { background: #fff8ec; border-color: #f0d9a8; }
+html.dark .glas-warncard { background: var(--warning-bg); border-color: #4d421f; }

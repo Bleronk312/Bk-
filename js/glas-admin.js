@@ -130,9 +130,9 @@ function glasKundeStatus(kundeId) {
 }
 
 function glasStatusTint(status) {
-  return status === "ueberfaellig" ? "background:#fdf3f1; border-color:#f3c9c2;"
-    : status === "bald" ? "background:#fefaf1; border-color:#f0dca6;"
-    : status === "faellig" ? "background:#eaf5f8; border-color:#c3e2ea;"
+  return status === "ueberfaellig" ? "background:var(--tint-ueberfaellig-bg); border-color:var(--tint-ueberfaellig-bd);"
+    : status === "bald" ? "background:var(--tint-bald-bg); border-color:var(--tint-bald-bd);"
+    : status === "faellig" ? "background:var(--tint-faellig-bg); border-color:var(--tint-faellig-bd);"
     : "";
 }
 function glasStatusDot(status) {
@@ -1397,7 +1397,7 @@ function renderObjektDetailPage(id) {
       ${zeigeAlleVerschieben ? renderVerschiebePicker() : ""}
     </div>
 
-    <div class="card" style="${alleEingeplant ? "background:#eaf2fb; border-color:#c7dcf2;" : glasStatusTint(naechste ? naechste.status : null)}">
+    <div class="card" style="${alleEingeplant ? "background:var(--info-bg); border-color:var(--info-border);" : glasStatusTint(naechste ? naechste.status : null)}">
       <p style="margin:0; font-weight:600;">
         ${alleEingeplant
           ? "📅 In einer Tour eingeplant"
@@ -1418,7 +1418,7 @@ function renderObjektDetailPage(id) {
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <p style="margin:0; font-weight:500;">Pos. ${escapeHtml(p.nr)} – ${escapeHtml(p.art)} ${p.qm ? `(${escapeHtml(p.qm)} qm)` : ""}</p>
             ${eingeplant
-              ? `<span class="badge" style="background:#dbe9f8; color:#1f5d92;">📅 Eingeplant</span>`
+              ? `<span class="badge" style="background:var(--info-bg); color:var(--blue);">📅 Eingeplant</span>`
               : f.status ? `<span class="badge ${glasStatusBadgeClass(f.status)}">${glasStatusLabel(f.status)}</span>` : ""}
           </div>
           <p class="muted" style="margin:3px 0 0; font-size:12.5px;">${glasIntervallLabel(p)}${f.faelligkeit ? ` · ${glasStatusLabel(f.status)}: ${f.label}` : ""}${p.letzte_reinigung ? ` · Zuletzt: ${formatGlasDate(p.letzte_reinigung)}` : ""}</p>
@@ -1563,10 +1563,35 @@ function renderEinstellungenTab() {
       </div>
       <span style="font-size:18px; color:var(--text-secondary);">›</span>
     </div>
+    ${renderEinstellungenKachel("darstellung", "🌙 Darstellung", renderDarstellungEinstellung())}
     ${renderEinstellungenKachel("push", "🔔 Benachrichtigungen", renderPushEinstellungen())}
     ${renderEinstellungenKachel("positionen", "📋 Positionen", renderPositionenTab())}
     ${renderEinstellungenKachel("archiv", "🗑️ Archiv", renderArchivTab())}
   `;
+}
+
+/* ---------------- Darstellung: Hell / Dunkel / wie das Handy ---------------- */
+
+function glasGetTheme() {
+  try { return localStorage.getItem("geko_theme") || "auto"; } catch (e) { return "auto"; }
+}
+
+function glasSetTheme(mode) {
+  try { localStorage.setItem("geko_theme", mode); } catch (e) {}
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  document.documentElement.classList.toggle("dark", mode === "dark" || (mode === "auto" && mq.matches));
+  renderGlasAdmin();
+}
+
+function renderDarstellungEinstellung() {
+  const t = glasGetTheme();
+  return `
+    <p class="muted" style="margin:0 0 10px;">„Automatisch" folgt der Hell-/Dunkel-Einstellung des Handys. Gilt für dieses Gerät auf allen GEKO-Seiten.</p>
+    <div class="glas-seg">
+      <button class="glas-seg-btn ${t === "auto" ? "on" : ""}" onclick="glasSetTheme('auto')">📱 Automatisch</button>
+      <button class="glas-seg-btn ${t === "light" ? "on" : ""}" onclick="glasSetTheme('light')">☀️ Hell</button>
+      <button class="glas-seg-btn ${t === "dark" ? "on" : ""}" onclick="glasSetTheme('dark')">🌙 Dunkel</button>
+    </div>`;
 }
 
 /* ---------------- Benachrichtigungen (nur Admin) ---------------- */
@@ -1722,7 +1747,7 @@ function renderTourenCard(t) {
   const allDone = glasTourAllDone(t);
   const auswahl = glasAuswahl.modus === "touren";
   return `
-    <div class="card" style="cursor:pointer; ${allDone ? "background:#f2faf3;" : ""}" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
+    <div class="card" style="cursor:pointer; ${allDone ? "background:var(--success-bg);" : ""}" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
       <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
         ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>` : ""}
         <div style="flex:1;">
@@ -2034,7 +2059,7 @@ function renderTourSelectedSummary(items) {
           <div style="margin-top:8px;">
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
               <input type="checkbox" style="width:auto;" ${n.use ? "checked" : ""} onchange="glasToggleTourNotiz('${o.id}')" />
-              <span>📝 Notiz an den Stopp anhängen${o.notiz ? ` <span class="badge" style="background:#dbe9f8; color:#1f5d92; font-size:10px;">Standard-Notiz vom Objekt – wird angehängt</span>` : ""}</span>
+              <span>📝 Notiz an den Stopp anhängen${o.notiz ? ` <span class="badge" style="background:var(--info-bg); color:var(--blue); font-size:10px;">Standard-Notiz vom Objekt – wird angehängt</span>` : ""}</span>
             </label>
             ${n.use ? `<textarea id="tour_notiz_${o.id}" rows="2" style="margin-top:6px; font-size:13px;" placeholder="Notiz für diesen Stopp">${escapeHtml(n.text)}</textarea>` : ""}
           </div>`; })()}

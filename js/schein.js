@@ -184,7 +184,7 @@ function render() {
     </div>
 
     ${s.interne_notiz ? `
-      <div class="card" style="background:#fff8ec; border-color:#f0d9a8;">
+      <div class="card glas-warncard" style="">
         <div style="font-weight:600; font-size:13px; color:#8a5a07; margin-bottom:4px;">📝 Interne Notiz</div>
         <div style="white-space:pre-line; font-size:14px;">${escapeHtml(s.interne_notiz)}</div>
       </div>

@@ -127,8 +127,8 @@ function renderGlasTourCard(t) {
   const { total, done, allDone, pct } = glasTourProgress(t);
   const isToday = !!t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum);
   const ringColor = allDone ? "#1e7a34" : "var(--blue)";
-  const border = allDone ? "#cdeed3" : isToday ? "var(--blue)" : "var(--border)";
-  const bg = allDone ? "#f2faf3" : isToday ? "#eaf2fb" : "var(--card)";
+  const border = allDone ? "var(--success-border)" : isToday ? "var(--blue)" : "var(--border)";
+  const bg = allDone ? "var(--success-bg)" : isToday ? "var(--info-bg)" : "var(--card)";
   return `
     <div class="card" style="cursor:pointer; display:flex; align-items:center; gap:14px; background:${bg}; border-color:${border};" onclick="openGlasTour('${t.id}')">
       <div class="glas-ring" style="--pct:${pct}%; --ring-color:${ringColor};">
@@ -226,7 +226,7 @@ function renderGlasStopsList(t) {
       const isDone = s.status === "erledigt";
       const qm = glasStopQm(s);
       return `
-        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "#eaf7ec" : "var(--card)"}; border:1px solid ${isDone ? "#cdeed3" : "var(--border)"};" onclick="toggleGlasStop('${s.id}')">
+        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "var(--success-bg)" : "var(--card)"}; border:1px solid ${isDone ? "var(--success-border)" : "var(--border)"};" onclick="toggleGlasStop('${s.id}')">
           <div style="display:flex; align-items:center; gap:11px;">
             <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
@@ -248,7 +248,7 @@ function renderGlasStopDetails(t, s, isDone) {
   const links = glasSingleMapLinks(s);
   const qm = glasStopQm(s);
   return `
-    <div style="margin-top:12px; border-top:1px solid ${isDone ? "#cdeed3" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
+    <div style="margin-top:12px; border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
       <p style="margin:0; font-weight:600; font-size:15px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
       ${qm ? `<p class="muted" style="margin:6px 0 0;">Fläche: <b>${qm} qm</b></p>` : ""}
       ${s.hinweise ? `
@@ -273,7 +273,7 @@ function renderGlasStopDetails(t, s, isDone) {
       </div>` : ""}
       ${isDone
         ? `
-      <div style="margin-top:12px; border-top:1px solid #cdeed3; padding-top:12px;">
+      <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
         <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(s.datum)}</p>
         ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px; white-space:pre-line;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
