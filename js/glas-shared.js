@@ -61,11 +61,14 @@ function formatGlasDate(iso) {
 }
 
 // Nächstes Datum aus einer festen Monatsliste (z.B. "3,6,9,12").
-// Ohne letzte Reinigung: nächster Listen-Monat ab heute (inklusive des aktuellen Monats).
 // Mit letzter Reinigung: nächster Listen-Monat STRIKT NACH dem Monat der letzten Reinigung -
 // sonst bliebe eine Position im selben Monat für immer "überfällig", obwohl sie gerade erst
 // erledigt und unterschrieben wurde.
-function glasNaechsterFesterMonat(feste_monate, letzteReinigungIso) {
+// Ohne letzte Reinigung: ab dem Anlage-Monat des Objekts (erstellungIso) - ein NEU
+// angelegtes Objekt ist nie rückwirkend überfällig für Monate, die vor seiner Erfassung
+// lagen. Beispiel: Objekt heute im Oktober angelegt, Monate Feb+Sep -> nächster Termin
+// ist Februar (nicht sofort "überfällig").
+function glasNaechsterFesterMonat(feste_monate, letzteReinigungIso, erstellungIso) {
   const monate = String(feste_monate || "")
     .split(",")
     .map((m) => parseInt(m.trim(), 10))
@@ -79,12 +82,12 @@ function glasNaechsterFesterMonat(feste_monate, letzteReinigungIso) {
     jahr = d.getFullYear();
     minMonat = d.getMonth() + 2; // erst der Monat NACH der letzten Reinigung zählt wieder
   } else {
-    // noch nie gereinigt: der früheste hinterlegte Monat des laufenden Jahres gilt als
-    // "geschuldet" - liegt er schon in der Vergangenheit, ist die Position überfällig,
-    // statt (falsch) erst nächstes Jahr fällig zu werden.
-    const heute = new Date(glasTodayIso() + "T00:00:00");
-    jahr = heute.getFullYear();
-    minMonat = 1;
+    // noch nie gereinigt: ab dem Monat, in dem das Objekt angelegt wurde (fällt es weiter
+    // zurück, wäre es zwar irgendwann fällig gewesen, aber das Objekt gab es damals noch
+    // gar nicht in der App - also kein rückwirkendes "überfällig")
+    const start = new Date((erstellungIso || glasTodayIso()) + "T00:00:00");
+    jahr = start.getFullYear();
+    minMonat = start.getMonth() + 1;
   }
 
   let monat = monate.find((m) => m >= minMonat);
@@ -103,7 +106,7 @@ function glasBerechneFaelligkeit(pos) {
     return glasAddDaysIso(pos.letzte_reinigung, wochen * 7);
   }
   if (pos.intervall_typ === "feste_monate") {
-    return glasNaechsterFesterMonat(pos.feste_monate, pos.letzte_reinigung || null);
+    return glasNaechsterFesterMonat(pos.feste_monate, pos.letzte_reinigung || null, pos.created_at ? String(pos.created_at).slice(0, 10) : null);
   }
   return null;
 }
