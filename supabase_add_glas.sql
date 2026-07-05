@@ -295,3 +295,19 @@ drop policy if exists "anon_full_access_glas_urlaub" on glas_urlaub;
 create policy "anon_full_access_glas_urlaub" on glas_urlaub for all using (true) with check (true);
 grant select, insert, update, delete on table glas_urlaub to anon, authenticated;
 create index if not exists idx_glas_urlaub_ma on glas_urlaub(mitarbeiter_id);
+
+-- ============================================================================
+-- Benachrichtigungen sauber nach App trennen (Runde 16):
+-- Rollen sind jetzt 'graffiti' | 'glas' | 'kalender' | 'mitarbeiter' (statt einem
+-- gemeinsamen 'admin'). Der alte CHECK erlaubte nur 'admin'/'mitarbeiter' und muss weg.
+alter table push_subscriptions drop constraint if exists push_subscriptions_role_check;
+
+-- Neuer Schalter für Touren-Benachrichtigungen (Glasreinigung-App). Bestehende Nutzer,
+-- die Kalender-Push an hatten, sollen Touren weiter bekommen -> Wert übernehmen.
+alter table glas_einstellungen add column if not exists push_touren boolean not null default false;
+update glas_einstellungen set push_touren = push_kalender where id = 'default';
+
+-- Altbestand: bisher meldeten sich alle Admin-Geräte gemeinsam als 'admin' an. Diese
+-- Zeilen empfangen nach der Trennung nichts mehr; sie erneuern sich beim nächsten Öffnen
+-- der jeweiligen App automatisch mit der richtigen Rolle. Zur Sauberkeit hier entfernen:
+delete from push_subscriptions where role = 'admin';

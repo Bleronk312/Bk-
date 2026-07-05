@@ -75,7 +75,7 @@ Deno.serve(async (_req) => {
       });
       const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
       const body = lines.join("\n");
-      await sendToRole(supabase, "admin", title, body, "/admin.html");
+      await sendToRole(supabase, "graffiti", title, body, "/admin.html");
       await sendToRole(supabase, "mitarbeiter", title, body, "/mitarbeiter.html");
       gesendet += todays.length;
     }
@@ -99,10 +99,10 @@ Deno.serve(async (_req) => {
       const wann = t.erinnerung === "same_day" ? "Heute" : `Am ${d}.${m}.${y}`;
       await sendToRole(
         supabase,
-        "admin",
+        "kalender",
         `⏰ Erinnerung: ${t.titel}`,
         `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`,
-        "/glas-admin.html#/tab/kalender"
+        "/glas-admin.html?app=kalender#/tab/kalender"
       );
       gesendet++;
     }
@@ -119,7 +119,7 @@ Deno.serve(async (_req) => {
     if (heutigeTouren.length > 0) {
       await sendToRole(
         supabase,
-        "admin",
+        "glas",
         `🚐 ${heutigeTouren.length} Glas-Tour${heutigeTouren.length === 1 ? "" : "en"} heute`,
         heutigeTouren.map((t) => t.name || t.datum).join("\n"),
         "/glas-admin.html#/tab/touren"

@@ -30,6 +30,27 @@ VAPID_PRIVATE_KEY = nLHBAc73y-Q2M8jKrNFefTseZ55EIp2coXVQ9C2L168
 
 ---
 
+## Update: Benachrichtigungen nach App getrennt (WICHTIG: 2 Schritte)
+
+Bisher meldeten sich Graffiti-App, Glasreinigung-App und Kalender-App alle als
+dieselbe Rolle „admin" an -> eine Änderung löste auf demselben Handy DREI
+Benachrichtigungen aus. Jetzt bekommt jede App nur noch ihre eigenen:
+- **Graffiti-App**: neue/unterschriebene Graffiti-Scheine
+- **Glasreinigung-App**: Touren (neu/geändert/archiviert) + eingehende Unterschriften
+- **Kalender-App**: nur Kalender-Termine + Termin-Erinnerungen
+
+Einzurichten:
+1. **SQL**: den neuesten Block am Ende von `supabase_add_glas.sql` ausführen
+   (entfernt den alten Rollen-CHECK, ergänzt den Schalter `push_touren`, räumt die
+   alten gemeinsamen `admin`-Abos auf). Gefahrlos komplett ausführbar.
+2. **ZWEI Edge Functions neu deployen** (Inhalt reinkopieren -> Deploy):
+   `supabase_edge_functions/send-push/index.ts` und
+   `supabase_edge_functions/daily-reminders/index.ts`.
+
+Danach in **jeder** App einmal unter Weitere Einstellungen -> 🔔 Benachrichtigungen
+auf „aktivieren" tippen (bzw. in der Graffiti-App den Glocken-Knopf oben). Ab dann
+ist jede App ihr eigener, getrennter Benachrichtigungs-Kanal.
+
 ## Update Juli 2026: Benachrichtigungen überarbeitet (2 Schritte)
 
 Die Push-Benachrichtigungen bleiben jetzt dauerhaft an: Jedes Öffnen der Seite

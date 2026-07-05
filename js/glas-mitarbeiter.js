@@ -390,7 +390,7 @@ async function glasPushUnterschriftAnAdmin(stop, name, zusatz) {
     if (!data || !data[0] || !data[0].push_unterschrift) return;
     sb.functions.invoke("send-push", {
       body: {
-        role: "admin",
+        role: "glas",
         title: "✍️ Unterschrift eingegangen",
         body: `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`,
         url: "/glas-admin.html#/tab/touren",

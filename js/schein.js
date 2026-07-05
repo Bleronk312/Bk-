@@ -365,7 +365,7 @@ async function saveSignature() {
   try {
     sb.functions.invoke("send-push", {
       body: {
-        role: "admin",
+        role: "graffiti",
         title: "✅ Schein unterschrieben!",
         body: `${firstLine(currentScheine.adresse) || "Ein Abnahmeschein"} wurde gerade von ${name} unterschrieben.`,
         url: "/admin.html",

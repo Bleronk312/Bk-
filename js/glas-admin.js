@@ -164,7 +164,7 @@ async function glasInit() {
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
   renderGlasAdmin();
   glasGeocodeFehlende();
-  try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("admin"); } catch (e) {}
+  try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription(glasPushRole()); } catch (e) {}
 }
 
 // Importierte Objekte (z.B. aus der KITA-Excel-Liste) kommen ohne Koordinaten an -
@@ -724,7 +724,7 @@ async function glasAuswahlLoeschen() {
     const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).in("id", ids);
     if (error) { showToast("Fehler: " + error.message); return; }
     showToast(`${ids.length} Tour(en) ins Archiv verschoben`);
-    glasPushAnAdmins("push_kalender", "📅 Kalender", `${ids.length} Tour(en) ins Archiv verschoben`);
+    glasPushSend("glas", "push_touren", "🚐 Touren", `${ids.length} Tour(en) ins Archiv verschoben`);
   } else if (glasAuswahl.modus === "objekte") {
     if (!confirm(`${ids.length} Objekt(e) löschen? Geplante (noch nicht unterschriebene) Termine werden mit entfernt, unterschriebene Scheine bleiben erhalten.`)) return;
     const fehler = await glasDeleteObjekteCascade(ids);
@@ -1600,24 +1600,30 @@ function renderPushEinstellungen() {
   const e = glasEinstellungen || {};
   setTimeout(glasUpdatePushStatus, 80);
   return `
-    <p class="muted" style="margin:0 0 10px;">Einmal pro Gerät aktivieren – danach bleiben die Benachrichtigungen dauerhaft an und erneuern sich bei jedem Öffnen automatisch. Auf dem iPhone funktioniert das nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
+    <p class="muted" style="margin:0 0 6px;">In <b>jeder</b> App (Glasreinigung, Kalender, Graffiti) einmal „aktivieren" antippen – dann bekommt jede App genau ihre eigenen Benachrichtigungen, ohne Doppelungen. iPhone: geht nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
+    <p class="muted" style="margin:0 0 10px; font-size:12px;">Dieses Gerät zählt aktuell als: <b>${glasCalApp ? "📅 Kalender-App" : "🪟 Glasreinigung-App"}</b>.</p>
     <button class="btn btn-primary" onclick="glasPushAktivieren()">🔔 Auf diesem Gerät aktivieren</button>
     <p class="muted" id="glasPushStatus" style="margin:8px 0 14px; font-size:12px;"></p>
+    <p class="glas-section-title" style="margin:6px 0 2px;">Wovon möchtest du benachrichtigt werden?</p>
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
-      <span style="font-size:13.5px;">📅 Bei jedem Eintrag / jeder Änderung im Kalender (Touren &amp; Termine)</span>
+      <input type="checkbox" style="width:auto;" ${e.push_touren ? "checked" : ""} onchange="glasSavePushSchalter('push_touren', this.checked)" />
+      <span style="font-size:13.5px;">🚐 Touren (neu/geändert/archiviert) &middot; <span class="muted">Glasreinigung-App</span></span>
     </label>
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
       <input type="checkbox" style="width:auto;" ${e.push_unterschrift ? "checked" : ""} onchange="glasSavePushSchalter('push_unterschrift', this.checked)" />
-      <span style="font-size:13.5px;">✍️ Wenn eine Unterschrift eingeht (Mitarbeiter hat abnehmen lassen)</span>
+      <span style="font-size:13.5px;">✍️ Eingehende Unterschriften &middot; <span class="muted">Glasreinigung-App</span></span>
     </label>
-    <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein – sie kommen morgens gegen 8 Uhr.</p>
+    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+      <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
+      <span style="font-size:13.5px;">📅 Kalender-Termine (neu/geändert/gelöscht) &middot; <span class="muted">Kalender-App</span></span>
+    </label>
+    <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein – sie kommen morgens gegen 8 Uhr in der Kalender-App an.</p>
   `;
 }
 
 async function glasPushAktivieren() {
   if (typeof enablePushNotifications !== "function") { showToast("Push-Skript nicht geladen"); return; }
-  await enablePushNotifications("admin");
+  await enablePushNotifications(glasPushRole());
   glasUpdatePushStatus();
 }
 
@@ -1947,7 +1953,7 @@ async function saveGlasAdminSignature(stopId) {
   if (stop) Object.assign(stop, payload);
 
   showToast("Unterschrieben");
-  glasPushAnAdmins("push_unterschrift", "✍️ Unterschrift eingegangen", `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
+  glasPushSend("glas", "push_unterschrift", "✍️ Unterschrift eingegangen", `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
   glasAdminSignOpenStopId = null;
   await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
@@ -2201,12 +2207,17 @@ function attachGlasReorderHandlers() {
   });
 }
 
-// Push an alle Admin-Geräte, wenn der jeweilige Schalter (glas_einstellungen) an ist.
-// Läuft komplett im Hintergrund - Fehler stören den normalen Ablauf nie.
-function glasPushAnAdmins(schalter, title, body, url) {
+// Rolle dieses Geräts fürs Push-Abo: die reine Kalender-App bekommt nur
+// Kalender-Benachrichtigungen, die normale Glas-App die Glas-Benachrichtigungen.
+function glasPushRole() { return glasCalApp ? "kalender" : "glas"; }
+
+// Push gezielt an die richtige App-Gruppe (role), wenn deren Schalter an ist.
+// Läuft im Hintergrund - Fehler stören den normalen Ablauf nie.
+function glasPushSend(role, schalter, title, body, url) {
   try {
     if (!glasEinstellungen || !glasEinstellungen[schalter]) return;
-    sb.functions.invoke("send-push", { body: { role: "admin", title, body, url: url || "/glas-admin.html#/tab/kalender" } }).catch(() => {});
+    const fallback = role === "kalender" ? "/glas-admin.html?app=kalender#/tab/kalender" : "/glas-admin.html#/tab/touren";
+    sb.functions.invoke("send-push", { body: { role, title, body, url: url || fallback } }).catch(() => {});
   } catch (e) {}
 }
 
@@ -2330,7 +2341,7 @@ async function createGlasTour() {
         ? `Gespeichert – Adresse(n) nicht gefunden, ans Ende gesetzt: ${failedNames.join(", ")}`
         : glasEditingTourId ? "Tour aktualisiert" : "Tour angelegt – erscheint jetzt im Mitarbeiter-Link"
     );
-    glasPushAnAdmins("push_kalender", "📅 Kalender", `${glasEditingTourId ? "Tour geändert" : "Neue Tour"}: ${name} – ${formatGlasDate(datum)}${datumBis ? " bis " + formatGlasDate(datumBis) : ""}`);
+    glasPushSend("glas", "push_touren", "🚐 Touren", `${glasEditingTourId ? "Tour geändert" : "Neue Tour"}: ${name} – ${formatGlasDate(datum)}${datumBis ? " bis " + formatGlasDate(datumBis) : ""}`);
     glasSelectedObjekte.clear();
     glasManualOrder = [];
     glasPreselectPositionen = null;
@@ -2375,7 +2386,7 @@ async function deleteGlasTour(tourId) {
   const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour ins Archiv verschoben");
-  glasPushAnAdmins("push_kalender", "📅 Kalender", `Tour ins Archiv verschoben: ${tourName}`);
+  glasPushSend("glas", "push_touren", "🚐 Touren", `Tour ins Archiv verschoben: ${tourName}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   goGlasTab("touren");
@@ -2385,7 +2396,7 @@ async function restoreGlasTour(tourId) {
   const { error } = await sb.from("glas_touren").update({ archiviert_am: null }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour wiederhergestellt");
-  glasPushAnAdmins("push_kalender", "📅 Kalender", `Tour wiederhergestellt: ${glasTouren.find((x) => x.id === tourId)?.name || ""}`);
+  glasPushSend("glas", "push_touren", "🚐 Touren", `Tour wiederhergestellt: ${glasTouren.find((x) => x.id === tourId)?.name || ""}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
@@ -2629,7 +2640,7 @@ async function saveEinzelschein() {
     id: tourId, name: `Einzelschein – ${d.objekt}`, datum: datum || null, template, frei: true,
   });
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
-  glasPushAnAdmins("push_kalender", "📅 Kalender", `Einzelschein angelegt: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
+  glasPushSend("glas", "push_touren", "🚐 Touren", `Einzelschein angelegt: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
 
   const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
   const { error: stoppErr } = await sb.from("glas_stopps").insert({
@@ -3221,7 +3232,7 @@ async function saveGlasTermin() {
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
   showToast("Termin gespeichert");
-  glasPushAnAdmins("push_kalender", "📅 Kalender", `${warNeu ? "Neuer Termin" : "Termin geändert"}: ${payload.titel} – ${formatGlasDate(payload.datum)}`);
+  glasPushSend("kalender", "push_kalender", "📅 Kalender", `${warNeu ? "Neuer Termin" : "Termin geändert"}: ${payload.titel} – ${formatGlasDate(payload.datum)}`);
   glasTerminEditing = null;
   glasKalenderSelectedDay = payload.datum;
   await loadGlasTermine();
@@ -3234,7 +3245,7 @@ async function deleteGlasTermin(id) {
   const { error } = await sb.from("glas_termine").delete().eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Termin gelöscht");
-  glasPushAnAdmins("push_kalender", "📅 Kalender", `Termin gelöscht: ${geloeschterTitel}`);
+  glasPushSend("kalender", "push_kalender", "📅 Kalender", `Termin gelöscht: ${geloeschterTitel}`);
   glasTerminEditing = null;
   glasTerminViewing = null;
   await loadGlasTermine();

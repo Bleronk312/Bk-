@@ -56,6 +56,10 @@ async function enablePushNotifications(role) {
 // SQL-Migration noch nicht ausgeführt wurde.
 async function pushUpsertSubscription(role, subJson) {
   const row = { role, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth };
+  // Ein Home-Bildschirm-App-Symbol = ein Endpoint = genau EINE Rolle. Alte Rollen
+  // desselben Endpoints (z.B. das frühere gemeinsame "admin") wegräumen, damit man
+  // pro Ereignis nur EINE Benachrichtigung bekommt statt in jeder App eine.
+  try { await sb.from("push_subscriptions").delete().eq("endpoint", subJson.endpoint).neq("role", role); } catch (e) {}
   let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" });
   if (error) ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint" }));
   return error;
