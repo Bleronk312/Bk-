@@ -206,17 +206,6 @@ function renderGlasTourScreen(t) {
 }
 
 // Gesamt-qm aus dem Positions-Schnappschuss des Stopps (deutsche Schreibweise)
-function glasStopQm(s) {
-  let sum = 0;
-  try {
-    JSON.parse(s.positionen || "[]").forEach((p) => {
-      sum += parseFloat(String(p.qm || "").replace(",", ".")) || 0;
-    });
-  } catch (e) {}
-  if (!sum) return "";
-  return String(Math.round(sum * 100) / 100).replace(".", ",");
-}
-
 // Jeder Stopp ist eine Karte: zugeklappt nur Objekt, Adresse, qm und ein Vermerk,
 // ob Hinweis/Notiz dran hängt - Tippen klappt alle Details samt Unterschrift auf.
 function renderGlasStopsList(t) {

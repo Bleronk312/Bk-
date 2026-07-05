@@ -54,6 +54,18 @@ function glasAddMonthsIso(iso, months) {
   return glasIsoFromDate(d);
 }
 
+// Gesamt-qm eines Stopps aus dem Positions-Schnappschuss (deutsche Schreibweise).
+function glasStopQm(s) {
+  let sum = 0;
+  try {
+    JSON.parse(s.positionen || "[]").forEach((p) => {
+      sum += parseFloat(String(p.qm || "").replace(",", ".")) || 0;
+    });
+  } catch (e) {}
+  if (!sum) return "";
+  return String(Math.round(sum * 100) / 100).replace(".", ",");
+}
+
 function formatGlasDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");

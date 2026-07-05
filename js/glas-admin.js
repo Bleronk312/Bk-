@@ -1844,19 +1844,25 @@ function renderTourDetailView() {
         .map((s, idx) => {
           const isDone = s.status === "erledigt";
           const isSigning = glasAdminSignOpenStopId === s.id;
+          const qm = glasStopQm(s);
+          const wazeUrl = s.lat ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes` : wazeLink(s.adresse);
           return `
         <div class="glas-stop-row${isDone ? " done" : ""}">
           <div class="glas-stop-num">${idx + 1}</div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
               <div style="min-width:0;">
-                ${s.objekt ? `<p style="margin:0; font-weight:600; font-size:13.5px;">${escapeHtml(s.objekt)}</p>` : ""}
+                ${s.objekt ? `<p style="margin:0; font-weight:600; font-size:13.5px;">${escapeHtml(s.objekt)}${qm ? ` <span style="color:var(--text-secondary); font-weight:500;">· ${qm} qm</span>` : ""}</p>` : ""}
                 <p class="muted" style="margin:1px 0 0; font-size:12.5px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
               </div>
               <span class="badge ${isDone ? "badge-signed" : "badge-open"}" style="flex-shrink:0;">${isDone ? "Erledigt" : "Offen"}</span>
             </div>
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
+            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+              <a class="btn btn-sm" href="${wazeUrl}" target="_blank" rel="noopener">📍 Waze</a>
+              ${s.telefon ? `<a class="btn btn-sm" href="${telLink(s.telefon)}">📞 Anrufen</a>` : ""}
+            </div>
             ${isDone ? `
               ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
               <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
