@@ -311,3 +311,13 @@ update glas_einstellungen set push_touren = push_kalender where id = 'default';
 -- Zeilen empfangen nach der Trennung nichts mehr; sie erneuern sich beim nächsten Öffnen
 -- der jeweiligen App automatisch mit der richtigen Rolle. Zur Sauberkeit hier entfernen:
 delete from push_subscriptions where role = 'admin';
+
+-- ============================================================================
+-- Kalender-Termine: Wiederholungen + Adresse (Runde 17)
+-- Wiederholung als JSON-Text: {"freq":"woechentlich","wochentage":[1,3,5],"ende":"2026-12-31"}
+--   freq: 'taeglich' | 'woechentlich' | 'monatlich' | 'jaehrlich'  (leer/NULL = einmalig)
+--   wochentage: nur bei 'woechentlich' relevant (0=So ... 6=Sa), leer = Wochentag des Startdatums
+--   ende: optionales Enddatum der Wiederholung (leer = unbegrenzt)
+-- Adresse: Klartext-Adresse; im Kalender anklickbar -> öffnet Route in Waze.
+alter table glas_termine add column if not exists wiederholung text not null default '';
+alter table glas_termine add column if not exists adresse text not null default '';

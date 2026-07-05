@@ -2966,7 +2966,7 @@ async function deleteGlasMa(id) {
 function openGlasTermin(id, presetDatum) {
   glasTerminMenuOpen = false;
   if (id === null) {
-    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "blau", erinnerung: "", notiz: "", anhaenge: [] };
+    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "blau", erinnerung: "", notiz: "", adresse: "", wiederholung: glasWiederholungToObj(""), anhaenge: [] };
     glasTerminViewing = null;
   } else {
     const t = { ...glasTermine.find((x) => x.id === id) };
@@ -2987,9 +2987,22 @@ function glasParseTerminAnhaenge(t) {
 }
 
 function editGlasTerminFromView() {
-  glasTerminEditing = { ...glasTerminViewing };
+  glasTerminEditing = { ...glasTerminViewing, wiederholung: glasWiederholungToObj(glasTerminViewing.wiederholung) };
   glasTerminViewing = null;
   renderGlasAdmin();
+}
+
+// Wiederholung normalisieren: aus dem DB-String (JSON) ein Formular-Objekt machen.
+// Formular-Form: { freq:"nie"|"taeglich"|"woechentlich"|"monatlich"|"jaehrlich", wochentage:[0-6], ende:"" }
+function glasWiederholungToObj(raw) {
+  const leer = { freq: "nie", wochentage: [], ende: "" };
+  if (!raw) return leer;
+  if (typeof raw === "object") return { freq: raw.freq || "nie", wochentage: Array.isArray(raw.wochentage) ? raw.wochentage.slice() : [], ende: raw.ende || "" };
+  try {
+    const w = JSON.parse(raw);
+    if (!w || !w.freq) return leer;
+    return { freq: w.freq, wochentage: Array.isArray(w.wochentage) ? w.wochentage.slice() : [], ende: w.ende || "" };
+  } catch (e) { return leer; }
 }
 
 function closeGlasTermin() {
@@ -3006,11 +3019,48 @@ function syncTerminFormFromDom() {
   if (get("tm_datum_bis") !== undefined) glasTerminEditing.datum_bis = get("tm_datum_bis");
   if (get("tm_erinnerung") !== undefined) glasTerminEditing.erinnerung = get("tm_erinnerung");
   if (get("tm_notiz") !== undefined) glasTerminEditing.notiz = get("tm_notiz");
+  if (get("tm_adresse") !== undefined) glasTerminEditing.adresse = get("tm_adresse");
+  if (get("tm_freq") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.freq = get("tm_freq");
+  if (get("tm_wieder_ende") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.ende = get("tm_wieder_ende");
 }
 
 function setGlasTerminFarbe(farbe) {
   syncTerminFormFromDom();
   glasTerminEditing.farbe = farbe;
+  renderGlasAdmin();
+}
+
+// "+ Wiederholung"-Chip: blendet die Wiederholungs-Steuerung ein
+function glasTerminChipWiederholung() {
+  syncTerminFormFromDom();
+  glasTerminEditing.__wiederOffen = true;
+  if (glasTerminEditing.wiederholung.freq === "nie") glasTerminEditing.wiederholung.freq = "woechentlich";
+  renderGlasAdmin();
+}
+
+// "+ Adresse"-Chip: blendet das Adressfeld ein und springt hinein
+function glasTerminChipAdresse() {
+  syncTerminFormFromDom();
+  glasTerminEditing.__adresseOffen = true;
+  renderGlasAdmin();
+  setTimeout(() => document.getElementById("tm_adresse")?.focus(), 60);
+}
+
+function glasTerminSetFreq(freq) {
+  syncTerminFormFromDom();
+  glasTerminEditing.wiederholung.freq = freq;
+  if (freq === "woechentlich" && !glasTerminEditing.wiederholung.wochentage.length && glasTerminEditing.datum) {
+    // Standard: der Wochentag des Startdatums ist vorausgewählt
+    glasTerminEditing.wiederholung.wochentage = [new Date(glasTerminEditing.datum + "T00:00:00").getDay()];
+  }
+  renderGlasAdmin();
+}
+
+function glasTerminToggleWochentag(d) {
+  syncTerminFormFromDom();
+  const arr = glasTerminEditing.wiederholung.wochentage;
+  const i = arr.indexOf(d);
+  if (i >= 0) arr.splice(i, 1); else arr.push(d);
   renderGlasAdmin();
 }
 
@@ -3024,6 +3074,16 @@ function renderTerminForm() {
     })
     .join("");
   const notizSichtbar = !!(t.notiz || t.__notizOffen);
+  const w = t.wiederholung || { freq: "nie", wochentage: [], ende: "" };
+  const wiederSichtbar = !!(t.__wiederOffen || w.freq !== "nie");
+  const adresseSichtbar = !!(t.adresse || t.__adresseOffen);
+  const freqLabels = { nie: "Nie", taeglich: "Täglich", woechentlich: "Wöchentlich", monatlich: "Monatlich", jaehrlich: "Jährlich" };
+  const wochentagBtns = [
+    { d: 1, l: "Mo" }, { d: 2, l: "Di" }, { d: 3, l: "Mi" }, { d: 4, l: "Do" }, { d: 5, l: "Fr" }, { d: 6, l: "Sa" }, { d: 0, l: "So" },
+  ].map(({ d, l }) => {
+    const on = (w.wochentage || []).includes(d);
+    return `<button type="button" onclick="glasTerminToggleWochentag(${d})" style="width:34px; height:34px; border-radius:50%; border:1px solid ${on ? "var(--blue)" : "var(--border)"}; background:${on ? "var(--blue)" : "transparent"}; color:${on ? "#fff" : "var(--text)"}; font-size:12px; font-weight:600; cursor:pointer; flex:0 0 auto;">${l}</button>`;
+  }).join("");
 
   return `
     <div class="glas-termin-sheet glas-screen-in">
@@ -3059,6 +3119,32 @@ function renderTerminForm() {
         </select>
       </div>
 
+      ${wiederSichtbar ? `
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">🔁</span>
+        <span>Wiederholung</span>
+        <select id="tm_freq" onchange="glasTerminSetFreq(this.value)" style="width:auto; margin-left:auto;">
+          ${Object.keys(freqLabels).map((f) => `<option value="${f}" ${w.freq === f ? "selected" : ""}>${freqLabels[f]}</option>`).join("")}
+        </select>
+      </div>
+      ${w.freq === "woechentlich" ? `
+      <div class="glas-sheet-row" style="align-items:flex-start;">
+        <span class="glas-sheet-ico"></span>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">${wochentagBtns}</div>
+      </div>` : ""}
+      ${w.freq !== "nie" ? `
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico"></span>
+        <span class="muted">Endet am <span style="font-size:11px;">(optional)</span></span>
+        <input type="date" id="tm_wieder_ende" value="${w.ende || ""}" style="width:auto; margin-left:auto;" />
+      </div>` : ""}` : ""}
+
+      ${adresseSichtbar ? `
+      <div class="glas-sheet-row" style="align-items:flex-start;">
+        <span class="glas-sheet-ico">📍</span>
+        <input type="text" id="tm_adresse" value="${escapeHtml(t.adresse || "")}" placeholder="Adresse (für Route per Waze)" style="border:none; padding:2px 0; background:transparent; border-radius:0; margin-left:0;" />
+      </div>` : ""}
+
       ${notizSichtbar ? `
       <div class="glas-sheet-row" style="align-items:flex-start;">
         <span class="glas-sheet-ico">📝</span>
@@ -3080,6 +3166,8 @@ function renderTerminForm() {
       <!-- Optionale Extras als +Chips (wie TimeTree): erst beim Antippen erscheint das Feld -->
       <div class="glas-sheet-chips">
         <span style="color:var(--danger); font-weight:700; font-size:17px;">+</span>
+        ${!wiederSichtbar ? `<button class="glas-sheet-chip" onclick="glasTerminChipWiederholung()">🔁 Wiederholung</button>` : ""}
+        ${!adresseSichtbar ? `<button class="glas-sheet-chip" onclick="glasTerminChipAdresse()">📍 Adresse</button>` : ""}
         ${!notizSichtbar ? `<button class="glas-sheet-chip" onclick="glasTerminChipNotiz()">📝 Notiz</button>` : ""}
         <button class="glas-sheet-chip" onclick="document.getElementById('tm_file').click()">📎 Datei</button>
       </div>
@@ -3162,6 +3250,20 @@ function glasDatumGross(iso) {
   return `${wt[d.getDay()]}. ${d.getDate()}. ${mo[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// Menschenlesbare Wiederholungs-Beschreibung, z.B. "Wöchentlich (Mo, Mi, Fr) bis 31.12.2026"
+function glasWiederholungLabel(raw) {
+  const w = glasWiederholungToObj(raw);
+  if (w.freq === "nie") return "";
+  const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  let s = { taeglich: "Täglich", woechentlich: "Wöchentlich", monatlich: "Monatlich", jaehrlich: "Jährlich" }[w.freq] || "";
+  if (w.freq === "woechentlich" && w.wochentage && w.wochentage.length) {
+    const tage = w.wochentage.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => wt[d]);
+    s += ` (${tage.join(", ")})`;
+  }
+  if (w.ende) s += ` bis ${formatGlasDate(w.ende)}`;
+  return s;
+}
+
 function renderTerminView() {
   const t = glasTerminViewing;
   const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
@@ -3207,6 +3309,16 @@ function renderTerminView() {
       <div class="glas-sheet-row" style="margin-top:12px;">
         <span class="glas-sheet-ico">⏰</span><span>${erinnerungLabel}</span>
       </div>
+      ${glasWiederholungLabel(t.wiederholung) ? `
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">🔁</span><span>${glasWiederholungLabel(t.wiederholung)}</span>
+      </div>` : ""}
+      ${t.adresse ? `
+      <a class="glas-sheet-row" href="${wazeLink(t.adresse)}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit;">
+        <span class="glas-sheet-ico">📍</span>
+        <span style="flex:1; min-width:0;">${escapeHtml(t.adresse)}</span>
+        <span style="color:var(--blue); font-size:12px; font-weight:600; white-space:nowrap;">Route ›</span>
+      </a>` : ""}
       ${t.notiz ? `
       <div class="glas-sheet-row" style="align-items:flex-start;">
         <span class="glas-sheet-ico">📝</span>
@@ -3231,6 +3343,8 @@ async function saveGlasTermin() {
     farbe: t.farbe || "blau",
     erinnerung: t.erinnerung || "",
     notiz: t.notiz || "",
+    adresse: (t.adresse || "").trim(),
+    wiederholung: glasWiederholungToStr(t.wiederholung),
     anhaenge: JSON.stringify(t.anhaenge || []),
   };
   const warNeu = !t.id;
@@ -3258,8 +3372,66 @@ async function deleteGlasTermin(id) {
   renderGlasAdmin();
 }
 
+// Formular-Objekt -> DB-String. "Nie" wird als leerer String gespeichert (= einmaliger Termin).
+function glasWiederholungToStr(w) {
+  if (!w || !w.freq || w.freq === "nie") return "";
+  const obj = { freq: w.freq };
+  if (w.freq === "woechentlich" && Array.isArray(w.wochentage) && w.wochentage.length) obj.wochentage = w.wochentage.slice().sort((a, b) => a - b);
+  if (w.ende) obj.ende = w.ende;
+  return JSON.stringify(obj);
+}
+
+function glasDaysBetween(a, b) {
+  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+}
+
+// Alle Vorkommen eines Termins (inkl. Wiederholung) im Bereich [von, bis] als {datum, datum_bis}.
+// Bei einmaligen Terminen ist das höchstens eines. Mehrtägige Termine behalten ihre Dauer.
+function glasTerminVorkommen(t, von, bis) {
+  if (!t.datum) return [];
+  const dauer = t.datum_bis && t.datum_bis !== t.datum ? glasDaysBetween(t.datum, t.datum_bis) : 0;
+  const w = glasWiederholungToObj(t.wiederholung);
+  const out = [];
+  const addOcc = (startIso) => {
+    if (startIso < t.datum) return;
+    const endIso = dauer ? glasAddDaysIso(startIso, dauer) : startIso;
+    if (endIso >= von && startIso <= bis) out.push({ datum: startIso, datum_bis: dauer ? endIso : null });
+  };
+  if (w.freq === "nie") { addOcc(t.datum); return out; }
+  // Nicht über das Ende der Wiederholung hinaus rechnen
+  const hardStop = w.ende && w.ende < bis ? w.ende : bis;
+  // Scan-Start etwas vor "von", damit mehrtägige Vorkommen, die schon vorher begonnen haben, erfasst werden
+  const scanFrom = (() => {
+    const back = glasAddDaysIso(von, -(dauer + 1));
+    return back > t.datum ? back : t.datum;
+  })();
+  let guard = 0;
+  if (w.freq === "taeglich") {
+    let cur = scanFrom;
+    while (cur <= hardStop && guard++ < 800) { addOcc(cur); cur = glasAddDaysIso(cur, 1); }
+  } else if (w.freq === "woechentlich") {
+    const tage = Array.isArray(w.wochentage) && w.wochentage.length ? w.wochentage : [new Date(t.datum + "T00:00:00").getDay()];
+    let cur = scanFrom;
+    while (cur <= hardStop && guard++ < 800) {
+      if (tage.includes(new Date(cur + "T00:00:00").getDay())) addOcc(cur);
+      cur = glasAddDaysIso(cur, 1);
+    }
+  } else if (w.freq === "monatlich") {
+    let cur = t.datum;
+    while (cur < scanFrom && guard++ < 600) cur = glasAddMonthsIso(cur, 1);
+    while (cur <= hardStop && guard++ < 600) { addOcc(cur); cur = glasAddMonthsIso(cur, 1); }
+  } else if (w.freq === "jaehrlich") {
+    let cur = t.datum;
+    while (cur < scanFrom && guard++ < 400) cur = glasAddMonthsIso(cur, 12);
+    while (cur <= hardStop && guard++ < 400) { addOcc(cur); cur = glasAddMonthsIso(cur, 12); }
+  } else {
+    addOcc(t.datum);
+  }
+  return out;
+}
+
 function glasTermineAmTag(iso) {
-  return glasTermine.filter((t) => t.datum && iso >= t.datum && iso <= (t.datum_bis || t.datum));
+  return glasTermine.filter((t) => t.datum && glasTerminVorkommen(t, iso, iso).length);
 }
 
 function glasTourenAmTag(iso) {
@@ -3341,6 +3513,8 @@ function renderKalenderMonat() {
   const monatsNamen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   const todayIso = glasTodayIso();
   const weeks = glasWeeksInRange({ year, month }, { year, month });
+  const rangeVon = weeks[0][0];
+  const rangeBis = weeks[weeks.length - 1][6];
   const activeTouren = glasTouren.filter((t) => !t.archiviert_am && t.datum);
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
@@ -3353,12 +3527,13 @@ function renderKalenderMonat() {
         label: t.name ? t.name : (t.frei ? "Einzelschein" : "Tour"),
       };
     }),
-    ...glasTermine.filter((t) => t.datum).map((t) => {
+    ...glasTermine.filter((t) => t.datum).flatMap((t) => {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
-      return {
-        datum: t.datum, datum_bis: t.datum_bis,
+      // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
+      return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
+        datum: occ.datum, datum_bis: occ.datum_bis,
         bg: c.dot, fg: "#fff", label: t.titel || "Termin",
-      };
+      }));
     }),
     // Urlaube (einblendbar über 🏖️): bewusst dezenter gestylt als Touren/Termine -
     // heller Hintergrund in der Mitarbeiter-Farbe mit feinem Rand
@@ -3456,6 +3631,8 @@ function renderKalenderTagPanel(iso) {
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p>
           ${t.datum_bis && t.datum_bis !== t.datum ? `<p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)}</p>` : ""}
+          ${glasWiederholungLabel(t.wiederholung) ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🔁 ${glasWiederholungLabel(t.wiederholung)}</p>` : ""}
+          ${t.adresse ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">📍 ${escapeHtml(t.adresse)}</p>` : ""}
           ${t.notiz ? `<p style="margin:6px 0 0; font-size:13px; background:${c.bg}; color:${c.fg}; border-radius:8px; padding:8px 10px; white-space:pre-line;">${escapeHtml(t.notiz)}</p>` : ""}
         </div>
         <span style="color:var(--text-secondary);">›</span>
