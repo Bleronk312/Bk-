@@ -307,12 +307,12 @@ label {
   gap: 0;
 }
 .glas-cal-cell {
-  min-height: 104px;
-  padding: 4px 0 6px;
+  min-height: 100px;
+  padding: 3px 0 5px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   border: none;
   border-top: 1px solid #eceef2;
   transition: background 0.12s ease;
@@ -327,16 +327,16 @@ label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px; height: 22px;
+  width: 19px; height: 19px;
   border-radius: 50%;
-  font-size: 12px; font-weight: 500;
+  font-size: 11.5px; font-weight: 500;
   flex-shrink: 0;
 }
 /* Samstag blau, Sonntag rot - wie im Vorbild */
 .glas-cal-grid .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum { color: #2d7dc4; }
 .glas-cal-grid .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: #d6453b; }
 /* Mit KW-Spalte hat jede Zeile 8 Zellen - Sa/So verschieben sich entsprechend */
-.glas-cal-grid.with-kw { grid-template-columns: 17px repeat(7, 1fr); }
+.glas-cal-grid.with-kw { grid-template-columns: 15px repeat(7, 1fr); }
 .glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum,
 .glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: inherit; }
 .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n-1) .glas-cal-daynum { color: #2d7dc4; }
@@ -351,12 +351,12 @@ label {
 }
 .glas-cal-daynum.is-today { background: var(--blue); color: white !important; font-weight: 700; }
 .glas-cal-chip {
-  font-size: 7.5px;
+  font-size: 8px;
   font-weight: 500;
   letter-spacing: -0.3px;
-  line-height: 1.25;
+  line-height: 1.2;
   border-radius: 3px;
-  padding: 1.5px 2px;
+  padding: 1px 3px;
   margin: 0 1px;
   white-space: nowrap;
   overflow: hidden; /* hart abschneiden wie TimeTree - die "..." kosten nur Platz */
@@ -368,9 +368,9 @@ label {
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
-  .glas-cal-cell { min-height: 138px; padding: 6px 0; gap: 3px; }
-  .glas-cal-daynum { width: 26px; height: 26px; font-size: 13.5px; }
-  .glas-cal-chip { font-size: 10px; padding: 2.5px 5px; letter-spacing: 0; }
+  .glas-cal-cell { min-height: 132px; padding: 5px 0; gap: 2px; }
+  .glas-cal-daynum { width: 23px; height: 23px; font-size: 13px; }
+  .glas-cal-chip { font-size: 11px; padding: 2px 6px; letter-spacing: 0; }
 }
 
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */

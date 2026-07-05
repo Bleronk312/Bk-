@@ -2795,7 +2795,7 @@ function renderUrlaubMonat() {
     label: glasMaName(u.mitarbeiter_id),
   }));
 
-  const maxChips = 4;
+  const maxChips = 6;
   const cellsHtml = weeks.flat().map((iso) => {
     const d = parseInt(iso.slice(8, 10), 10);
     const isToday = iso === todayIso;
@@ -3375,7 +3375,7 @@ function renderKalenderMonat() {
   // an den Rändern abgerundet, damit es wie ein durchgehender Balken wirkt). Im Kalender
   // selbst ist NICHTS direkt anklickbar außer dem Tag - erst im Tages-Modal wählt man
   // dann Tour oder Termin aus (verhindert Fehlklicks auf dem Handy).
-  const maxChips = 4;
+  const maxChips = 6;
   const cellsHtml = weeks
     .map((week) => `<div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>` + week.map((iso) => {
       const d = parseInt(iso.slice(8, 10), 10);
