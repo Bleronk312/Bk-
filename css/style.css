@@ -1612,3 +1612,8 @@ html.app-mode body.glas-cal-pur .app-sheet-content {
 /* Interne-Notiz-Karte (Graffiti): vorher fixe Gelbtöne, jetzt themefähig */
 .glas-warncard { background: #fff8ec; border-color: #f0d9a8; }
 html.dark .glas-warncard { background: var(--warning-bg); border-color: #4d421f; }
+
+/* Kompakte Positions-Vorschau in der Tour-Detailansicht (Admin) */
+.glas-stop-positionen { margin-top: 7px; border-left: 2px solid var(--border); padding-left: 8px; display: flex; flex-direction: column; gap: 3px; }
+.glas-stop-pos-row { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; min-width: 0; }
+.glas-stop-pos-nr { flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--text-secondary); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; line-height: 16px; }

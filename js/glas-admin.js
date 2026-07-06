@@ -393,8 +393,8 @@ function renderGlasAdmin() {
     : `<div class="tabs">
       <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
-      <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
-      <button class="tab-btn ${["kunden", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
+      <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
+      <button class="tab-btn ${["kalender", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
   view.innerHTML = `
@@ -486,8 +486,8 @@ function renderGlasMehrMenu(tab) {
     </button>`;
   return `
     <div class="glas-menu-dd">
+      ${item(tab === "kalender", "📅", "Kalender", "glasMenuOpen=false; goGlasTab('kalender')")}
       ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
-      ${item(tab === "kunden", "👥", "Kunden", "glasMenuOpen=false; goGlasTab('kunden')")}
       ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
       ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
     </div>`;
@@ -744,7 +744,6 @@ async function glasAuswahlLoeschen() {
     const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).in("id", ids);
     if (error) { showToast("Fehler: " + error.message); return; }
     showToast(`${ids.length} Tour(en) ins Archiv verschoben`);
-    glasPushSend("glas", "push_touren", "🚐 Touren", `${ids.length} Tour(en) ins Archiv verschoben`);
   } else if (glasAuswahl.modus === "objekte") {
     if (!confirm(`${ids.length} Objekt(e) löschen? Geplante (noch nicht unterschriebene) Termine werden mit entfernt, unterschriebene Scheine bleiben erhalten.`)) return;
     const fehler = await glasDeleteObjekteCascade(ids);
@@ -1862,6 +1861,21 @@ function closeGlasTourDetail() {
   renderGlasAdmin();
 }
 
+// Kompakte Vorschau der geplanten Positionen eines Stopps: zeigt in der Tour-Ansicht
+// auf einen Blick, WAS genau eingeplant wurde (Nr · Art · qm), ohne den Stopp zu öffnen.
+function renderStopPositionenVorschau(s) {
+  let pos = [];
+  try { pos = JSON.parse(s.positionen || "[]"); } catch (e) { pos = []; }
+  pos = Array.isArray(pos) ? pos.filter((p) => p && (p.art || p.qm)) : [];
+  if (!pos.length) return "";
+  return `<div class="glas-stop-positionen">${pos.map((p) => `
+    <div class="glas-stop-pos-row">
+      <span class="glas-stop-pos-nr">${escapeHtml(p.nr || "–")}</span>
+      <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
+      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} qm</span>` : ""}
+    </div>`).join("")}</div>`;
+}
+
 function renderTourDetailView() {
   const t = glasTouren.find((x) => x.id === glasTourDetailId);
   if (!t) return `<p class="muted">Tour nicht gefunden.</p>`;
@@ -1885,6 +1899,7 @@ function renderTourDetailView() {
               </div>
               <span class="badge ${isDone ? "badge-signed" : "badge-open"}" style="flex-shrink:0;">${isDone ? "Erledigt" : "Offen"}</span>
             </div>
+            ${renderStopPositionenVorschau(s)}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
             <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
@@ -2020,7 +2035,7 @@ function renderNewTourForm() {
     <div class="card">
       <h2>${glasEditingTourId ? "Tour bearbeiten" : "Neue Tour anlegen"}</h2>
       <p class="muted" style="margin:0 0 12px;">Pro Objekt kannst du unten abhaken, welche Positionen auf den Schein kommen – fällige sind vorausgewählt.</p>
-      ${glasEditingTourId ? `<p class="muted" style="margin:0 0 12px;">Bereits unterschriebene Stopps bleiben unverändert erhalten, auch wenn du ihr Objekt hier abwählst.</p>` : ""}
+      ${glasEditingTourId ? `<p class="muted" style="margin:0 0 12px;">Bestehende Stopps bleiben exakt so, wie sie eingetragen wurden (inkl. handgeänderter Namen/Positionen). Abwählen entfernt einen offenen Stopp, neu Auswählen fügt ihn aus den Objekt-Daten hinzu. Unterschriebene Stopps bleiben immer erhalten.</p>` : ""}
       <div class="field">
         <label class="muted">Tourname</label>
         <input type="text" id="t_name" value="${escapeHtml(glasNewTour.name)}" placeholder="z.B. Tour Bochum Nord" />
@@ -2263,12 +2278,15 @@ async function createGlasTour() {
   const template = document.getElementById("t_template").value;
   const selected = glasObjekte.filter((o) => glasSelectedObjekte.has(o.id));
 
-  if (!selected.length) { showToast("Bitte mindestens ein Objekt auswählen"); return; }
+  // Beim Bearbeiten darf die Auswahl leer sein (z.B. Einzelschein mit frei eingetragenem
+  // Stopp, der gar kein Objekt referenziert) - nur beim Neuanlegen ist sie Pflicht.
+  if (!selected.length && !glasEditingTourId) { showToast("Bitte mindestens ein Objekt auswählen"); return; }
 
-  // Ohne eigenen Namen heißt die Tour wie ihr erstes Objekt
+  // Ohne eigenen Namen heißt die Tour wie ihr erstes Objekt (beim Bearbeiten: alter Name bleibt)
   if (!name) {
-    const erstesId = glasManualOrder[0] || selected[0].id;
-    name = glasObjekte.find((o) => o.id === erstesId)?.name || selected[0].name || "";
+    const erstesId = glasManualOrder[0] || selected[0]?.id;
+    name = glasObjekte.find((o) => o.id === erstesId)?.name || selected[0]?.name
+      || (glasEditingTourId ? glasTouren.find((t) => t.id === glasEditingTourId)?.name : "") || "";
   }
 
   // Kein Objekt darf ganz ohne Positionen auf den Schein - sonst entstünde ein leerer Schein
@@ -2317,26 +2335,53 @@ async function createGlasTour() {
     });
     if (tourErr) throw tourErr;
 
-    // Beim Bearbeiten: bereits unterschriebene Stopps bleiben unangetastet (auch wenn ihr
-    // Objekt hier abgewählt wurde - sonst würde bereits geleistete Arbeit verschwinden).
-    // Alle noch offenen Stopps der Tour werden gelöscht und aus der aktuellen Auswahl neu
-    // aufgebaut, damit Hinzufügen/Entfernen/Umsortieren sauber funktioniert.
+    // Beim Bearbeiten gilt: BESTEHENDE Stopps werden NIE neu aus den Objekt-Stammdaten
+    // aufgebaut - was einmal auf dem Stopp steht (auch handgeänderte Namen oder frei
+    // eingetragene Positionen, z.B. beim Einzelschein), bleibt exakt so erhalten.
+    // Es passiert nur, was der Admin aktiv auswählt:
+    //   - Objekt abgewählt  -> offener Stopp wird entfernt (unterschriebene nie)
+    //   - Objekt neu gewählt -> neuer Stopp aus den Objekt-Stammdaten
+    //   - sonst nur Reihenfolge/Notiz-Anpassungen
     let signedStops = [];
+    let keptStops = [];
     if (glasEditingTourId) {
       const { data: existing } = await sb.from("glas_stopps").select("*").eq("tour_id", tourId);
-      signedStops = (existing || []).filter((s) => s.status === "erledigt");
-      const unsignedIds = (existing || []).filter((s) => s.status !== "erledigt").map((s) => s.id);
-      if (unsignedIds.length) await sb.from("glas_stopps").delete().in("id", unsignedIds);
+      const stops = existing || [];
+      signedStops = stops.filter((s) => s.status === "erledigt");
+      const offene = stops.filter((s) => s.status !== "erledigt");
+      // Nur offene Stopps löschen, deren Objekt aktiv abgewählt wurde. Freihand-Stopps
+      // (ohne objekt_id) können nicht abgewählt werden und bleiben immer bestehen.
+      const abgewaehlt = offene.filter((s) => s.objekt_id && !glasSelectedObjekte.has(s.objekt_id));
+      keptStops = offene.filter((s) => !abgewaehlt.includes(s));
+      const wuerdenBleiben = signedStops.length + keptStops.length
+        + selected.filter((o) => ![...signedStops, ...keptStops].some((s) => s.objekt_id === o.id)).length;
+      if (!wuerdenBleiben) throw new Error("Eine Tour braucht mindestens einen Stopp – bitte ein Objekt ausgewählt lassen.");
+      if (abgewaehlt.length) await sb.from("glas_stopps").delete().in("id", abgewaehlt.map((s) => s.id));
     }
-    const signedObjektIds = new Set(signedStops.map((s) => s.objekt_id));
-    const toCreate = selected.filter((o) => !signedObjektIds.has(o.id));
+    const vorhandeneObjektIds = new Set([...signedStops, ...keptStops].map((s) => s.objekt_id).filter(Boolean));
+    const toCreate = selected.filter((o) => !vorhandeneObjektIds.has(o.id));
 
     // Reihenfolge = die per Drag festgelegte Liste (Smart-Sortierung wurde entfernt -
     // die Reihenfolge bestimmt ihr selbst)
-    const ordered = glasManualOrder.map((id) => toCreate.find((o) => o.id === id)).filter(Boolean);
-
     const startReihenfolge = signedStops.length ? Math.max(...signedStops.map((s) => s.reihenfolge)) + 1 : 0;
-    const stoppRows = ordered.map((o, idx) => {
+    const orderIdx = new Map(glasManualOrder.map((id, i) => [id, i]));
+
+    // Behaltene offene Stopps: nur Reihenfolge (per Drag) und ggf. aktiv geänderte Notiz
+    // aktualisieren - alle anderen Felder bleiben unverändert.
+    for (const s of keptStops) {
+      const updates = {};
+      if (s.objekt_id && orderIdx.has(s.objekt_id)) updates.reihenfolge = startReihenfolge + orderIdx.get(s.objekt_id);
+      if (s.objekt_id && glasTourNotizen.has(s.objekt_id)) {
+        const n = glasTourNotizen.get(s.objekt_id);
+        const neueNotiz = n.use ? (n.text || "").trim() : "";
+        if (neueNotiz !== (s.notiz || "")) updates.notiz = neueNotiz;
+      }
+      if (Object.keys(updates).length) await sb.from("glas_stopps").update(updates).eq("id", s.id);
+    }
+
+    const ordered = glasManualOrder.map((id) => toCreate.find((o) => o.id === id)).filter(Boolean);
+    const stoppRows = ordered.map((o) => {
+      const idx = orderIdx.has(o.id) ? orderIdx.get(o.id) : glasManualOrder.length;
       // Normalerweise gehen alle Positionen des Objekts auf den Schein. Kommt die Auswahl
       // aus "Jetzt planen" / der Offenen Liste (glasPreselectPositionen gesetzt), werden nur
       // die dort ausgewählten Positionen aufgenommen - so wird z.B. nicht versehentlich eine
@@ -2405,7 +2450,13 @@ async function editGlasTour(tourId) {
   glasSelectedObjekte = new Set(allObjektIds);
   glasManualOrder = unsignedObjektIds; // aktuelle Reihenfolge der noch offenen Stopps beibehalten
   glasPreselectPositionen = null;
+  // Notizen aus den BESTEHENDEN Stopps vorbefüllen (nicht aus den Objekt-Stammdaten) -
+  // so zeigt das Formular, was wirklich auf dem Stopp steht, und unangetastete Notizen
+  // bleiben beim Speichern exakt erhalten.
   glasTourNotizen = new Map();
+  stops.filter((s) => s.status !== "erledigt" && s.objekt_id).forEach((s) => {
+    glasTourNotizen.set(s.objekt_id, { use: !!s.notiz, text: s.notiz || "" });
+  });
   glasEditingTourId = tourId;
   glasTourSearch = "";
   glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko" };
@@ -2420,7 +2471,6 @@ async function deleteGlasTour(tourId) {
   const { error } = await sb.from("glas_touren").update({ archiviert_am: new Date().toISOString() }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour ins Archiv verschoben");
-  glasPushSend("glas", "push_touren", "🚐 Touren", `Tour ins Archiv verschoben: ${tourName}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   goGlasTab("touren");
@@ -2430,7 +2480,6 @@ async function restoreGlasTour(tourId) {
   const { error } = await sb.from("glas_touren").update({ archiviert_am: null }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Tour wiederhergestellt");
-  glasPushSend("glas", "push_touren", "🚐 Touren", `Tour wiederhergestellt: ${glasTouren.find((x) => x.id === tourId)?.name || ""}`);
   glasTourDetailId = null;
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
