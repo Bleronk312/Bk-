@@ -26,9 +26,83 @@ function todayIso() {
 
 async function glasMaInit() {
   renderGlasMa(); // Startseite sofort zeigen, Touren laden im Hintergrund
+  await glasFlushSignQueue(); // eventuell offline gesammelte Unterschriften zuerst nachsenden
   await loadGlasTouren();
   renderGlasMa();
 }
+
+// ---------------- Offline-Unterschriften ----------------
+// Im Objekt ist oft kein Empfang. Unterschriften werden dann lokal in einer Warteschlange
+// gesichert und automatisch gesendet, sobald wieder Netz da ist. Der Stopp erscheint sofort
+// als erledigt (mit Hinweis "wird gesendet"), damit der Mitarbeiter weitermachen kann.
+
+function glasLoadSignQueue() {
+  try { return JSON.parse(localStorage.getItem("glas_pending_signs") || "[]"); } catch (e) { return []; }
+}
+
+function glasSaveSignQueue(q) {
+  try { localStorage.setItem("glas_pending_signs", JSON.stringify(q)); } catch (e) {}
+}
+
+function glasQueueSign(item) {
+  const q = glasLoadSignQueue();
+  q.push(item);
+  glasSaveSignQueue(q);
+}
+
+// Legt die noch nicht gesendeten Unterschriften über die geladenen Touren, damit die
+// Stopps auch nach einem Neuladen als erledigt erscheinen, bis sie wirklich in der DB sind.
+function glasApplyPendingSigns() {
+  const q = glasLoadSignQueue();
+  if (!q.length) return;
+  for (const item of q) {
+    for (const t of glasTouren) {
+      const stop = t.stopps.find((s) => s.id === item.stopId);
+      if (stop) Object.assign(stop, { name: item.name, datum: item.datum, unterschrift: item.unterschrift, zusatz: item.zusatz, status: "erledigt", signed_at: item.signedAt, __pendingSync: true });
+    }
+  }
+}
+
+// Sendet die Warteschlange ab. Nur bei Erfolg wird ein Eintrag entfernt.
+async function glasFlushSignQueue() {
+  let q = glasLoadSignQueue();
+  if (!q.length) return;
+  const remaining = [];
+  let sent = 0;
+  for (const item of q) {
+    try {
+      const { error } = await glasSignStop(item.stopId, item.positionen, item.name, item.datum, item.unterschrift, item.zusatz, item.signedAt);
+      if (error) { remaining.push(item); } else { sent++; }
+    } catch (e) { remaining.push(item); }
+  }
+  glasSaveSignQueue(remaining);
+  if (sent > 0) showToast(sent === 1 ? "Offline-Unterschrift wurde gesendet" : `${sent} Offline-Unterschriften wurden gesendet`);
+}
+
+// Nachsenden anstoßen (Warteschlange leeren + Ansicht auffrischen). Wird an mehreren
+// Stellen ausgelöst, damit die Unterschriften zuverlässig im Büro ankommen, ohne dass
+// der Mitarbeiter etwas tun muss.
+let glasFlushLaeuft = false;
+async function glasTrySync() {
+  if (glasFlushLaeuft || !navigator.onLine) return;
+  if (!glasLoadSignQueue().length) return;
+  glasFlushLaeuft = true;
+  try {
+    await glasFlushSignQueue();
+    await loadGlasTouren();
+    renderGlasMa();
+  } finally {
+    glasFlushLaeuft = false;
+  }
+}
+
+// 1) Sobald das Gerät wieder online meldet.
+window.addEventListener("online", glasTrySync);
+// 2) Sobald die App wieder in den Vordergrund kommt (z.B. Mitarbeiter ist zurück im Büro
+//    und holt das Handy raus) - das "online"-Event ist besonders auf iPhones unzuverlässig.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) glasTrySync(); });
+// 3) Als Sicherheitsnetz alle 60 Sekunden, solange etwas in der Warteschlange liegt.
+setInterval(glasTrySync, 60000);
 
 // Logo oben links -> zurück zur Startseite (schließt auch eine offene Tour)
 function glasMaGoHome() {
@@ -40,26 +114,44 @@ function glasMaGoHome() {
 }
 
 async function loadGlasTouren() {
-  const { data: touren, error } = await sb
-    .from("glas_touren")
-    .select("*")
-    .order("datum", { ascending: false })
-    .limit(60);
-  if (error) {
-    document.getElementById("view").innerHTML = `<p class="muted">Fehler beim Laden: ${escapeHtml(error.message)}</p>`;
-    return;
-  }
-  const { data: stops } = await sb
-    .from("glas_stopps")
-    .select("*")
-    .order("reihenfolge", { ascending: true });
+  try {
+    const { data: touren, error } = await sb
+      .from("glas_touren")
+      .select("*")
+      .order("datum", { ascending: false })
+      .limit(60);
+    if (error) throw error;
+    const { data: stops, error: e2 } = await sb
+      .from("glas_stopps")
+      .select("*")
+      .order("reihenfolge", { ascending: true });
+    if (e2) throw e2;
 
-  glasTouren = (touren || [])
-    .filter((t) => !t.archiviert_am) // archivierte Touren gehören nicht in die Mitarbeiter-Ansicht
-    .map((t) => ({
-      ...t,
-      stopps: (stops || []).filter((s) => s.tour_id === t.id),
-    }));
+    glasTouren = (touren || [])
+      .filter((t) => !t.archiviert_am) // archivierte Touren gehören nicht in die Mitarbeiter-Ansicht
+      .map((t) => ({
+        ...t,
+        stopps: (stops || []).filter((s) => s.tour_id === t.id),
+      }));
+    // Letzten Stand für den Offline-Fall sichern (im Objekt oft kein Empfang)
+    try { localStorage.setItem("glas_touren_cache", JSON.stringify(glasTouren)); } catch (e) {}
+  } catch (err) {
+    // Offline oder Serverfehler -> auf die zuletzt gespeicherten Touren zurückfallen
+    const cached = glasLoadTourenCache();
+    if (cached && cached.length) {
+      glasTouren = cached;
+      showToast("Offline – letzte gespeicherte Touren werden angezeigt");
+    } else {
+      document.getElementById("view").innerHTML = `<p class="muted">Keine Verbindung und noch keine gespeicherten Touren. Bitte einmal mit Empfang öffnen.</p>`;
+      return;
+    }
+  }
+  // Offline unterschriebene Stopps lokal drüberlegen, bis sie gesendet sind
+  glasApplyPendingSigns();
+}
+
+function glasLoadTourenCache() {
+  try { return JSON.parse(localStorage.getItem("glas_touren_cache") || "[]"); } catch (e) { return []; }
 }
 
 function glasSingleMapLinks(stop) {
@@ -264,6 +356,7 @@ function renderGlasStopDetails(t, s, isDone) {
         ? `
       <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
         <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(s.datum)}</p>
+        ${s.__pendingSync ? `<div class="glas-notiz-box" style="margin:0 0 8px; background:var(--warning-bg); border-color:#e0b64a;">⏳ Sicher gespeichert – wird automatisch ans Büro gesendet, sobald wieder Empfang da ist.</div>` : ""}
         ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px; white-space:pre-line;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
@@ -345,18 +438,35 @@ async function saveGlasSignature(stopId) {
 
   const unterschrift = glasSigPad.toDataURL("image/png");
   const zusatz = [...document.querySelectorAll(".gs-zusatz")].map((t) => t.value.trim()).filter(Boolean).join("\n");
+  const signedAt = new Date().toISOString();
   let stopRef = null;
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
     if (stop) stopRef = stop;
   }
 
-  const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift, zusatz);
-  if (error) { showToast("Fehler beim Speichern: " + error.message); return; }
-  if (stopRef) Object.assign(stopRef, payload);
+  // Erst online versuchen; bei fehlendem Empfang / Netzfehler in die Warteschlange legen,
+  // damit im Objekt ohne Netz nichts verloren geht.
+  let saved = false;
+  if (navigator.onLine) {
+    try {
+      const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift, zusatz, signedAt);
+      if (!error) {
+        if (stopRef) Object.assign(stopRef, payload, { __pendingSync: false });
+        saved = true;
+      }
+    } catch (e) { /* Netzfehler -> unten offline sichern */ }
+  }
 
-  showToast("Gespeichert");
-  glasPushUnterschriftAnAdmin(stopRef, name, zusatz);
+  if (saved) {
+    showToast("Gespeichert");
+    glasPushUnterschriftAnAdmin(stopRef, name, zusatz);
+  } else {
+    glasQueueSign({ stopId, positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
+    if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, status: "erledigt", signed_at: signedAt, __pendingSync: true });
+    showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
+  }
+
   // Stopp bleibt aufgeklappt und zeigt jetzt den grünen "Unterschrieben"-Block
   glasSignStopId = null;
   glasOpenStopId = stopId;

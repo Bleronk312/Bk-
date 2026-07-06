@@ -6,6 +6,16 @@
 //   appGetCurrentSchein()  -> der gerade geöffnete Schein (für Foto-Speichern)
 //   appRerenderDetail()    -> baut die Detailansicht der Seite neu auf
 
+/* ---------------- Service Worker: Offline-Fähigkeit ---------------- */
+// Auf JEDER Seite registrieren (nicht nur beim Aktivieren von Push), damit die App-Shell
+// zwischengespeichert wird und die App auch ohne Empfang öffnet. Läuft im Hintergrund
+// und darf beim Öffnen nichts blockieren.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
 /* ---------------- UI-Basics ---------------- */
 
 function showToast(msg) {
