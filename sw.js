@@ -53,21 +53,22 @@ self.addEventListener("fetch", (event) => {
   const sameOrigin = url.origin === self.location.origin;
   const isCdn = url.hostname === "cdn.jsdelivr.net" || url.hostname === "cdnjs.cloudflare.com";
   if (!sameOrigin && !isCdn) return; // Supabase & andere Dienste nie aus dem Cache
-  // CDN-Bibliotheken sind fest versioniert (ändern sich nie) -> Cache zuerst, spart Zeit
-  event.respondWith(isCdn ? gekoCacheFirst(req) : gekoNetworkFirst(req));
+  // CDN-Bibliotheken: sofort aus dem Cache (schneller Start), im Hintergrund frisch
+  // nachladen. Wichtig, weil z.B. supabase-js@2 eine BEWEGLICHE Versions-URL ist -
+  // reines "Cache zuerst" würde sie für immer einfrieren.
+  event.respondWith(isCdn ? gekoCdnStaleWhileRevalidate(req) : gekoNetworkFirst(req));
 });
 
-async function gekoCacheFirst(req) {
+async function gekoCdnStaleWhileRevalidate(req) {
   const cache = await caches.open(GEKO_CACHE);
   const cached = await cache.match(req);
-  if (cached) return cached;
-  try {
-    const res = await fetch(req);
-    if (res && res.ok) cache.put(req, res.clone());
-    return res;
-  } catch (e) {
-    return Response.error();
-  }
+  const network = fetch(req)
+    .then((res) => {
+      if (res && res.ok) cache.put(req, res.clone());
+      return res;
+    })
+    .catch(() => null);
+  return cached || (await network) || Response.error();
 }
 
 // Netz zuerst (mit Zeitlimit, damit 1-Balken-Empfang nicht ewig hängt), Cache nur als

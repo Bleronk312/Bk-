@@ -3037,7 +3037,13 @@ async function saveGlasMa() {
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   const anspruch = parseInt(document.getElementById("ma_anspruch").value, 10);
   const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value, urlaubsanspruch: isNaN(anspruch) ? 30 : Math.max(0, anspruch) };
-  const { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  if (error && /urlaubsanspruch/.test(error.message || "")) {
+    // Spalte fehlt noch (neueste SQL-Datei nicht ausgeführt) - ohne Anspruch speichern
+    delete payload.urlaubsanspruch;
+    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
+    if (!error) showToast("Hinweis: Urlaubstage-Anspruch noch nicht gespeichert – bitte neueste SQL-Datei ausführen");
+  }
   if (error) { showToast("Fehler: " + error.message + " (SQL schon ausgeführt?)"); return; }
   showToast("Mitarbeiter gespeichert");
   glasMaEditing = null;
@@ -3448,7 +3454,15 @@ async function saveGlasTermin() {
     anhaenge: JSON.stringify(t.anhaenge || []),
   };
   const warNeu = !t.id;
-  const { error } = await sb.from("glas_termine").upsert(payload);
+  let { error } = await sb.from("glas_termine").upsert(payload);
+  if (error && /wiederholung|adresse/.test(error.message || "")) {
+    // Spalten existieren noch nicht (neueste SQL-Datei nicht ausgeführt) - Termin
+    // trotzdem ohne die neuen Felder speichern, statt komplett zu blockieren.
+    delete payload.wiederholung;
+    delete payload.adresse;
+    ({ error } = await sb.from("glas_termine").upsert(payload));
+    if (!error) showToast("Hinweis: Wiederholung/Adresse noch nicht gespeichert – bitte neueste SQL-Datei ausführen");
+  }
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
   showToast("Termin gespeichert");

@@ -50,6 +50,16 @@ function glasQueueSign(item) {
   glasSaveSignQueue(q);
 }
 
+// supabase-js WIRFT bei Netzproblemen nicht, sondern gibt den Fehler zurück - deshalb
+// hier unterscheiden: Netzfehler -> offline zwischenspeichern; echte Server-Antwort
+// (z.B. Constraint/RLS) -> Fehler anzeigen, NICHT als "gespeichert" ausgeben.
+function glasIstNetzFehler(err) {
+  const m = String((err && err.message) || err || "").toLowerCase();
+  return m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed")
+    || m.includes("fetch failed") || m.includes("network request failed") || m.includes("timeout")
+    || m.includes("abgebrochen") || m.includes("internet");
+}
+
 // Legt die noch nicht gesendeten Unterschriften über die geladenen Touren, damit die
 // Stopps auch nach einem Neuladen als erledigt erscheinen, bis sie wirklich in der DB sind.
 function glasApplyPendingSigns() {
@@ -72,7 +82,11 @@ async function glasFlushSignQueue() {
   for (const item of q) {
     try {
       const { error } = await glasSignStop(item.stopId, item.positionen, item.name, item.datum, item.unterschrift, item.zusatz, item.signedAt);
-      if (error) { remaining.push(item); } else { sent++; }
+      if (error) { remaining.push(item); } else {
+        sent++;
+        // Büro benachrichtigen - genauso wie bei einer direkt online erfassten Unterschrift
+        glasPushUnterschriftAnAdmin({ objekt: item.objekt }, item.name, item.zusatz);
+      }
     } catch (e) { remaining.push(item); }
   }
   glasSaveSignQueue(remaining);
@@ -133,8 +147,14 @@ async function loadGlasTouren() {
         ...t,
         stopps: (stops || []).filter((s) => s.tour_id === t.id),
       }));
-    // Letzten Stand für den Offline-Fall sichern (im Objekt oft kein Empfang)
-    try { localStorage.setItem("glas_touren_cache", JSON.stringify(glasTouren)); } catch (e) {}
+    // Letzten Stand für den Offline-Fall sichern (im Objekt oft kein Empfang).
+    // Unterschrift-Bilder (große Base64-PNGs) werden dabei weggelassen, sonst sprengen
+    // ein paar unterschriebene Touren das localStorage-Limit und es gäbe GAR keinen
+    // Offline-Fallback mehr. Offline fehlt dann nur das Bild bei alten Unterschriften.
+    try {
+      const schlank = glasTouren.map((t) => ({ ...t, stopps: t.stopps.map((s) => ({ ...s, unterschrift: s.unterschrift ? "" : s.unterschrift })) }));
+      localStorage.setItem("glas_touren_cache", JSON.stringify(schlank));
+    } catch (e) {}
   } catch (err) {
     // Offline oder Serverfehler -> auf die zuletzt gespeicherten Touren zurückfallen
     const cached = glasLoadTourenCache();
@@ -446,23 +466,33 @@ async function saveGlasSignature(stopId) {
   }
 
   // Erst online versuchen; bei fehlendem Empfang / Netzfehler in die Warteschlange legen,
-  // damit im Objekt ohne Netz nichts verloren geht.
+  // damit im Objekt ohne Netz nichts verloren geht. Eine ECHTE Server-Ablehnung wird
+  // dagegen als Fehler angezeigt (Formular bleibt offen) - sie darf nicht als
+  // "gespeichert" durchgehen.
   let saved = false;
+  let serverFehler = null;
   if (navigator.onLine) {
     try {
       const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift, zusatz, signedAt);
       if (!error) {
         if (stopRef) Object.assign(stopRef, payload, { __pendingSync: false });
         saved = true;
+      } else if (!glasIstNetzFehler(error)) {
+        serverFehler = error;
       }
-    } catch (e) { /* Netzfehler -> unten offline sichern */ }
+    } catch (e) { if (!glasIstNetzFehler(e)) serverFehler = e; }
+  }
+
+  if (serverFehler) {
+    showToast("Fehler beim Speichern: " + (serverFehler.message || serverFehler));
+    return; // Formular + Unterschrift bleiben stehen, nichts geht verloren
   }
 
   if (saved) {
     showToast("Gespeichert");
     glasPushUnterschriftAnAdmin(stopRef, name, zusatz);
   } else {
-    glasQueueSign({ stopId, positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
+    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
     if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, status: "erledigt", signed_at: signedAt, __pendingSync: true });
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }

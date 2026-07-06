@@ -82,20 +82,54 @@ Deno.serve(async (_req) => {
 
     // ---- Glasreinigung: Erinnerungen für Kalender-Termine (nur Admin) ----
     // erinnerung: '' | 'same_day' | '1d' | '2d' | '7d' (X Tage vor dem Termin-Datum)
+    // Wiederkehrende Termine (Spalte "wiederholung", JSON wie in der App) erinnern an
+    // JEDEM Vorkommen - nicht nur am allerersten Startdatum.
     const offsets: Record<string, number> = { same_day: 0, "1d": 1, "2d": 2, "7d": 7 };
     const { data: glasTermine } = await supabase
       .from("glas_termine")
-      .select("titel, datum, erinnerung, notiz");
+      .select("titel, datum, erinnerung, notiz, wiederholung");
 
-    const faellig = (glasTermine || []).filter((t) => {
-      if (!t.datum || !(t.erinnerung in offsets)) return false;
-      const d = new Date(t.datum + "T12:00:00Z");
-      d.setUTCDate(d.getUTCDate() - offsets[t.erinnerung]);
-      return d.toISOString().slice(0, 10) === today;
-    });
+    const addDays = (iso: string, days: number) => {
+      const d = new Date(iso + "T12:00:00Z");
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    const addMonths = (iso: string, months: number) => {
+      const d = new Date(iso + "T12:00:00Z");
+      d.setUTCMonth(d.getUTCMonth() + months);
+      return d.toISOString().slice(0, 10);
+    };
+    const wochentag = (iso: string) => new Date(iso + "T12:00:00Z").getUTCDay();
 
-    for (const t of faellig) {
-      const [y, m, d] = t.datum.split("-");
+    // Beginnt am Zieltag (heute + Vorlauf) ein Vorkommen dieses Termins?
+    const vorkommenAm = (t, ziel: string) => {
+      if (!t.datum || ziel < t.datum) return false;
+      let w = null;
+      try { w = t.wiederholung ? JSON.parse(t.wiederholung) : null; } catch (_e) { w = null; }
+      if (!w || !w.freq) return ziel === t.datum;
+      if (w.ende && ziel > w.ende) return false;
+      if (w.freq === "taeglich") return true;
+      if (w.freq === "woechentlich") {
+        const tage = Array.isArray(w.wochentage) && w.wochentage.length ? w.wochentage : [wochentag(t.datum)];
+        return tage.includes(wochentag(ziel));
+      }
+      if (w.freq === "monatlich" || w.freq === "jaehrlich") {
+        const schritt = w.freq === "monatlich" ? 1 : 12;
+        let cur = t.datum;
+        for (let i = 0; i < 500 && cur <= ziel; i++) {
+          if (cur === ziel) return true;
+          cur = addMonths(cur, schritt);
+        }
+        return false;
+      }
+      return ziel === t.datum;
+    };
+
+    for (const t of glasTermine || []) {
+      if (!(t.erinnerung in offsets)) continue;
+      const ziel = addDays(today, offsets[t.erinnerung]); // der Tag, an den erinnert wird
+      if (!vorkommenAm(t, ziel)) continue;
+      const [y, m, d] = ziel.split("-");
       const wann = t.erinnerung === "same_day" ? "Heute" : `Am ${d}.${m}.${y}`;
       await sendToRole(
         supabase,
