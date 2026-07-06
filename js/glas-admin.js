@@ -97,9 +97,7 @@ function glasJoinAdresse(strasse, plz, ort) {
 }
 
 function matchesSearch(o, q) {
-  if (!q) return true;
-  const hay = `${o.name} ${o.adresse} ${o.kunde_name} ${o.kdnr}`.toLowerCase();
-  return hay.includes(q.toLowerCase());
+  return glasSearchMatch(`${o.name} ${o.adresse} ${o.kunde_name} ${o.kdnr}`, q);
 }
 
 // Höchste Dringlichkeit unter allen Positionen eines Objekts: 'ueberfaellig' | 'bald' | null.
@@ -601,8 +599,8 @@ function renderGlobalSearchBar() {
 
 function renderGlobalSearchResults() {
   const q = glasGlobalSearch.trim().toLowerCase();
-  const kundenHits = glasKunden.filter((k) => `${k.name} ${k.adresse} ${k.kdnr}`.toLowerCase().includes(q));
-  const objekteHits = glasObjekte.filter((o) => `${o.name} ${o.adresse} ${o.kdnr} ${o.kunde_name}`.toLowerCase().includes(q));
+  const kundenHits = glasKunden.filter((k) => glasSearchMatch(`${k.name} ${k.adresse} ${k.kdnr}`, q));
+  const objekteHits = glasObjekte.filter((o) => glasSearchMatch(`${o.name} ${o.adresse} ${o.kdnr} ${o.kunde_name}`, q));
   if (!kundenHits.length && !objekteHits.length) return `<p class="muted">Keine Treffer für „${escapeHtml(glasGlobalSearch)}".</p>`;
   return `
     ${kundenHits.length ? `
@@ -640,7 +638,7 @@ function renderKundePicker(selectedKundeId, selectedKundeName) {
       </div>`;
   }
   const q = glasKundePickerSearch.trim().toLowerCase();
-  const filtered = glasKunden.filter((k) => !q || k.name.toLowerCase().includes(q));
+  const filtered = glasKunden.filter((k) => glasSearchMatch(`${k.name} ${k.kdnr || ""} ${k.adresse || ""}`, q));
   return `
     <div class="card" style="margin-bottom:14px;">
       <input type="text" id="kp_search" placeholder="🔍 Kunde suchen..." value="${escapeHtml(glasKundePickerSearch)}" style="margin-bottom:10px;" />
@@ -2724,7 +2722,7 @@ function renderEsKundeResults() {
   const q = (glasKundePickerSearch || "").trim().toLowerCase();
   if (!q) return "";
   const treffer = glasKunden
-    .filter((k) => `${k.name} ${k.kdnr || ""} ${k.adresse || ""}`.toLowerCase().includes(q))
+    .filter((k) => glasSearchMatch(`${k.name} ${k.kdnr || ""} ${k.adresse || ""}`, q))
     .slice(0, 12);
   if (!treffer.length) return `<p class="muted" style="margin:6px 0 0; font-size:12.5px;">Kein Kunde gefunden.</p>`;
   return `<div class="card glas-tour-search-list" style="padding:0; overflow-y:auto; max-height:240px; margin-top:6px;">
@@ -3679,9 +3677,9 @@ function glasToggleKalUrlaub() {
 function renderKalenderSuchErgebnisse() {
   const q = glasKalSearch.trim().toLowerCase();
   if (q.length < 2) return `<p class="muted" style="margin:8px 2px 2px;">Mindestens 2 Zeichen eingeben…</p>`;
-  const termine = glasTermine.filter((t) => (t.titel || "").toLowerCase().includes(q)).slice(0, 8);
-  const touren = glasTouren.filter((t) => !t.archiviert_am && (t.name || "").toLowerCase().includes(q)).slice(0, 8);
-  const objekte = glasObjekte.filter((o) => `${o.name} ${o.kunde_name} ${o.kdnr}`.toLowerCase().includes(q)).slice(0, 8);
+  const termine = glasTermine.filter((t) => glasSearchMatch(t.titel, q)).slice(0, 8);
+  const touren = glasTouren.filter((t) => !t.archiviert_am && glasSearchMatch(t.name, q)).slice(0, 8);
+  const objekte = glasObjekte.filter((o) => glasSearchMatch(`${o.name} ${o.kunde_name} ${o.kdnr}`, q)).slice(0, 8);
   if (!termine.length && !touren.length && !objekte.length) return `<p class="muted" style="margin:8px 2px 2px;">Keine Treffer für „${escapeHtml(glasKalSearch)}".</p>`;
   const row = (onclick, farbe, titel, sub) => `
     <div style="display:flex; align-items:center; gap:10px; padding:9px 2px; border-top:1px solid var(--border); cursor:pointer;" onclick="${onclick}">
@@ -3922,7 +3920,7 @@ function renderOffeneListe() {
 function renderOffeneListeErgebnisse() {
   const all = glasAlleOffenenPositionen();
   const q = glasOffeneSearch.trim().toLowerCase();
-  const filtered = q ? all.filter((x) => `${x.objekt.name} ${x.objekt.kunde_name}`.toLowerCase().includes(q)) : all;
+  const filtered = q ? all.filter((x) => glasSearchMatch(`${x.objekt.name} ${x.objekt.kunde_name} ${x.objekt.kdnr || ""}`, q)) : all;
 
   // Gruppieren: pro Objekt der höchste Status + früheste Fälligkeit + alle offenen Positionen
   const gruppen = new Map();

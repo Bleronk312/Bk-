@@ -54,6 +54,20 @@ function glasAddMonthsIso(iso, months) {
   return glasIsoFromDate(d);
 }
 
+// Robuste Text-/Nummern-Suche: findet auch Kd.-Nummern, wenn man sie OHNE die
+// gespeicherten Leerzeichen/Trennzeichen tippt ("380651100" findet "3806 511 00")
+// und umgekehrt. hay = zu durchsuchender Text, q = Eingabe.
+function glasSearchMatch(hay, q) {
+  hay = String(hay || "").toLowerCase();
+  q = String(q || "").trim().toLowerCase();
+  if (!q) return true;
+  if (hay.includes(q)) return true;
+  // Trennzeichen (Leerzeichen, Punkt, Schrägstrich, Bindestrich) ignorieren
+  const strip = (s) => s.replace(/[\s.\-\/]/g, "");
+  const hs = strip(hay), qs = strip(q);
+  return qs.length >= 2 && hs.includes(qs);
+}
+
 // Positions-Schnappschuss eines Stopps als Array {nr, art, qm} (leere weggefiltert).
 function glasStopPositionen(s) {
   let pos = [];

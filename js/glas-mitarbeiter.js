@@ -155,20 +155,22 @@ async function loadGlasTouren() {
       const schlank = glasTouren.map((t) => ({ ...t, stopps: t.stopps.map((s) => ({ ...s, unterschrift: s.unterschrift ? "" : s.unterschrift })) }));
       localStorage.setItem("glas_touren_cache", JSON.stringify(schlank));
     } catch (e) {}
+    glasOfflineModus = false;
   } catch (err) {
     // Offline oder Serverfehler -> auf die zuletzt gespeicherten Touren zurückfallen
+    glasOfflineModus = true;
     const cached = glasLoadTourenCache();
     if (cached && cached.length) {
       glasTouren = cached;
-      showToast("Offline – letzte gespeicherte Touren werden angezeigt");
     } else {
-      document.getElementById("view").innerHTML = `<p class="muted">Keine Verbindung und noch keine gespeicherten Touren. Bitte einmal mit Empfang öffnen.</p>`;
-      return;
+      glasTouren = [];
     }
   }
   // Offline unterschriebene Stopps lokal drüberlegen, bis sie gesendet sind
   glasApplyPendingSigns();
 }
+
+let glasOfflineModus = false;
 
 function glasLoadTourenCache() {
   try { return JSON.parse(localStorage.getItem("glas_touren_cache") || "[]"); } catch (e) { return []; }
@@ -214,17 +216,29 @@ function renderGlasMa() {
   if (!glasTouren.length) {
     view.innerHTML = `
       <button class="btn btn-sm" style="margin:16px 0;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
+      ${glasOfflineBanner()}
       <div class="glas-empty">
-        <div class="glas-empty-icon">🧽</div>
-        <p style="font-weight:600; font-size:16px;">Noch keine Tour für dich</p>
-        <p class="muted" style="margin-top:4px;">Sobald eine Tour für dich geplant ist, erscheint sie hier automatisch.</p>
+        <div class="glas-empty-icon">${glasOfflineModus ? "📴" : "🧽"}</div>
+        <p style="font-weight:600; font-size:16px;">${glasOfflineModus ? "Offline – noch nichts gespeichert" : "Noch keine Tour für dich"}</p>
+        <p class="muted" style="margin-top:4px;">${glasOfflineModus ? "Bitte die App einmal mit Internet öffnen – danach sind deine Touren auch offline da." : "Sobald eine Tour für dich geplant ist, erscheint sie hier automatisch."}</p>
       </div>`;
     return;
   }
 
   view.innerHTML = `
     <button class="btn btn-sm" style="margin:16px 0 4px;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
+    ${glasOfflineBanner()}
     ${renderGlasTourList()}`;
+}
+
+// Deutlich sichtbarer Hinweis, dass gerade der zuletzt gespeicherte (Offline-)Stand
+// gezeigt wird - damit klar ist, dass die App NICHT hängt, sondern nur kein Netz hat.
+function glasOfflineBanner() {
+  if (!glasOfflineModus) return "";
+  const wartend = glasLoadSignQueue().length;
+  return `<div style="background:var(--warning-bg); border:1px solid #e0b64a; border-radius:10px; padding:10px 12px; margin:6px 0 12px; font-size:13px;">
+    📴 <b>Offline</b> – zuletzt gespeicherter Stand.${wartend ? ` ${wartend} Unterschrift(en) warten aufs Senden.` : ""} Sobald wieder Empfang da ist, aktualisiert sich alles automatisch.
+  </div>`;
 }
 
 function glasTourProgress(t) {
