@@ -319,7 +319,17 @@ function glasHashFor(page) {
 let glasContentAnimPending = false;
 let glasCalAnimDir = null;
 
-function goGlasHome() { glasContentAnimPending = true; glasNavigate({ type: "home" }); }
+function goGlasHome() {
+  glasContentAnimPending = true;
+  // In der reinen Kalender-App gibt es keine Verwaltungs-Startseite - das Logo/Zuhause
+  // führt zurück in den Kalender (aktueller Monat), nicht in die Glas-Verwaltung.
+  if (glasCalApp) {
+    glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() };
+    glasNavigate({ type: "tabs", tab: "kalender" });
+  } else {
+    glasNavigate({ type: "home" });
+  }
+}
 
 function glasNavigate(page) {
   glasMenuOpen = false; // offenes ☰-Menü schließt bei jeder Navigation
@@ -375,15 +385,21 @@ function renderGlasAdmin() {
   // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
   const isHome = glasPage.type === "home";
   const tab = isHome ? "" : glasPage.tab;
-  view.innerHTML = `
-    <div class="tabs">
+  // Kalender-App: keine Glas-Reiterleiste (Touren/Kunden gehören dort nicht hin) - auf
+  // Unterseiten wie den Einstellungen stattdessen ein klarer Zurück-zum-Kalender-Balken.
+  // Auf dem Kalender selbst wird diese Leiste per CSS (glas-cal-pur) ausgeblendet.
+  const glasNav = glasCalApp
+    ? `<div class="tabs"><button class="tab-btn active" style="justify-content:flex-start; gap:6px;" onclick="goGlasTab('kalender')">‹ Zurück zum Kalender</button></div>`
+    : `<div class="tabs">
       <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
       <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
       <button class="tab-btn ${["kunden", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
-    ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}
-    ${isHome || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
+    ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
+  view.innerHTML = `
+    ${glasNav}
+    ${isHome || glasCalApp || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
   glasUpdateTabContent();
@@ -1559,6 +1575,14 @@ function renderEinstellungenKachel(key, titel, inhaltHtml) {
 }
 
 function renderEinstellungenTab() {
+  // Die reine Kalender-App zeigt nur die für sie relevanten Einstellungen
+  // (Design + Benachrichtigungen) - Statistik/Positionen/Archiv sind Glas-Verwaltung.
+  if (glasCalApp) {
+    return `
+      ${renderEinstellungenKachel("darstellung", "🌙 Darstellung", renderDarstellungEinstellung())}
+      ${renderEinstellungenKachel("push", "🔔 Benachrichtigungen", renderPushEinstellungen())}
+    `;
+  }
   return `
     <div class="card" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasOpenStatistik()">
       <div>
@@ -2685,7 +2709,7 @@ function renderKalenderTab() {
         <button class="glas-seg-btn ${glasKalenderAnsicht === "termine" ? "on" : ""}" onclick="glasKalenderAnsicht='termine'; glasUpdateTabContent();">📅 Termine</button>
         <button class="glas-seg-btn ${glasKalenderAnsicht === "urlaub" ? "on" : ""}" onclick="glasKalenderAnsicht='urlaub'; glasUpdateTabContent();">🏖️ Urlaub</button>
       </div>
-      ${glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender" ? `<button class="btn btn-sm" style="flex:0 0 auto;" title="Zur Verwaltung" onclick="goGlasHome()">⚙️</button>` : ""}
+      ${glasCalApp ? `<button class="btn btn-sm" style="flex:0 0 auto;" title="Einstellungen (Benachrichtigungen, Design)" onclick="goGlasTab('einstellungen')">⚙️</button>` : ""}
     </div>
     ${glasKalenderAnsicht === "urlaub" ? renderUrlaubKalender() : renderKalenderMonat()}
     ${glasKalenderAnsicht === "termine" ? `<button class="glas-fab" title="Termin eintragen" onclick="openGlasTermin(null)">+</button>` : ""}
