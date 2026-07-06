@@ -2751,6 +2751,16 @@ function glasZaehleUrlaubstage(ranges, jahr) {
   return { moFr, moSa };
 }
 
+// Urlaubs-Bilanz eines Mitarbeiters: Jahres-Anspruch minus genommene Tage = Rest.
+// "genommen" zählt je nach Arbeitswoche (Mo–Fr oder Mo–Sa) die passenden Tage.
+function glasUrlaubBilanz(m, jahr) {
+  const meine = glasUrlaub.filter((u) => u.mitarbeiter_id === m.id);
+  const { moFr, moSa } = glasZaehleUrlaubstage(meine, jahr);
+  const genommen = m.arbeitstage === "mo_sa" ? moSa : moFr;
+  const anspruch = m.urlaubsanspruch != null ? m.urlaubsanspruch : 30;
+  return { anspruch, genommen, uebrig: anspruch - genommen, moFr, moSa };
+}
+
 function renderUrlaubKalender() {
   if (glasUrlaubEditing) return renderUrlaubForm();
   if (glasMaEditing !== null) return renderMaForm();
@@ -2773,22 +2783,25 @@ function renderUrlaubKalender() {
     const m = glasMitarbeiter.find((x) => x.id === glasUrlaubMaFilter);
     const jahr = new Date().getFullYear();
     const meine = glasUrlaub.filter((u) => u.mitarbeiter_id === glasUrlaubMaFilter);
-    const { moFr, moSa } = glasZaehleUrlaubstage(meine, jahr);
-    const relevant = m && m.arbeitstage === "mo_sa" ? moSa : moFr;
+    const b = m ? glasUrlaubBilanz(m, jahr) : { anspruch: 0, genommen: 0, uebrig: 0 };
+    const uebrigFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
     const liste = [...meine].sort((a, b) => (a.von || "").localeCompare(b.von || ""));
     statCard = `
       <div class="card" style="border-left:4px solid ${glasMaFarbe(glasUrlaubMaFilter)};">
         <p style="margin:0 0 2px; font-weight:700;">${escapeHtml(m ? m.name : "")} <span class="muted" style="font-weight:400;">· ${m && m.arbeitstage === "mo_sa" ? "arbeitet Mo–Sa" : "arbeitet Mo–Fr"}</span></p>
         <p class="muted" style="margin:0 0 10px;">Urlaub ${jahr}</p>
         <div style="display:flex; gap:10px;">
-          <div class="glas-stat" style="flex:1; ${m && m.arbeitstage === "mo_sa" ? "opacity:0.5;" : ""}">
-            <span class="glas-stat-num">${moFr}</span><span class="glas-stat-label">Tage (Mo–Fr)</span>
+          <div class="glas-stat" style="flex:1;">
+            <span class="glas-stat-num">${b.anspruch}</span><span class="glas-stat-label">Anspruch</span>
           </div>
-          <div class="glas-stat" style="flex:1; ${m && m.arbeitstage !== "mo_sa" ? "opacity:0.5;" : ""}">
-            <span class="glas-stat-num">${moSa}</span><span class="glas-stat-label">Tage (Mo–Sa)</span>
+          <div class="glas-stat" style="flex:1;">
+            <span class="glas-stat-num">${b.genommen}</span><span class="glas-stat-label">Genommen</span>
+          </div>
+          <div class="glas-stat" style="flex:1; background:${uebrigFarbe}1a; border-color:${uebrigFarbe}55;">
+            <span class="glas-stat-num" style="color:${uebrigFarbe};">${b.uebrig}</span><span class="glas-stat-label">Übrig</span>
           </div>
         </div>
-        <p class="muted" style="margin:10px 0 6px; font-size:12px;">Für diesen Mitarbeiter zählen die <b>${relevant} Tage (${m && m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"})</b>.</p>
+        <p class="muted" style="margin:10px 0 6px; font-size:12px;">${b.uebrig < 0 ? `⚠️ <b style="color:var(--danger);">${Math.abs(b.uebrig)} Tage über dem Anspruch.</b>` : `Noch <b>${b.uebrig} von ${b.anspruch} Tagen</b> übrig.`} Gezählt werden ${m && m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"}-Tage.</p>
         ${liste.length ? `<div style="border-top:1px solid var(--border); padding-top:6px;">${liste.map((u) => `
           <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-top:1px solid var(--border);">
             <span style="font-size:13px;">${formatGlasDateRange(u.von, u.bis)}${u.notiz ? ` · ${escapeHtml(u.notiz)}` : ""}</span>
@@ -2925,17 +2938,21 @@ function renderMaVerwaltung() {
     <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasUrlaubVerwaltung=false; renderGlasAdmin();">&larr; Zurück zum Urlaubskalender</button>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
       <h2 style="margin:0;">Mitarbeiter</h2>
-      <button class="btn btn-sm btn-primary" onclick="glasMaEditing={id:null,name:'',arbeitstage:'mo_fr'}; renderGlasAdmin();">+ Neuer Mitarbeiter</button>
+      <button class="btn btn-sm btn-primary" onclick="glasMaEditing={id:null,name:'',arbeitstage:'mo_fr',urlaubsanspruch:30}; renderGlasAdmin();">+ Neuer Mitarbeiter</button>
     </div>
-    ${glasMitarbeiter.length ? glasMitarbeiter.map((m) => `
+    ${glasMitarbeiter.length ? glasMitarbeiter.map((m) => {
+      const b = glasUrlaubBilanz(m, new Date().getFullYear());
+      const uebrigFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
+      return `
       <div class="card" style="display:flex; align-items:center; gap:10px;">
         <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)}; width:14px; height:14px;"></span>
         <div style="flex:1;">
           <p style="margin:0; font-weight:600;">${escapeHtml(m.name)}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "arbeitet Mo–Sa" : "arbeitet Mo–Fr"}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} von ${b.anspruch} Urlaubstagen übrig</b></p>
         </div>
         <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
-      </div>`).join("") : `<p class="muted">Noch keine Mitarbeiter angelegt.</p>`}
+      </div>`;
+    }).join("") : `<p class="muted">Noch keine Mitarbeiter angelegt.</p>`}
   `;
 }
 
@@ -2953,6 +2970,11 @@ function renderMaForm() {
           <option value="mo_sa" ${m.arbeitstage === "mo_sa" ? "selected" : ""}>Mo–Sa (6-Tage-Woche)</option>
         </select>
       </div>
+      <div class="field">
+        <label class="muted">Urlaubstage pro Jahr</label>
+        <input type="number" id="ma_anspruch" min="0" max="366" value="${m.urlaubsanspruch != null ? m.urlaubsanspruch : 30}" style="width:auto;" />
+        <p class="muted" style="margin:4px 0 0; font-size:12px;">Die App zieht die genommenen Tage ab und zeigt dir den Rest an.</p>
+      </div>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-primary" onclick="saveGlasMa()">Speichern</button>
         ${m.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-left:auto;" onclick="deleteGlasMa('${m.id}')">Löschen</button>` : ""}
@@ -2964,7 +2986,8 @@ async function saveGlasMa() {
   const m = glasMaEditing;
   const name = (document.getElementById("ma_name").value || "").trim();
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
-  const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value };
+  const anspruch = parseInt(document.getElementById("ma_anspruch").value, 10);
+  const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value, urlaubsanspruch: isNaN(anspruch) ? 30 : Math.max(0, anspruch) };
   const { error } = await sb.from("glas_mitarbeiter").upsert(payload);
   if (error) { showToast("Fehler: " + error.message + " (SQL schon ausgeführt?)"); return; }
   showToast("Mitarbeiter gespeichert");

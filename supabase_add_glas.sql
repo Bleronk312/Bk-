@@ -321,3 +321,9 @@ delete from push_subscriptions where role = 'admin';
 -- Adresse: Klartext-Adresse; im Kalender anklickbar -> öffnet Route in Waze.
 alter table glas_termine add column if not exists wiederholung text not null default '';
 alter table glas_termine add column if not exists adresse text not null default '';
+
+-- ============================================================================
+-- Urlaubsanspruch pro Mitarbeiter (Runde: Resturlaub-Berechnung).
+-- Jahres-Anspruch in Tagen; die App zieht die genommenen Urlaubstage ab und
+-- zeigt den Rest an. 30 ist ein üblicher Standard.
+alter table glas_mitarbeiter add column if not exists urlaubsanspruch integer not null default 30;
