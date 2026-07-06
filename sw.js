@@ -1,14 +1,18 @@
 // ============================================================================
 // Offline-Cache (App-Shell). Damit die App auch ohne Empfang öffnet - z.B. wenn
-// im Objekt kein Netz ist. Strategie: "stale-while-revalidate" - es wird sofort
-// die zwischengespeicherte Version ausgeliefert (schnell + offline), im Hintergrund
-// aber frisch nachgeladen. Neue Versionen erscheinen daher beim übernächsten Öffnen
-// (oder sofort per "nach unten ziehen zum Aktualisieren").
+// im Objekt kein Netz ist.
+//
+// Strategie: eigene Dateien (HTML/CSS/JS) kommen IMMER frisch aus dem Netz; nur
+// wenn das Netz nicht antwortet (offline / kein Empfang), springt der Cache ein.
+// So gibt es nie veraltete App-Versionen nach einem Deploy - die alte
+// "stale-while-revalidate"-Variante lieferte erst die alte Datei aus und hat so
+// z.B. die Kalender-App-Erkennung ausgehebelt. CDN-Bibliotheken (fest versionierte
+// URLs, ändern sich nie) kommen weiterhin direkt aus dem Cache.
 //
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v1";
+const GEKO_CACHE = "geko-cache-v2";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -49,19 +53,39 @@ self.addEventListener("fetch", (event) => {
   const sameOrigin = url.origin === self.location.origin;
   const isCdn = url.hostname === "cdn.jsdelivr.net" || url.hostname === "cdnjs.cloudflare.com";
   if (!sameOrigin && !isCdn) return; // Supabase & andere Dienste nie aus dem Cache
-  event.respondWith(gekoStaleWhileRevalidate(req));
+  // CDN-Bibliotheken sind fest versioniert (ändern sich nie) -> Cache zuerst, spart Zeit
+  event.respondWith(isCdn ? gekoCacheFirst(req) : gekoNetworkFirst(req));
 });
 
-async function gekoStaleWhileRevalidate(req) {
+async function gekoCacheFirst(req) {
   const cache = await caches.open(GEKO_CACHE);
   const cached = await cache.match(req);
-  const network = fetch(req)
-    .then((res) => {
-      if (res && res.ok && (res.type === "basic" || res.type === "cors")) cache.put(req, res.clone());
-      return res;
-    })
-    .catch(() => null);
-  return cached || (await network) || Response.error();
+  if (cached) return cached;
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) cache.put(req, res.clone());
+    return res;
+  } catch (e) {
+    return Response.error();
+  }
+}
+
+// Netz zuerst (mit Zeitlimit, damit 1-Balken-Empfang nicht ewig hängt), Cache nur als
+// Offline-Fallback. ignoreSearch, damit z.B. "glas-admin.js?v=2" offline auch die
+// vorgespeicherte "glas-admin.js" findet.
+async function gekoNetworkFirst(req) {
+  const cache = await caches.open(GEKO_CACHE);
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(req, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (res && res.ok) cache.put(req, res.clone());
+    return res;
+  } catch (e) {
+    const cached = await cache.match(req, { ignoreSearch: true });
+    return cached || Response.error();
+  }
 }
 
 self.addEventListener("push", (event) => {
