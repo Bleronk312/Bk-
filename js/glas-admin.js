@@ -2510,6 +2510,7 @@ function openGlasEinzelschein() {
     kunde_adresse: glasKunden[0] ? [glasKunden[0].name, glasKunden[0].adresse].filter(Boolean).join("\n") : "",
     objekt_id: "",
     objekt: "",
+    name: "",
     adresse: "",
     kdnr: "",
     template: "geko",
@@ -2556,6 +2557,7 @@ async function editEinzelschein(tourId) {
     kunde_adresse: stop.kunde_adresse || "",
     objekt_id: stop.objekt_id || "",
     objekt: stop.objekt || "",
+    name: t.name || "",
     adresse: stop.adresse || "",
     kdnr: stop.kdnr || "",
     template: t.template === "sub" ? "sub" : "geko",
@@ -2604,6 +2606,11 @@ function renderEinzelscheinForm() {
       <div class="field">
         <label class="muted">Objekt-Name</label>
         <input type="text" id="es_objekt_name" value="${escapeHtml(d.objekt)}" placeholder="z.B. Objekt Musterstraße" />
+      </div>
+      <div class="field">
+        <label class="muted">Bezeichnung des Scheins (optional)</label>
+        <input type="text" id="es_name" value="${escapeHtml(d.name || "")}" placeholder="Standard: „Einzelschein – ${escapeHtml(d.objekt || "Objektname")}"" />
+        <p class="muted" style="margin:4px 0 0; font-size:12px;">So heißt der Schein in der Touren-Liste. Leer lassen = automatisch nach dem Objekt-Namen.</p>
       </div>
       <div class="field">
         <label class="muted">Adresse</label>
@@ -2694,6 +2701,7 @@ function syncEsFromDom() {
   }));
   d.kunde_adresse = document.getElementById("es_kunde_adresse")?.value ?? d.kunde_adresse;
   d.objekt = document.getElementById("es_objekt_name")?.value ?? d.objekt;
+  d.name = document.getElementById("es_name")?.value ?? d.name;
   d.adresse = document.getElementById("es_adresse")?.value ?? d.adresse;
   d.kdnr = document.getElementById("es_kdnr")?.value ?? d.kdnr;
   d.template = document.getElementById("es_template")?.value ?? d.template;
@@ -2790,8 +2798,9 @@ async function saveEinzelschein() {
   const positionen = d.positionen.filter((p) => p.art || p.qm).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm }));
   const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
 
+  const tourName = (d.name || "").trim() || `Einzelschein – ${d.objekt}`;
   const { error: tourErr } = await sb.from("glas_touren").upsert({
-    id: tourId, name: `Einzelschein – ${d.objekt}`, datum: datum || null, template, frei: true,
+    id: tourId, name: tourName, datum: datum || null, template, frei: true,
   });
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
 
@@ -2819,7 +2828,7 @@ async function saveEinzelschein() {
   }
   if (stoppErr) { glasBusy = false; showToast("Fehler: " + stoppErr.message); renderGlasAdmin(); return; }
 
-  glasPushSend("glas", "push_touren", "🚐 Touren", `${istEdit ? "Einzelschein geändert" : "Einzelschein angelegt"}: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
+  glasPushSend("glas", "push_touren", "🚐 Touren", `${istEdit ? "Einzelschein geändert" : "Einzelschein angelegt"}: ${tourName}${datum ? " – " + formatGlasDate(datum) : ""}`);
 
   // Erst die Daten neu laden, DANN das Formular schließen und rendern - so ist der
   // Schein in der Touren-Liste sofort da (nicht erst nach manuellem Aktualisieren).
