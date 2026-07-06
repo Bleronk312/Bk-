@@ -345,6 +345,20 @@ function renderGlasStopsList(t) {
     .join("");
 }
 
+// Mini-Vorschau der Positionen, damit der Mitarbeiter vor dem Unterschreiben sicher ist,
+// dass es der richtige Abnahmeschein ist (Nr · Leistung · qm).
+function renderMaStopPositionen(s) {
+  const pos = glasStopPositionen(s);
+  if (!pos.length) return "";
+  return `<div style="margin-top:8px; border-left:2px solid var(--border); padding-left:9px; display:flex; flex-direction:column; gap:3px;">
+    ${pos.map((p) => `<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">
+      <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
+      <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
+      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} qm</span>` : ""}
+    </div>`).join("")}
+  </div>`;
+}
+
 function renderGlasStopDetails(t, s, isDone) {
   const links = glasSingleMapLinks(s);
   const qm = glasStopQm(s);
@@ -352,6 +366,7 @@ function renderGlasStopDetails(t, s, isDone) {
     <div style="margin-top:12px; border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
       <p style="margin:0; font-weight:600; font-size:15px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
       ${qm ? `<p class="muted" style="margin:6px 0 0;">Fläche: <b>${qm} qm</b></p>` : ""}
+      ${renderMaStopPositionen(s)}
       ${s.hinweise ? `
       <div class="glas-hinweis-box">
         <span class="glas-hinweis-icon">⚠️</span>

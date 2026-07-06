@@ -394,7 +394,8 @@ function renderGlasAdmin() {
       <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
       <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
-      <button class="tab-btn ${["kalender", "faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
+      <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
+      <button class="tab-btn ${["faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
   view.innerHTML = `
@@ -461,7 +462,12 @@ function glasUpdateTabContent() {
   }
   if (!glasGlobalSearch.trim() && tab === "touren" && glasShowEinzelschein) {
     const kundeSearchEl = document.getElementById("es_kunde_search");
-    if (kundeSearchEl) kundeSearchEl.oninput = (e) => { glasKundePickerSearch = e.target.value; renderGlasAdmin(); focusSearch("es_kunde_search"); };
+    // Nur die Trefferliste aktualisieren - das Suchfeld behält Fokus + Tastatur
+    if (kundeSearchEl) kundeSearchEl.oninput = (e) => {
+      glasKundePickerSearch = e.target.value;
+      const box = document.getElementById("esKundeResults");
+      if (box) box.innerHTML = renderEsKundeResults();
+    };
   }
 }
 
@@ -486,7 +492,6 @@ function renderGlasMehrMenu(tab) {
     </button>`;
   return `
     <div class="glas-menu-dd">
-      ${item(tab === "kalender", "📅", "Kalender", "glasMenuOpen=false; goGlasTab('kalender')")}
       ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
       ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
       ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
@@ -1864,9 +1869,7 @@ function closeGlasTourDetail() {
 // Kompakte Vorschau der geplanten Positionen eines Stopps: zeigt in der Tour-Ansicht
 // auf einen Blick, WAS genau eingeplant wurde (Nr · Art · qm), ohne den Stopp zu öffnen.
 function renderStopPositionenVorschau(s) {
-  let pos = [];
-  try { pos = JSON.parse(s.positionen || "[]"); } catch (e) { pos = []; }
-  pos = Array.isArray(pos) ? pos.filter((p) => p && (p.art || p.qm)) : [];
+  const pos = glasStopPositionen(s);
   if (!pos.length) return "";
   return `<div class="glas-stop-positionen">${pos.map((p) => `
     <div class="glas-stop-pos-row">
@@ -1925,7 +1928,7 @@ function renderTourDetailView() {
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
       <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
-      ${!t.archiviert_am ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="editGlasTour('${t.id}')">Tour bearbeiten</button>` : ""}
+      ${!t.archiviert_am ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>` : ""}
       <div class="glas-stop-list">${rows}</div>
     </div>
     ${t.archiviert_am
@@ -2517,6 +2520,51 @@ function openGlasEinzelschein() {
 
 let glasEinzelscheinData = null;
 
+// Einen bestehenden Einzelschein (freie Tour) im Einzelschein-Formular bearbeiten -
+// NICHT im Touren-Objekt-Baukasten, der freie/handgeänderte Positionen nicht abbilden
+// kann (genau das war die Ursache der "komischen vorausgewählten Positionen").
+async function editEinzelschein(tourId) {
+  const t = glasTouren.find((x) => x.id === tourId);
+  if (!t) return;
+  glasBusy = true; renderGlasAdmin();
+  const { data } = await sb.from("glas_stopps").select("*").eq("tour_id", tourId).order("reihenfolge", { ascending: true });
+  glasBusy = false;
+  const stop = (data || [])[0];
+  if (!stop) { showToast("Kein Stopp zu diesem Schein gefunden"); renderGlasAdmin(); return; }
+  if (stop.status === "erledigt") { showToast("Bereits unterschrieben – kann nicht mehr bearbeitet werden"); renderGlasAdmin(); return; }
+
+  const positionen = glasStopPositionen(stop).map((p) => ({
+    nr: p.nr || "", art: p.art || "", qm: p.qm != null ? String(p.qm) : "",
+    custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
+  }));
+  const kunde = glasKunden.find((k) => stop.kunde_kdnr && k.kdnr && stop.kunde_kdnr === k.kdnr)
+    || glasKunden.find((k) => stop.kunde_adresse && k.name && stop.kunde_adresse.startsWith(k.name))
+    || null;
+
+  // Erst auf den Touren-Reiter navigieren (goGlasTab würde das Einzelschein-Flag gleich
+  // wieder zurücksetzen - deshalb glasNavigate + Flags danach setzen).
+  glasNavigate({ type: "tabs", tab: "touren" });
+  glasShowNewTourForm = false;
+  glasTourDetailId = null;
+  glasKundePickerSearch = "";
+  glasShowEinzelschein = true;
+  glasEinzelscheinData = {
+    edit_tour_id: tourId,
+    edit_stop_id: stop.id,
+    kunde_id: kunde?.id || "",
+    kunde_name: kunde?.name || "",
+    kunde_adresse: stop.kunde_adresse || "",
+    objekt_id: stop.objekt_id || "",
+    objekt: stop.objekt || "",
+    adresse: stop.adresse || "",
+    kdnr: stop.kdnr || "",
+    template: t.template === "sub" ? "sub" : "geko",
+    datum: t.datum || glasTodayIso(),
+    positionen: positionen.length ? positionen : [{ nr: "", art: "", qm: "", custom: false }],
+  };
+  renderGlasAdmin();
+}
+
 function closeGlasEinzelschein() {
   glasShowEinzelschein = false;
   glasEinzelscheinData = null;
@@ -2525,26 +2573,29 @@ function closeGlasEinzelschein() {
 
 function renderEinzelscheinForm() {
   const d = glasEinzelscheinData;
-  const kundenOptions = glasKunden.map((k) => `<option value="${k.id}" ${k.id === d.kunde_id ? "selected" : ""}>${escapeHtml(k.name)}</option>`).join("");
-  const objektOptions = glasObjekte
-    .filter((o) => o.kunde_id === d.kunde_id)
-    .map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+  const istEdit = !!d.edit_tour_id;
+  const objekteDesKunden = glasObjekte.filter((o) => o.kunde_id === d.kunde_id);
+  const objektOptions = objekteDesKunden
+    .map((o) => `<option value="${o.id}" ${o.id === d.objekt_id ? "selected" : ""}>${escapeHtml(o.name)}</option>`).join("");
 
   return `
     <button class="btn btn-sm" style="margin:16px 0;" onclick="closeGlasEinzelschein()">&larr; Zurück zu allen Touren</button>
     <div class="card">
-      <h2>Einzelnen Schein erstellen</h2>
+      <h2>${istEdit ? "Einzelschein bearbeiten" : "Einzelnen Schein erstellen"}</h2>
       <p class="muted" style="margin:0 0 12px;">Für spontane Termine ohne feste Routenplanung. Erscheint sofort im Mitarbeiter-Link.</p>
       <div class="field">
         <label class="muted">Kunde</label>
-        <select id="es_kunde" onchange="onEsKundeChange()">${kundenOptions}</select>
+        <input type="text" id="es_kunde_search" placeholder="🔍 Kunde suchen (${glasKunden.length})..." value="${escapeHtml(glasKundePickerSearch)}" autocomplete="off" />
+        <p class="muted" style="margin:5px 0 0; font-size:12.5px;">Gewählt: <b>${d.kunde_name ? escapeHtml(d.kunde_name) : "—"}</b></p>
+        <div id="esKundeResults">${renderEsKundeResults()}</div>
       </div>
       <div class="field">
         <label class="muted">Bestehendes Objekt übernehmen (optional)</label>
-        <select id="es_objekt" onchange="onEsObjektChange()">
-          <option value="">— frei eintragen —</option>
+        <select id="es_objekt" size="1" onchange="onEsObjektChange()" style="max-height:none;">
+          <option value="" ${d.objekt_id ? "" : "selected"}>— frei eintragen —</option>
           ${objektOptions}
         </select>
+        ${objekteDesKunden.length > 8 ? `<p class="muted" style="margin:4px 0 0; font-size:12px;">${objekteDesKunden.length} Objekte – im Auswahlfeld scrollen.</p>` : ""}
       </div>
       <div class="field">
         <label class="muted">Kunde-Adresse (Briefkopf)</label>
@@ -2566,7 +2617,7 @@ function renderEinzelscheinForm() {
       <div class="row">
         <div class="field">
           <label class="muted">Datum</label>
-          <input type="date" id="es_datum" value="${glasTodayIso()}" />
+          <input type="date" id="es_datum" value="${d.datum || glasTodayIso()}" />
         </div>
         <div class="field">
           <label class="muted">Template</label>
@@ -2580,7 +2631,7 @@ function renderEinzelscheinForm() {
       ${renderEsPositionenRows(d.positionen)}
       <button class="btn btn-sm" style="margin:8px 0 4px;" onclick="addEsPositionRow()">+ Position hinzufügen</button>
       <button class="btn btn-primary" style="margin-top:14px;" onclick="saveEinzelschein()" ${glasBusy ? "disabled" : ""}>
-        ${glasBusy ? `<span class="spinner"></span> Wird angelegt...` : "Schein erstellen"}
+        ${glasBusy ? `<span class="spinner"></span> ${istEdit ? "Wird gespeichert..." : "Wird angelegt..."}` : (istEdit ? "Änderungen speichern" : "Schein erstellen")}
       </button>
     </div>
   `;
@@ -2659,15 +2710,32 @@ function removeEsPositionRow(idx) {
   renderGlasAdmin();
 }
 
-function onEsKundeChange() {
+// Such-Trefferliste für die Kundenauswahl im Einzelschein (statt eines langen Dropdowns -
+// bei 100+ Kunden tippt man den Namen an). Zeigt bis zu 12 Treffer als klickbare Zeilen.
+function renderEsKundeResults() {
+  const q = (glasKundePickerSearch || "").trim().toLowerCase();
+  if (!q) return "";
+  const treffer = glasKunden
+    .filter((k) => `${k.name} ${k.kdnr || ""} ${k.adresse || ""}`.toLowerCase().includes(q))
+    .slice(0, 12);
+  if (!treffer.length) return `<p class="muted" style="margin:6px 0 0; font-size:12.5px;">Kein Kunde gefunden.</p>`;
+  return `<div class="card glas-tour-search-list" style="padding:0; overflow-y:auto; max-height:240px; margin-top:6px;">
+    ${treffer.map((k) => `
+      <div class="glas-tour-search-row${k.id === glasEinzelscheinData.kunde_id ? " selected" : ""}" onclick="selectEsKunde('${k.id}')">
+        <span><span style="font-weight:500;">${escapeHtml(k.name)}</span>${k.kdnr ? `<span class="muted" style="font-size:12px;"> · ${escapeHtml(k.kdnr)}</span>` : ""}</span>
+      </div>`).join("")}
+  </div>`;
+}
+
+function selectEsKunde(id) {
   syncEsFromDom();
-  const sel = document.getElementById("es_kunde");
-  const kunde = glasKunden.find((k) => k.id === sel.value);
+  const kunde = glasKunden.find((k) => k.id === id);
   if (kunde) {
     glasEinzelscheinData.kunde_id = kunde.id;
     glasEinzelscheinData.kunde_name = kunde.name;
     glasEinzelscheinData.kunde_adresse = [kunde.name, kunde.adresse].filter(Boolean).join("\n");
   }
+  glasKundePickerSearch = ""; // Auswahl getroffen -> Suche zuklappen
   renderGlasAdmin();
 }
 
@@ -2717,32 +2785,48 @@ async function saveEinzelschein() {
     } catch (e) { /* keine Koordinaten - für einen Einzelschein nicht kritisch */ }
   }
 
-  const tourId = genCode();
+  const istEdit = !!d.edit_tour_id;
+  const tourId = d.edit_tour_id || genCode();
   const positionen = d.positionen.filter((p) => p.art || p.qm).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm }));
-  const { error: tourErr } = await sb.from("glas_touren").insert({
+  const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
+
+  const { error: tourErr } = await sb.from("glas_touren").upsert({
     id: tourId, name: `Einzelschein – ${d.objekt}`, datum: datum || null, template, frei: true,
   });
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
-  glasPushSend("glas", "push_touren", "🚐 Touren", `Einzelschein angelegt: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
 
-  const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
-  const { error: stoppErr } = await sb.from("glas_stopps").insert({
-    id: genCode(), tour_id: tourId, objekt_id: d.objekt_id || null, reihenfolge: 0,
+  // Beim Bearbeiten NUR die editierbaren Felder des bestehenden Stopps aktualisieren -
+  // Status/Unterschrift bleiben unangetastet. Beim Neuanlegen einen frischen Stopp einfügen.
+  const stopFelder = {
+    objekt_id: d.objekt_id || null,
     objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr,
     kunde_kdnr: glasKunden.find((k) => k.id === d.kunde_id)?.kdnr || "",
     kunde_adresse: d.kunde_adresse,
-    ansprechpartner: esObjekt?.ansprechpartner || "",
-    telefon: esObjekt?.telefon || "",
-    hinweise: esObjekt?.hinweise || "",
-    notiz: esObjekt?.notiz || "",
-    positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng, status: "offen",
-  });
-  glasBusy = false;
-  if (stoppErr) { showToast("Fehler: " + stoppErr.message); renderGlasAdmin(); return; }
+    positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng,
+  };
+  let stoppErr;
+  if (istEdit) {
+    ({ error: stoppErr } = await sb.from("glas_stopps").update(stopFelder).eq("id", d.edit_stop_id));
+  } else {
+    ({ error: stoppErr } = await sb.from("glas_stopps").insert({
+      id: genCode(), tour_id: tourId, reihenfolge: 0, status: "offen",
+      ansprechpartner: esObjekt?.ansprechpartner || "",
+      telefon: esObjekt?.telefon || "",
+      hinweise: esObjekt?.hinweise || "",
+      notiz: esObjekt?.notiz || "",
+      ...stopFelder,
+    }));
+  }
+  if (stoppErr) { glasBusy = false; showToast("Fehler: " + stoppErr.message); renderGlasAdmin(); return; }
 
-  showToast("Einzelschein erstellt – erscheint jetzt im Mitarbeiter-Link");
-  closeGlasEinzelschein();
+  glasPushSend("glas", "push_touren", "🚐 Touren", `${istEdit ? "Einzelschein geändert" : "Einzelschein angelegt"}: ${d.objekt}${datum ? " – " + formatGlasDate(datum) : ""}`);
+
+  // Erst die Daten neu laden, DANN das Formular schließen und rendern - so ist der
+  // Schein in der Touren-Liste sofort da (nicht erst nach manuellem Aktualisieren).
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
+  glasBusy = false;
+  showToast(istEdit ? "Einzelschein gespeichert" : "Einzelschein erstellt – erscheint jetzt im Mitarbeiter-Link");
+  closeGlasEinzelschein();
 }
 
 /* ========================================================================
