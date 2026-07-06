@@ -7,13 +7,18 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="GEKO Glasreinigung" />
+<meta name="apple-mobile-web-app-title" content="GEKO Kalender" />
 <meta name="theme-color" content="#1f5d92" />
-<title>GEKO Hub - Glasreinigung</title>
+<title>GEKO Kalender</title>
+<link rel="manifest" href="manifest-kalender.json" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+<!-- Diese Seite IST die Kalender-App. Der Marker wird vor allen App-Skripten gesetzt,
+     damit glasCalApp zuverlässig true ist - unabhängig davon, ob iOS beim "Zum
+     Home-Bildschirm" den ?app=kalender-Parameter mitnimmt oder nicht. -->
+<script>window.__gekoKalender = true;</script>
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
@@ -21,7 +26,7 @@
 
   <div class="app-header">
     <div class="brand-row"><a href="hub.html" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;"><span class="dot"></span>GEKO Hub</a><a href="hub.html" class="btn btn-sm" style="margin-left:auto; background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.3); color:white;">⌂ Hub</a></div>
-    <div class="greeting">Glasreinigung – Planung &amp; Touren</div>
+    <div class="greeting">Kalender &amp; Termine</div>
   </div>
   <div class="app-sheet">
     <img class="logo-watermark" id="watermarkImg" alt="" />

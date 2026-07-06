@@ -13,7 +13,8 @@ const GEKO_CACHE = "geko-cache-v1";
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
 const GEKO_CORE = [
-  "hub.html", "glas-admin.html", "glas-mitarbeiter.html", "admin.html", "mitarbeiter.html", "schein.html",
+  "hub.html", "glas-admin.html", "kalender.html", "glas-mitarbeiter.html", "admin.html", "mitarbeiter.html", "schein.html",
+  "manifest-kalender.json",
   "css/style.css",
   "js/config.js", "js/logo-asset.js", "js/pull-refresh.js", "js/supabase-client.js", "js/app-shared.js",
   "js/glas-shared.js", "js/pdf-fonts.js", "js/pdf-template.js", "js/glas-logo-sub.js", "js/glas-pdf-template.js",

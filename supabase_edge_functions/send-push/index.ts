@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     // Fallback-URL STRENG nach Rolle: jede App/Rolle öffnet nur ihre eigene Seite.
     const roleUrls = {
       admin: "/admin.html", graffiti: "/admin.html", mitarbeiter: "/mitarbeiter.html",
-      glas: "/glas-admin.html#/tab/touren", kalender: "/glas-admin.html?app=kalender#/tab/kalender",
+      glas: "/glas-admin.html#/tab/touren", kalender: "/kalender.html#/tab/kalender",
     };
     const fallbackUrl = roleUrls[role] || "/mitarbeiter.html";
     const payload = JSON.stringify({ title, body: body || "", url: url || fallbackUrl });

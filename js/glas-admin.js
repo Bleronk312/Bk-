@@ -1,4 +1,4 @@
-document.title = (typeof FIRMA_NAME !== "undefined" ? FIRMA_NAME : "GEKO") + " - Glasreinigung";
+document.title = (typeof FIRMA_NAME !== "undefined" ? FIRMA_NAME : "GEKO") + (window.__gekoKalender === true || /(^|\/)kalender\.html$/i.test(location.pathname) ? " - Kalender" : " - Glasreinigung");
 
 (function initGlasHeader() {
   const wm = document.getElementById("watermarkImg");
@@ -150,7 +150,11 @@ function glasStatusBadgeClass(status) {
 // Kalender ohne Kopf und Reiter (wie TimeTree). Gilt nur, solange man im Kalender ist -
 // navigiert man von dort weg (z.B. Tour aus dem Tages-Fenster), erscheint die normale
 // Oberfläche mit allen Reitern, und der Kalender-Reiter führt zurück in die Pur-Ansicht.
-const glasCalApp = new URLSearchParams(location.search).get("app") === "kalender";
+// Kalender-App-Erkennung: eigene Datei kalender.html (zuverlässig auch nach "Zum
+// Home-Bildschirm"), Marker aus dem <head>, oder der alte ?app=kalender-Parameter.
+const glasCalApp = window.__gekoKalender === true
+  || /(^|\/)kalender\.html$/i.test(location.pathname)
+  || new URLSearchParams(location.search).get("app") === "kalender";
 
 async function glasInit() {
   // Manche Home-Bildschirm-Verknüpfungen verlieren den #-Teil der URL -
@@ -2222,7 +2226,7 @@ function glasPushRole() { return glasCalApp ? "kalender" : "glas"; }
 function glasPushSend(role, schalter, title, body, url) {
   try {
     if (!glasEinstellungen || !glasEinstellungen[schalter]) return;
-    const fallback = role === "kalender" ? "/glas-admin.html?app=kalender#/tab/kalender" : "/glas-admin.html#/tab/touren";
+    const fallback = role === "kalender" ? "/kalender.html#/tab/kalender" : "/glas-admin.html#/tab/touren";
     sb.functions.invoke("send-push", { body: { role, title, body, url: url || fallback } }).catch(() => {});
   } catch (e) {}
 }

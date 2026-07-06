@@ -102,7 +102,7 @@ Deno.serve(async (_req) => {
         "kalender",
         `⏰ Erinnerung: ${t.titel}`,
         `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`,
-        "/glas-admin.html?app=kalender#/tab/kalender"
+        "/kalender.html#/tab/kalender"
       );
       gesendet++;
     }
