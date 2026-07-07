@@ -85,7 +85,7 @@ async function glasFlushSignQueue() {
       if (error) { remaining.push(item); } else {
         sent++;
         // Büro benachrichtigen - genauso wie bei einer direkt online erfassten Unterschrift
-        glasPushUnterschriftAnAdmin({ objekt: item.objekt }, item.name, item.zusatz);
+        glasPushUnterschriftAnAdmin({ objekt: item.objekt }, item.name, item.zusatz, item.tour);
       }
     } catch (e) { remaining.push(item); }
   }
@@ -489,9 +489,10 @@ async function saveGlasSignature(stopId) {
   const zusatz = [...document.querySelectorAll(".gs-zusatz")].map((t) => t.value.trim()).filter(Boolean).join("\n");
   const signedAt = new Date().toISOString();
   let stopRef = null;
+  let tourName = "";
   for (const t of glasTouren) {
     const stop = t.stopps.find((s) => s.id === stopId);
-    if (stop) stopRef = stop;
+    if (stop) { stopRef = stop; tourName = t.name || ""; }
   }
 
   // Erst online versuchen; bei fehlendem Empfang / Netzfehler in die Warteschlange legen,
@@ -519,9 +520,9 @@ async function saveGlasSignature(stopId) {
 
   if (saved) {
     showToast("Gespeichert");
-    glasPushUnterschriftAnAdmin(stopRef, name, zusatz);
+    glasPushUnterschriftAnAdmin(stopRef, name, zusatz, tourName);
   } else {
-    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
+    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", tour: tourName, positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
     if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, status: "erledigt", signed_at: signedAt, __pendingSync: true });
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }
@@ -542,14 +543,14 @@ function downloadGlasPdf(tourId, stopId) {
 
 // Meldet dem Admin eine frisch eingegangene Unterschrift (wenn der Schalter in den
 // Admin-Einstellungen an ist). Fehler hier dürfen den Mitarbeiter nie stören.
-async function glasPushUnterschriftAnAdmin(stop, name, zusatz) {
+async function glasPushUnterschriftAnAdmin(stop, name, zusatz, tourName) {
   try {
     const { data } = await sb.from("glas_einstellungen").select("push_unterschrift").eq("id", "default").limit(1);
     if (!data || !data[0] || !data[0].push_unterschrift) return;
     sb.functions.invoke("send-push", {
       body: {
         role: "glas",
-        title: "✍️ Unterschrift eingegangen",
+        title: `✍️ Unterschrift: ${tourName || "Tour"}`,
         body: `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`,
         url: "/glas-admin.html#/tab/touren",
       },

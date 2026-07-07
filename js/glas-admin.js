@@ -36,6 +36,7 @@ let glasManualOrder = []; // Array von Objekt-IDs in der vom Admin festgelegten 
 let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), gesetzt bei "Jetzt planen"
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
+let glasTourExtras = new Map(); // objekt_id -> [{ nr, art, qm }] - händisch zusätzlich eingetragene Positionen (z.B. Extra-Stunden)
 let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko" }; // Zustand des Tour-Formulars (überlebt Re-Renders)
 let glasTourenErledigtExpanded = false;
 let glasEditingTourId = null; // gesetzt, wenn eine bestehende Tour bearbeitet statt neu angelegt wird
@@ -135,6 +136,36 @@ function glasStatusTint(status) {
 }
 function glasStatusDot(status) {
   return status === "ueberfaellig" ? "🔴 " : status === "bald" ? "🟡 " : status === "faellig" ? "🔵 " : "";
+}
+
+// Deutsche qm-Zahl ("87,6" / "1.234,5") in eine Zahl umwandeln.
+function glasQmZahl(qm) {
+  const n = parseFloat(String(qm || "").replace(/\./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
+}
+
+// Kurz-Zusammenfassung eines Objekts für die Listen: Gesamt-qm, Positionsangabe und die
+// nächste anstehende Fälligkeit (Status + Label). Für die Übersicht auf der Kundenseite.
+function glasObjektZusammenfassung(objektId) {
+  const positionen = glasGetObjektPositionen(objektId);
+  let totalQm = 0;
+  let naechste = null; // { status, label, faelligkeit }
+  positionen.forEach((p) => {
+    totalQm += glasQmZahl(p.qm);
+    const f = glasFaelligkeitStatus(p);
+    if (f.faelligkeit && (!naechste || f.faelligkeit < naechste.faelligkeit)) naechste = f;
+  });
+  let posText;
+  if (!positionen.length) posText = "";
+  else if (positionen.length === 1) posText = `Pos. ${positionen[0].nr} ${positionen[0].art}`;
+  else posText = `${positionen.length} Positionen`;
+  const qmText = totalQm ? `${glasZahlDe(totalQm)} qm` : "";
+  return { positionen, totalQm, qmText, posText, naechste };
+}
+
+// Zahl deutsch formatieren (Komma, keine unnötigen Nullen): 131 -> "131", 87.6 -> "87,6"
+function glasZahlDe(n) {
+  return (Math.round(n * 100) / 100).toString().replace(".", ",");
 }
 function glasStatusBadgeClass(status) {
   return status === "ueberfaellig" ? "badge-danger" : status === "bald" ? "badge-open" : status === "faellig" ? "badge-faellig" : "badge-signed";
@@ -692,7 +723,7 @@ function renderKundenTab() {
           <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${k.id}')` : `goGlasKunde('${k.id}')`}">
             ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(k.id) ? "on" : ""}"></span>` : ""}
             <div style="flex:1;">
-              <p style="margin:0; font-weight:600;">${glasStatusDot(status)}${escapeHtml(k.name)}</p>
+              <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}</p>
               <p class="muted" style="margin:3px 0 0;">${objekte.length} Objekt(e)</p>
             </div>
             <span style="font-size:18px; color:var(--text-secondary);">›</span>
@@ -896,20 +927,27 @@ function renderKundeDetailPage(id) {
     </div>
     ${glasKundeSubTab === "termine" ? renderKundeTermine(id) : `
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
-      <div class="card" style="padding:6px 18px;">
+      <div class="card glas-objekt-liste" style="padding:2px 14px;">
         ${objekte.length ? objekte.map((o) => {
           const status = glasObjektStatus(o.id);
           const auswahl = glasAuswahl.modus === "objekte";
+          const info = glasObjektZusammenfassung(o.id);
+          const n = info.naechste;
           return `
-          <div style="border-top:1px solid var(--border); padding:12px 4px; display:flex; gap:10px; justify-content:space-between; align-items:center; cursor:pointer;" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
+          <div class="glas-objekt-row" style="border-top:1px solid var(--border); ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
             ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(o.id) ? "on" : ""}"></span>` : ""}
-            <div style="flex:1;">
-              <p style="margin:0; font-weight:500;">${glasStatusDot(status)}${escapeHtml(o.name)}</p>
+            <div class="glas-objekt-row-main">
+              <p style="margin:0; font-weight:600;">${escapeHtml(o.name)}</p>
               <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
+              ${info.posText ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🪟 ${escapeHtml(info.posText)}${info.qmText ? ` · ${info.qmText}` : ""}</p>` : ""}
             </div>
-            <span style="font-size:15px; color:var(--text-secondary);">›</span>
+            <div class="glas-objekt-row-side">
+              ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="font-size:10.5px;">${glasStatusLabel(n.status)}</span>` : ""}
+              ${n && n.label ? `<span class="muted" style="font-size:11.5px; white-space:nowrap;">${n.status === "geplant" ? "geplant " : "fällig "}${escapeHtml(n.label)}</span>` : `<span class="muted" style="font-size:11.5px;">kein Intervall</span>`}
+            </div>
+            <span class="glas-objekt-row-arrow" style="color:var(--text-secondary);">›</span>
           </div>`;
-        }).join("") : `<p class="muted" style="padding:10px 0;">Noch keine Objekte für diesen Kunden angelegt.</p>`}
+        }).join("") : `<p class="muted" style="padding:12px 0;">Noch keine Objekte für diesen Kunden angelegt.</p>`}
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-primary" onclick="editGlasObjekt(null, {presetKundeId:'${k.id}', returnTo:{type:'kunde', id:'${k.id}'}})">+ Neues Objekt für diesen Kunden</button>
@@ -1455,11 +1493,18 @@ function renderObjektDetailPage(id) {
         ? `<p class="muted"><span class="spinner"></span> Lade...</p>`
         : !signed.length
           ? `<p class="muted">Noch nie unterschrieben.</p>`
-          : shown.map((s) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-top:1px solid var(--border);">
-              <span style="font-size:13.5px;">${formatGlasDate(s.datum)} · ${escapeHtml(s.name || "")}</span>
-              <button class="btn btn-sm" style="padding:4px 8px;" onclick="downloadGlasPdfHistory('${id}','${s.id}')">📄 PDF</button>
-            </div>`).join("") + (signed.length > 5 && !glasObjektDetailShowAllHistory
+          : shown.map((s) => {
+              const pos = glasStopPositionen(s);
+              return `
+            <div style="padding:10px 0; border-top:1px solid var(--border);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                <span style="font-size:13.5px; font-weight:600;">${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}</span>
+                <button class="btn btn-sm" style="padding:4px 8px; flex-shrink:0;" onclick="downloadGlasPdfHistory('${id}','${s.id}')">📄 PDF</button>
+              </div>
+              ${s.glas_touren?.name ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🚐 ${escapeHtml(s.glas_touren.name)}</p>` : ""}
+              ${pos.length ? `<div style="margin-top:5px; display:flex; flex-direction:column; gap:2px;">${pos.map((p) => `<span class="muted" style="font-size:12px;">• ${escapeHtml(p.art || "")}${p.qm ? ` (${escapeHtml(String(p.qm))} qm)` : ""}</span>`).join("")}</div>` : ""}
+              ${s.zusatz ? `<p class="muted" style="margin:4px 0 0; font-size:12px;">➕ ${escapeHtml(s.zusatz)}</p>` : ""}
+            </div>`; }).join("") + (signed.length > 5 && !glasObjektDetailShowAllHistory
               ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="glasObjektDetailShowAllHistory = true; renderGlasAdmin();">Alle ${signed.length} anzeigen</button>`
               : "")
       }
@@ -1523,6 +1568,7 @@ function glasTemplateFuerObjekte(objektIds) {
 
 function glasJetztPlanen(objektId, positionIds) {
   glasTourNotizen = new Map();
+  glasTourExtras = new Map();
   const alle = glasGetObjektPositionen(objektId);
   const ids = positionIds || alle.map((p) => p.id || p.nr);
   glasSelectedObjekte = new Set([objektId]);
@@ -1818,6 +1864,7 @@ function renderTourenListView() {
 
 function glasStartNewTourForm() {
   glasTourNotizen = new Map();
+  glasTourExtras = new Map();
   glasShowNewTourForm = true;
   glasEditingTourId = null;
   glasManualOrder = [];
@@ -2123,7 +2170,8 @@ async function saveGlasAdminSignature(stopId) {
   if (stop) Object.assign(stop, payload);
 
   showToast("Unterschrieben");
-  glasPushSend("glas", "push_unterschrift", "✍️ Unterschrift eingegangen", `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
+  const signTourName = glasTouren.find((x) => x.id === glasTourDetailId)?.name || "Tour";
+  glasPushSend("glas", "push_unterschrift", `✍️ Unterschrift: ${signTourName}`, `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
   glasAdminSignOpenStopId = null;
   await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
@@ -2141,6 +2189,17 @@ function syncNewTourFormFromDom() {
   glasTourNotizen.forEach((n, objektId) => {
     const el = document.getElementById(`tour_notiz_${objektId}`);
     if (el) n.text = el.value;
+  });
+  // Händische Extra-Positionen aus den Feldern zurücklesen (überlebt Re-Renders)
+  glasTourExtras.forEach((liste, objektId) => {
+    liste.forEach((ex, i) => {
+      const nr = document.getElementById(`tour_extra_nr_${objektId}_${i}`);
+      const art = document.getElementById(`tour_extra_art_${objektId}_${i}`);
+      const qm = document.getElementById(`tour_extra_qm_${objektId}_${i}`);
+      if (nr) ex.nr = nr.value;
+      if (art) ex.art = art.value;
+      if (qm) ex.qm = qm.value;
+    });
   });
   if (get("t_name") !== undefined) glasNewTour.name = get("t_name");
   if (get("t_datum") !== undefined) glasNewTour.datum = get("t_datum");
@@ -2252,9 +2311,40 @@ function renderTourSelectedSummary(items) {
               </label>`;
             }).join("")}
           </div>
+          ${(glasTourExtras.get(o.id) || []).map((ex, i) => `
+          <div style="display:flex; gap:6px; align-items:flex-end; margin-top:8px; background:var(--info-bg); border:1px solid var(--info-border); border-radius:8px; padding:8px;">
+            <div class="field" style="flex:0 0 54px; margin:0;"><label class="muted" style="font-size:11px;">Nr.</label><input type="text" id="tour_extra_nr_${o.id}_${i}" value="${escapeHtml(ex.nr)}" placeholder="20" /></div>
+            <div class="field" style="flex:2; margin:0;"><label class="muted" style="font-size:11px;">Extra-Leistung</label><input type="text" id="tour_extra_art_${o.id}_${i}" value="${escapeHtml(ex.art)}" placeholder="z.B. Extra-Stunden Sonderreinigung" /></div>
+            <div class="field" style="flex:0 0 64px; margin:0;"><label class="muted" style="font-size:11px;">qm/Anz.</label><input type="text" id="tour_extra_qm_${o.id}_${i}" value="${escapeHtml(ex.qm)}" placeholder="" /></div>
+            <button class="btn btn-sm" style="color:var(--danger); padding:6px 8px;" title="Entfernen" onclick="glasTourRemoveExtra('${o.id}', ${i})">✕</button>
+          </div>`).join("")}
+          <button class="btn btn-sm" style="margin-top:8px;" onclick="glasTourAddExtra('${o.id}')">+ Extra-Position (z.B. Stunden)</button>
         </div>`;
       }).join("")}
     </div>`;
+}
+
+// Händische Zusatzposition zu einem Stopp hinzufügen/entfernen (für Extra-Stunden o.Ä.),
+// die der Mitarbeiter dann auf dem Schein sieht.
+function glasTourAddExtra(objektId) {
+  syncNewTourFormFromDom();
+  if (!glasTourExtras.has(objektId)) glasTourExtras.set(objektId, []);
+  glasTourExtras.get(objektId).push({ nr: "", art: "", qm: "" });
+  renderGlasAdmin();
+}
+
+function glasTourRemoveExtra(objektId, idx) {
+  syncNewTourFormFromDom();
+  const liste = glasTourExtras.get(objektId);
+  if (liste) liste.splice(idx, 1);
+  renderGlasAdmin();
+}
+
+// Nur ausgefüllte Extra-Positionen eines Objekts, sauber als {id:null,nr,art,qm}.
+function glasCleanExtras(objektId) {
+  return (glasTourExtras.get(objektId) || [])
+    .filter((ex) => (ex.art || "").trim() || (ex.qm || "").trim())
+    .map((ex) => ({ id: null, nr: (ex.nr || "").trim() || "10", art: (ex.art || "").trim(), qm: (ex.qm || "").trim() }));
 }
 
 function glasInitTourNotiz(objektId) {
@@ -2298,7 +2388,8 @@ function renderTourObjektSearchResults() {
   const results = glasObjekte.filter((o) => matchesSearch(o, glasTourSearch));
   if (!results.length) return `<p class="muted" style="margin:6px 0 14px;">Keine Objekte gefunden.</p>`;
   return `
-    <div class="card glas-tour-search-list" style="padding:0; overflow:hidden; margin-bottom:14px;">
+    ${results.length > 6 ? `<p class="muted" style="margin:0 2px 4px; font-size:12px;">${results.length} Objekte – in der Liste scrollen</p>` : ""}
+    <div class="card glas-tour-search-list" style="padding:0; overflow-y:auto; max-height:340px; margin-bottom:14px;">
       ${results.map((o) => {
         const selected = glasSelectedObjekte.has(o.id);
         return `
@@ -2497,6 +2588,13 @@ async function createGlasTour() {
         const neueNotiz = n.use ? (n.text || "").trim() : "";
         if (neueNotiz !== (s.notiz || "")) updates.notiz = neueNotiz;
       }
+      // Händisch ergänzte Extra-Positionen an den bestehenden Stopp anhängen
+      const extras = glasCleanExtras(s.objekt_id);
+      if (extras.length) {
+        let cur = [];
+        try { cur = JSON.parse(s.positionen || "[]"); } catch (e) { cur = []; }
+        updates.positionen = JSON.stringify([...(Array.isArray(cur) ? cur : []), ...extras]);
+      }
       if (Object.keys(updates).length) await sb.from("glas_stopps").update(updates).eq("id", s.id);
     }
 
@@ -2525,7 +2623,7 @@ async function createGlasTour() {
         telefon: o.telefon || "",
         hinweise: o.hinweise || "",
         notiz: (() => { const n = glasTourNotizen.get(o.id); return n && n.use ? (n.text || "").trim() : ""; })(),
-        positionen: JSON.stringify(positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }))),
+        positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm })), ...glasCleanExtras(o.id)]),
         lat: o.lat,
         lng: o.lng,
         status: "offen",
@@ -2575,6 +2673,7 @@ async function editGlasTour(tourId) {
   // so zeigt das Formular, was wirklich auf dem Stopp steht, und unangetastete Notizen
   // bleiben beim Speichern exakt erhalten.
   glasTourNotizen = new Map();
+  glasTourExtras = new Map();
   stops.filter((s) => s.status !== "erledigt" && s.objekt_id).forEach((s) => {
     glasTourNotizen.set(s.objekt_id, { use: !!s.notiz, text: s.notiz || "" });
   });
@@ -3034,7 +3133,6 @@ function renderUrlaubKalender() {
         <button class="glas-ma-chip ${glasUrlaubMaFilter === m.id ? "on" : ""}" onclick="glasUrlaubMaFilter='${m.id}'; glasUpdateTabContent();">
           <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)};"></span>${escapeHtml(m.name)}
         </button>`).join("")}
-      <button class="glas-ma-chip" style="border-style:dashed;" onclick="glasUrlaubVerwaltung=true; renderGlasAdmin();">⚙️ Mitarbeiter</button>
     </div>`;
 
   // Statistik-Karte, wenn ein MA ausgewählt ist
@@ -3075,7 +3173,8 @@ function renderUrlaubKalender() {
   return `
     ${chips}
     ${statCard}
-    <div style="display:flex; justify-content:flex-end; margin:0 0 4px;">
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin:0 0 4px;">
+      <button class="btn btn-sm" onclick="glasUrlaubVerwaltung=true; renderGlasAdmin();">⚙️ Mitarbeiter</button>
       <button class="btn btn-sm btn-primary" onclick="glasOpenUrlaub(null)">+ Urlaub eintragen</button>
     </div>
     ${renderUrlaubMonat()}
@@ -4072,7 +4171,7 @@ function renderOffeneListeErgebnisse() {
         <div class="card" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:0; ${glasStatusTint(g.status)}">
           <input type="checkbox" style="width:auto; margin-top:3px;" ${checked ? "checked" : ""} onchange="toggleGlasOffeneSelect('${o.id}')" />
           <div style="flex:1; min-width:0; cursor:pointer;" onclick="goGlasObjekt('${o.id}')">
-            <p style="margin:0; font-weight:600;">${glasStatusDot(g.status)}${escapeHtml(o.name)}</p>
+            <p style="margin:0; font-weight:600;">${escapeHtml(o.name)}</p>
             <p class="muted" style="margin:2px 0 0; font-size:12px;">${escapeHtml(o.kunde_name || "")} · ${g.eintraege.length} offene Position${g.eintraege.length === 1 ? "" : "en"}</p>
           </div>
           <div style="text-align:right; flex-shrink:0;">
@@ -4214,6 +4313,7 @@ function glasOffeneZuTourHinzufuegen() {
   });
   glasOffeneSelected.clear();
   glasTourNotizen = new Map();
+  glasTourExtras = new Map();
   // goGlasTab() setzt u.a. glasShowNewTourForm zurück auf false, deshalb erst danach setzen.
   goGlasTab("touren");
   glasSelectedObjekte = objektIds;

@@ -1617,3 +1617,24 @@ html.dark .glas-warncard { background: var(--warning-bg); border-color: #4d421f;
 .glas-stop-positionen { margin-top: 7px; border-left: 2px solid var(--border); padding-left: 8px; display: flex; flex-direction: column; gap: 3px; }
 .glas-stop-pos-row { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; min-width: 0; }
 .glas-stop-pos-nr { flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--text-secondary); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; line-height: 16px; }
+
+/* Kunden-Objektliste: eine Zeile pro Objekt mit Infos rechts (Fälligkeit) */
+.glas-objekt-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 6px; cursor: pointer; border-radius: 8px;
+  transition: background 0.12s ease;
+}
+.glas-objekt-row:first-child { border-top: none !important; }
+.glas-objekt-row-main { flex: 1; min-width: 0; }
+.glas-objekt-row-side {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  flex-shrink: 0; text-align: right;
+}
+.glas-objekt-row-arrow { flex-shrink: 0; font-size: 15px; }
+/* Desktop: mehr Luft + Hover, damit die Liste übersichtlich wirkt */
+@media (min-width: 720px) {
+  .glas-objekt-liste { padding: 4px 18px !important; }
+  .glas-objekt-row { padding: 15px 8px; gap: 18px; }
+  .glas-objekt-row:hover { background: var(--bg); }
+  .glas-objekt-row-main p:first-child { font-size: 15.5px; }
+}
