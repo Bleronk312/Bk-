@@ -339,11 +339,12 @@ function renderGlasStopsList(t) {
     .map((s, idx) => {
       const isOpen = glasOpenStopId === s.id;
       const isDone = s.status === "erledigt";
+      const isNg = s.status === "nicht_geschafft";
       const qm = glasStopQm(s);
       return `
-        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "var(--success-bg)" : "var(--card)"}; border:1px solid ${isDone ? "var(--success-border)" : "var(--border)"};" onclick="toggleGlasStop('${s.id}')">
+        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "var(--success-bg)" : "var(--card)"}; border:1px solid ${isDone ? "var(--success-border)" : "var(--border)"};${isNg ? " opacity:0.66;" : ""}" onclick="toggleGlasStop('${s.id}')">
           <div style="display:flex; align-items:center; gap:11px;">
-            <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : idx + 1}</div>
+            <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : isNg ? "var(--text-secondary)" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
               <p style="margin:0; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
               <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
@@ -353,7 +354,7 @@ function renderGlasStopsList(t) {
               <p style="margin:2px 0 0; font-size:12px;">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}<span style="color:var(--text-secondary);"> ${isOpen ? "▲" : "▼"}</span></p>
             </div>
           </div>
-          ${isOpen ? renderGlasStopDetails(t, s, isDone) : ""}
+          ${isOpen ? renderGlasStopDetails(t, s, isDone, isNg) : ""}
         </div>`;
     })
     .join("");
@@ -373,7 +374,7 @@ function renderMaStopPositionen(s) {
   </div>`;
 }
 
-function renderGlasStopDetails(t, s, isDone) {
+function renderGlasStopDetails(t, s, isDone, isNg) {
   const links = glasSingleMapLinks(s);
   const qm = glasStopQm(s);
   return `
@@ -410,9 +411,11 @@ function renderGlasStopDetails(t, s, isDone) {
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
       </div>`
-        : glasSignStopId === s.id
-          ? renderGlasSignForm(s)
-          : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="glasSignStopId = '${s.id}'; renderGlasMa();">✍️ Abnahmeschein unterschreiben</button>`
+        : isNg
+          ? `<div class="glas-notiz-box" style="margin-top:12px;">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
+          : glasSignStopId === s.id
+            ? renderGlasSignForm(s)
+            : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="glasSignStopId = '${s.id}'; renderGlasMa();">✍️ Abnahmeschein unterschreiben</button>`
       }
     </div>`;
 }

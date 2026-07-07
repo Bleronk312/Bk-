@@ -473,6 +473,17 @@ label {
   margin-top: 1px;
 }
 .glas-stop-row.done .glas-stop-num { background: #d9f2dd; border-color: #bfe6c8; color: #1e7a34; }
+.glas-stop-row.ng { opacity: 0.72; }
+.glas-stop-row.ng .glas-stop-num { background: var(--border); border-color: var(--border); color: var(--text-secondary); }
+.glas-ng-box {
+  margin-top: 8px;
+  background: var(--surface-2, rgba(120,120,128,0.1));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
 
 /* Hinweis-Box für Mitarbeiter am Stopp: bewusst auffällig (gelb + Icon), damit sie
    niemand übersieht - erscheint nur, wenn am Objekt etwas hinterlegt ist */

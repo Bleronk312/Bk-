@@ -42,6 +42,9 @@ let glasTourenErledigtExpanded = false;
 let glasEditingTourId = null; // gesetzt, wenn eine bestehende Tour bearbeitet statt neu angelegt wird
 let glasAdminSignOpenStopId = null; // Stopp, dessen Unterschrift-Bereich in der Admin-Ansicht gerade offen ist
 let glasAdminSigPad = null;
+let glasNgOpenStopId = null; // Stopp, dessen "Nicht geschafft"-Grundauswahl gerade offen ist (nur Admin)
+let glasNgGrund = "";        // aktuell gewählter Grund im Picker (überlebt Re-Render)
+const GLAS_NG_GRUENDE = ["Kein Zugang / niemand da", "Keine Zeit mehr", "Wetter", "Baustelle / gesperrt", "Sonstiges"];
 
 let glasKundePickerOpen = false;
 let glasKundePickerSearch = "";
@@ -1996,11 +1999,18 @@ function renderTourDetailView() {
     ? glasTourDetailStops
         .map((s, idx) => {
           const isDone = s.status === "erledigt";
+          const isNg = s.status === "nicht_geschafft";
           const isSigning = glasAdminSignOpenStopId === s.id;
+          const isNgOpen = glasNgOpenStopId === s.id;
           const qm = glasStopQm(s);
           const wazeUrl = s.lat ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes` : wazeLink(s.adresse);
+          const badge = isDone
+            ? `<span class="badge badge-signed" style="flex-shrink:0;">Erledigt</span>`
+            : isNg
+              ? `<span class="badge" style="flex-shrink:0; background:var(--border); color:var(--text-secondary);">🚫 Nicht geschafft</span>`
+              : `<span class="badge badge-open" style="flex-shrink:0;">Offen</span>`;
           return `
-        <div class="glas-stop-row${isDone ? " done" : ""}">
+        <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}">
           <div class="glas-stop-num">${idx + 1}</div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
@@ -2008,7 +2018,7 @@ function renderTourDetailView() {
                 ${s.objekt ? `<p style="margin:0; font-weight:600; font-size:13.5px;">${escapeHtml(s.objekt)}${qm ? ` <span style="color:var(--text-secondary); font-weight:500;">· ${qm} qm</span>` : ""}</p>` : ""}
                 <p class="muted" style="margin:1px 0 0; font-size:12.5px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
               </div>
-              <span class="badge ${isDone ? "badge-signed" : "badge-open"}" style="flex-shrink:0;">${isDone ? "Erledigt" : "Offen"}</span>
+              ${badge}
             </div>
             ${renderStopPositionenVorschau(s)}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
@@ -2021,9 +2031,16 @@ function renderTourDetailView() {
               ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
               <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}</p>
               <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
+            ` : isNg ? `
+              <div class="glas-ng-box">🚫 <strong>Nicht geschafft:</strong> ${escapeHtml(s.ng_grund || "")}${s.ng_notiz ? ` – ${escapeHtml(s.ng_notiz)}` : ""}${s.ng_am ? ` <span class="muted">(${formatGlasDate(glasDatumVonTimestamp(s.ng_am))})</span>` : ""}<br><span class="muted">Das Objekt steht wieder unter „Fällige Objekte" und kann neu eingeplant werden.</span></div>
+              <button class="btn btn-sm" style="margin-top:8px;" onclick="revertGlasNg('${s.id}')">↩️ Doch offen / zurücknehmen</button>
             ` : `
-              <button class="btn btn-sm" style="margin-top:8px;" onclick="toggleGlasAdminSign('${s.id}')">${isSigning ? "Schließen" : "✍️ Unterschreiben lassen"}</button>
+              <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                <button class="btn btn-sm" onclick="toggleGlasAdminSign('${s.id}')">${isSigning ? "Schließen" : "✍️ Unterschreiben lassen"}</button>
+                <button class="btn btn-sm" style="color:var(--danger);" onclick="toggleGlasNg('${s.id}')">${isNgOpen ? "Abbrechen" : "🚫 Nicht geschafft"}</button>
+              </div>
               ${isSigning ? renderAdminSignArea(s) : ""}
+              ${isNgOpen ? renderGlasNgArea(s) : ""}
             `}
           </div>
         </div>`;
@@ -2243,6 +2260,63 @@ async function saveGlasAdminSignature(stopId) {
     const doc = generateGlasPdf(stop, t?.template || "geko", t?.datum);
     await sendScheinPerMail(versandEmail, doc, glasScheinFilename(stop, t?.template || "geko"));
   }
+}
+
+/* ---------------- „Nicht geschafft" (nur Admin) ----------------
+   Ein geplanter Stopp konnte nicht erledigt werden (kein Zugang, keine Zeit …).
+   Der Admin markiert ihn mit Grund; Status wird 'nicht_geschafft'. Weil nur Stopps
+   mit status='offen' als "eingeplant" zählen (loadGlasEingeplantePositionen), fällt
+   das Objekt automatisch zurück in die Fällige-Liste und kann neu eingeplant werden.
+   Nichts wird gelöscht, der Stopp bleibt als Beleg in der Tour. Jederzeit umkehrbar. */
+function toggleGlasNg(stopId) {
+  glasNgOpenStopId = glasNgOpenStopId === stopId ? null : stopId;
+  glasNgGrund = "";
+  glasAdminSignOpenStopId = null; // ein Bereich pro Stopp offen
+  renderGlasAdmin();
+}
+
+function setGlasNgGrund(g) { glasNgGrund = g; renderGlasAdmin(); }
+
+function renderGlasNgArea(s) {
+  return `
+    <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+      <p style="margin:0 0 8px; font-weight:600; font-size:13px;">Warum wurde dieser Stopp nicht geschafft?</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${GLAS_NG_GRUENDE.map((g) => `<button class="btn btn-sm ${glasNgGrund === g ? "btn-primary" : ""}" onclick="setGlasNgGrund('${g.replace(/'/g, "\\'")}')">${escapeHtml(g)}</button>`).join("")}
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label class="muted">Notiz (optional)</label>
+        <textarea id="ng_notiz" rows="2" placeholder="z.B. Schlüssel fehlte, Kunde nicht erreichbar"></textarea>
+      </div>
+      <button class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="saveGlasNg('${s.id}')">✓ Als nicht geschafft markieren</button>
+    </div>`;
+}
+
+async function saveGlasNg(stopId) {
+  if (glasBusy) return;
+  if (!glasNgGrund) { showToast("Bitte einen Grund wählen"); return; }
+  const notiz = document.getElementById("ng_notiz")?.value.trim() || "";
+  const stop = glasTourDetailStops.find((s) => s.id === stopId);
+  const payload = { status: "nicht_geschafft", ng_grund: glasNgGrund, ng_notiz: notiz, ng_am: new Date().toISOString() };
+  const { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  if (stop) Object.assign(stop, payload);
+  glasNgOpenStopId = null; glasNgGrund = "";
+  showToast("Als nicht geschafft markiert – Objekt ist wieder fällig");
+  await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
+  renderGlasAdmin();
+}
+
+async function revertGlasNg(stopId) {
+  if (glasBusy) return;
+  const stop = glasTourDetailStops.find((s) => s.id === stopId);
+  const payload = { status: "offen", ng_grund: "", ng_notiz: "", ng_am: null };
+  const { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  if (stop) Object.assign(stop, payload);
+  showToast("Wieder als offen markiert");
+  await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
+  renderGlasAdmin();
 }
 
 function syncNewTourFormFromDom() {

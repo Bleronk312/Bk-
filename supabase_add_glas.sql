@@ -242,6 +242,14 @@ delete from glas_touren where id not in (select tour_id from glas_stopps);
 -- gemacht wurde (z.B. "2 Std. zusätzlich") - steht danach mit auf dem PDF.
 alter table glas_stopps add column if not exists zusatz text not null default '';
 
+-- "Nicht geschafft" (nur Admin): ein geplanter Stopp konnte nicht erledigt werden
+-- (kein Zugang, keine Zeit, Wetter …). Status wird 'nicht_geschafft'; weil nur Stopps
+-- mit status='offen' als eingeplant zählen, fällt das Objekt automatisch zurück in die
+-- Fällige-Liste und kann neu eingeplant werden. Umkehrbar; der Stopp bleibt als Beleg.
+alter table glas_stopps add column if not exists ng_grund text not null default '';
+alter table glas_stopps add column if not exists ng_notiz text not null default '';
+alter table glas_stopps add column if not exists ng_am timestamptz;
+
 -- Benachrichtigungs-Schalter (gelten für alle Admin-Geräte und bleiben dauerhaft an,
 -- bis sie in den Einstellungen wieder ausgeschaltet werden)
 alter table glas_einstellungen add column if not exists push_kalender boolean not null default false;
