@@ -250,6 +250,10 @@ alter table glas_stopps add column if not exists ng_grund text not null default 
 alter table glas_stopps add column if not exists ng_notiz text not null default '';
 alter table glas_stopps add column if not exists ng_am timestamptz;
 
+-- Tour aus der Mitarbeiter-Ansicht ausblenden (bleibt im Admin sichtbar). Hält die
+-- MA-App uebersichtlich; loadGlasTouren in der MA filtert ma_versteckt heraus. Umkehrbar.
+alter table glas_touren add column if not exists ma_versteckt boolean not null default false;
+
 -- Benachrichtigungs-Schalter (gelten für alle Admin-Geräte und bleiben dauerhaft an,
 -- bis sie in den Einstellungen wieder ausgeschaltet werden)
 alter table glas_einstellungen add column if not exists push_kalender boolean not null default false;

@@ -1897,7 +1897,7 @@ function renderTourenCard(t) {
       <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
         ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>` : ""}
         <div style="flex:1;">
-          <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.frei ? ` <span class="badge badge-open">Einzelschein</span>` : ""}</p>
+          <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.frei ? ` <span class="badge badge-open">Einzelschein</span>` : ""}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary);">🙈 nicht bei MA</span>` : ""}</p>
           <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${stops.length} Stopp(s) · ${done}/${stops.length} erledigt</p>
         </div>
         <span style="font-size:18px; color:var(--text-secondary);">›</span>
@@ -2057,7 +2057,9 @@ function renderTourDetailView() {
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button class="btn btn-sm" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>
         <button class="btn btn-sm" onclick="openGlasMergePicker('${t.id}')">🔀 ${t.frei ? "In andere Tour übernehmen" : "Mit anderer Tour zusammenführen"}</button>
+        <button class="btn btn-sm" onclick="toggleGlasTourMaSichtbar('${t.id}')">${t.ma_versteckt ? "👁️ Zur MA-Ansicht hinzufügen" : "🙈 Aus MA-Ansicht rausnehmen"}</button>
       </div>
+      ${t.ma_versteckt ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">🙈 Diese Tour ist für die Mitarbeiter ausgeblendet – hier im Admin bleibt sie sichtbar.</p>` : ""}
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
         <span class="muted" style="font-size:13px;">Schein-Vorlage:</span>
         <button class="btn btn-sm ${t.template !== "sub" ? "btn-primary" : ""}" onclick="setGlasTourTemplate('${t.id}','geko')">GEKO Clean</button>
@@ -2101,6 +2103,22 @@ function downloadAlleGlasPdfs() {
 // Schein-Vorlage (GEKO/Dietrich) einer Tour ändern - auch NACH dem Unterschreiben.
 // Die Vorlage steckt an der Tour und bestimmt nur die PDF-Optik; Unterschriften und
 // alle Stopp-Daten bleiben unangetastet. Behebt das versehentlich falsch gewählte Template.
+// Tour aus der Mitarbeiter-Ansicht aus-/einblenden. Die Tour bleibt im Admin komplett
+// erhalten (Stopps, Unterschriften, PDFs) – nur die MA-App zeigt ausgeblendete Touren
+// nicht mehr an (loadGlasTouren filtert ma_versteckt). Hält die MA-Liste übersichtlich.
+async function toggleGlasTourMaSichtbar(tourId) {
+  if (glasBusy) return;
+  const t = glasTouren.find((x) => x.id === tourId);
+  if (!t) return;
+  const neu = !t.ma_versteckt;
+  const { error } = await sb.from("glas_touren").update({ ma_versteckt: neu }).eq("id", tourId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  t.ma_versteckt = neu; // optimistisch, damit der Button sofort umschaltet
+  showToast(neu ? "Aus Mitarbeiter-Ansicht entfernt" : "Wieder in Mitarbeiter-Ansicht");
+  await loadGlasTouren();
+  renderGlasAdmin();
+}
+
 async function setGlasTourTemplate(tourId, tmpl) {
   if (glasBusy) return;
   const t = glasTouren.find((x) => x.id === tourId);

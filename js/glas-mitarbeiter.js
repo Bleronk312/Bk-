@@ -142,7 +142,8 @@ async function loadGlasTouren() {
     if (e2) throw e2;
 
     glasTouren = (touren || [])
-      .filter((t) => !t.archiviert_am) // archivierte Touren gehören nicht in die Mitarbeiter-Ansicht
+      // archivierte + vom Admin ausgeblendete Touren gehören nicht in die Mitarbeiter-Ansicht
+      .filter((t) => !t.archiviert_am && !t.ma_versteckt)
       .map((t) => ({
         ...t,
         stopps: (stops || []).filter((s) => s.tour_id === t.id),
