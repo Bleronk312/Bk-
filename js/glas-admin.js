@@ -1848,6 +1848,7 @@ function renderArchivTab() {
 async function openGlasTourDetail(tourId) {
   glasTourDetailId = tourId;
   glasTourDetailStops = [];
+  glasMergePickerFor = null;
   renderGlasAdmin();
   const { data, error } = await sb
     .from("glas_stopps")
@@ -1861,6 +1862,7 @@ async function openGlasTourDetail(tourId) {
 function closeGlasTourDetail() {
   glasTourDetailId = null;
   glasTourDetailStops = [];
+  glasMergePickerFor = null;
   renderGlasAdmin();
 }
 
@@ -1926,13 +1928,18 @@ function renderTourDetailView() {
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
       <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
-      ${!t.archiviert_am ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>` : ""}
+      ${!t.archiviert_am ? `
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn btn-sm" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>
+        <button class="btn btn-sm" onclick="openGlasMergePicker('${t.id}')">🔀 ${t.frei ? "In andere Tour übernehmen" : "Mit anderer Tour zusammenführen"}</button>
+      </div>` : ""}
       <div class="glas-stop-list">${rows}</div>
     </div>
     ${t.archiviert_am
       ? `<button class="btn btn-sm" onclick="restoreGlasTour('${t.id}')">↩️ Aus dem Archiv wiederherstellen</button>`
       : `<button class="btn btn-sm" style="color:var(--danger); margin-top:10px;" onclick="deleteGlasTour('${t.id}')">Tour löschen (wandert ins Archiv)</button>`
     }
+    ${glasMergePickerFor === t.id ? renderGlasMergePicker(t) : ""}
   `;
 }
 
@@ -1942,6 +1949,83 @@ function downloadGlasPdfAdmin(stopId) {
   if (!s || !t) return;
   const doc = generateGlasPdf(s, t.template, t.datum);
   doc.save(glasScheinFilename(s, t.template));
+}
+
+/* ---------------- Touren/Einzelscheine zusammenführen ----------------
+   Stopps einer Tour (z.B. eines Einzelscheins) in eine andere Tour übernehmen -
+   praktisch, um zwei Einzelscheine oder einen Sonder-Einzelschein und eine Tour
+   für denselben Tag zu bündeln. Die Stopps behalten alles (inkl. Unterschrift/
+   Status); die Quell-Tour wird erst aufgelöst, wenn ALLE Stopps sicher drüben sind. */
+let glasMergePickerFor = null; // tourId, dessen Stopps verschoben werden sollen
+
+function openGlasMergePicker(tourId) { glasMergePickerFor = tourId; renderGlasAdmin(); }
+function closeGlasMergePicker() { glasMergePickerFor = null; renderGlasAdmin(); }
+
+function renderGlasMergePicker(sourceTour) {
+  const ziele = glasTouren.filter((t) => !t.archiviert_am && t.id !== sourceTour.id);
+  const zeilen = ziele.length ? ziele.map((t) => {
+    const anzahl = (t.glas_stopps || []).length;
+    const tmplWarn = (t.template || "geko") !== (sourceTour.template || "geko");
+    return `
+      <div style="display:flex; align-items:center; gap:10px; padding:11px 2px; border-top:1px solid var(--border); cursor:pointer;" onclick="mergeGlasTourInto('${sourceTour.id}','${t.id}')">
+        <div style="flex:1; min-width:0;">
+          <p style="margin:0; font-weight:600; font-size:14px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12px;">${t.datum ? formatGlasDate(t.datum) : "Ohne Datum"} · ${anzahl} Stopp${anzahl === 1 ? "" : "s"} · ${t.template === "sub" ? "Dietrich" : "GEKO"}${tmplWarn ? ` <span style="color:var(--danger);">· andere Vorlage!</span>` : ""}</p>
+        </div>
+        <span style="color:var(--text-secondary);">›</span>
+      </div>`;
+  }).join("") : `<p class="muted" style="margin:10px 0;">Keine andere aktive Tour vorhanden. Lege zuerst eine Tour an.</p>`;
+
+  return `
+    <div class="modal-overlay" onclick="if(event.target===this) closeGlasMergePicker();">
+      <div class="modal-box glas-screen-in" style="max-width:460px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <p style="margin:0; font-weight:700; font-size:16px;">In welche Tour übernehmen?</p>
+          <button class="btn btn-sm" onclick="closeGlasMergePicker()">✕</button>
+        </div>
+        <p class="muted" style="margin:0 0 8px; font-size:12.5px;">Alle Stopps von „${escapeHtml(sourceTour.name || "diesem Schein")}" wandern ans Ende der gewählten Tour. Dieser Eintrag wird danach aufgelöst. Unterschriebene Stopps bleiben unverändert.</p>
+        ${zeilen}
+      </div>
+    </div>`;
+}
+
+async function mergeGlasTourInto(sourceId, targetId) {
+  if (glasBusy) return;
+  const target = glasTouren.find((t) => t.id === targetId);
+  const source = glasTouren.find((t) => t.id === sourceId);
+  if (!target || !source) { showToast("Tour nicht gefunden"); return; }
+  const tmplWarn = (target.template || "geko") !== (source.template || "geko");
+  if (!confirm(`Stopps von „${source.name || "diesem Schein"}" nach „${target.name || "Tour"}" verschieben und diesen Eintrag auflösen?${tmplWarn ? "\n\nAchtung: Die Ziel-Tour nutzt eine andere Schein-Vorlage – die Scheine werden dann mit deren Vorlage gedruckt." : ""}`)) return;
+
+  glasBusy = true; glasMergePickerFor = null; glasProgressText = "Wird zusammengeführt..."; renderGlasAdmin();
+  try {
+    const { data: srcStops, error: e1 } = await sb.from("glas_stopps").select("*").eq("tour_id", sourceId).order("reihenfolge", { ascending: true });
+    if (e1) throw e1;
+    const { data: tgtStops, error: e2 } = await sb.from("glas_stopps").select("id, reihenfolge").eq("tour_id", targetId);
+    if (e2) throw e2;
+    const startR = (tgtStops && tgtStops.length) ? Math.max(...tgtStops.map((s) => s.reihenfolge || 0)) + 1 : 0;
+
+    // Jeden Stopp einzeln umhängen; nur bei komplettem Erfolg wird die Quell-Tour gelöscht.
+    let alleOk = true;
+    for (let i = 0; i < (srcStops || []).length; i++) {
+      const { error } = await sb.from("glas_stopps").update({ tour_id: targetId, reihenfolge: startR + i }).eq("id", srcStops[i].id);
+      if (error) { alleOk = false; break; }
+    }
+    if (!alleOk) { throw new Error("Nicht alle Stopps konnten verschoben werden – nichts wurde aufgelöst, bitte erneut versuchen."); }
+
+    // Quell-Tour ist jetzt leer -> auflösen (endgültig, da keine Daten mehr dranhängen)
+    await sb.from("glas_touren").delete().eq("id", sourceId);
+
+    glasBusy = false; glasProgressText = "";
+    showToast("Zusammengeführt");
+    await loadGlasTouren();
+    openGlasTourDetail(targetId);
+  } catch (err) {
+    glasBusy = false; glasProgressText = "";
+    showToast("Fehler: " + err.message);
+    await loadGlasTouren();
+    renderGlasAdmin();
+  }
 }
 
 /* ---------------- Unterschreiben direkt in der Admin-Ansicht ---------------- */
