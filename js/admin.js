@@ -317,6 +317,7 @@ function renderScheineItem(s) {
         </div>
         <div class="scheine-actions">
           <button class="btn btn-sm" onclick="openView('${s.id}')">Öffnen</button>
+          <button class="btn btn-sm" onclick="openEdit('${s.id}')">Bearbeiten</button>
           <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
           <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
           ${signed ? `<button class="btn btn-sm" onclick="archiveScheine('${s.id}')">Archivieren</button>` : ""}
@@ -591,6 +592,11 @@ async function saveSignatureAdmin(id) {
   }
 }
 
+// Aktueller Monatsname auf Deutsch, z.B. "Juli" - für den Vorschlag beim neuen Schein.
+function aktuellerMonatName() {
+  return ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][new Date().getMonth()];
+}
+
 async function openEdit(id) {
   pendingAnhang = null;
   removeAnhangFlag = false;
@@ -603,7 +609,8 @@ async function openEdit(id) {
   } else {
     s = {
       id: genCode(), kunde: "", adresse: "", ansprechpartner: "", telefon: "",
-      kategorie: "", leistungen: "", monat: "", kdnr: "", anhang: null, anhang_name: null, interne_notiz: "",
+      // Durchzuführender Monat = automatisch der Monat, in dem der Schein erstellt wird
+      kategorie: "", leistungen: "", monat: aktuellerMonatName(), kdnr: "", anhang: null, anhang_name: null, interne_notiz: "",
     };
   }
 
@@ -680,8 +687,9 @@ async function openEdit(id) {
       </div>
 
       <div class="field">
-        <label>Leistung (eine Zeile = ein Punkt)</label>
-        <textarea id="f_leistungen" rows="3" placeholder="Graffitientfernung">${escapeHtml(s.leistungen)}</textarea>
+        <label>Leistung, die erbracht wird <span style="color:var(--danger);">*</span></label>
+        <textarea id="f_leistungen" rows="3" placeholder="z.B. Graffitientfernung an der Hausfassade">${escapeHtml(s.leistungen)}</textarea>
+        <p class="muted" style="margin:4px 0 0; font-size:12px;">Pflichtfeld · steht so auf dem Abnahmeschein. Mehrere Zeilen = mehrere Aufzählungspunkte.</p>
       </div>
 
       <div class="field">
@@ -840,6 +848,17 @@ async function saveScheine(id) {
     interne_notiz: document.getElementById("f_notiz").value,
   };
 
+  // Leistung ist Pflichtfeld (steht auf dem Abnahmeschein)
+  if (!payload.leistungen.trim()) {
+    showToast("Bitte die Leistung eintragen (Pflichtfeld)");
+    document.getElementById("f_leistungen")?.focus();
+    return;
+  }
+
+  // Wurde einem BESTEHENDEN Schein nachträglich ein Anhang hinzugefügt? Dann bekommt
+  // der Mitarbeiter unten eine Benachrichtigung, damit er den Anhang mitbekommt.
+  const anhangNachtraeglich = !isNew && !!pendingAnhang;
+
   if (pendingAnhang) {
     payload.anhang = pendingAnhang.data;
     payload.anhang_name = pendingAnhang.name;
@@ -868,6 +887,17 @@ async function saveScheine(id) {
           role: "mitarbeiter",
           title: "📋 Neuer Schein verfügbar!",
           body: `${firstLine(payload.adresse) || "Ein neuer Auftrag"} wartet auf dich.`,
+          url: "/mitarbeiter.html",
+        },
+      });
+    } catch (e) {}
+  } else if (anhangNachtraeglich) {
+    try {
+      sb.functions.invoke("send-push", {
+        body: {
+          role: "mitarbeiter",
+          title: "📎 Anhang hinzugefügt",
+          body: `${firstLine(payload.adresse) || "Ein Schein"}: Es wurde ein Anhang ergänzt – schau in die App.`,
           url: "/mitarbeiter.html",
         },
       });
