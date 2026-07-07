@@ -167,6 +167,59 @@ function glasObjektZusammenfassung(objektId) {
 function glasZahlDe(n) {
   return (Math.round(n * 100) / 100).toString().replace(".", ",");
 }
+
+// Farbe des Status-Balkens links an einer Objekt-Karte.
+function glasStatusStripe(status) {
+  return status === "ueberfaellig" ? "var(--danger)"
+    : status === "bald" ? "#d08a1f"
+    : status === "faellig" ? "var(--blue)"
+    : "var(--border)";
+}
+
+// Kennzahlen-Kacheln: items = [{ num, label, tone? }] mit tone 'accent'|'crit'|'warn'.
+function glasStatTiles(items) {
+  return `<div class="glas-stat-tiles">${items.map((it) => `
+    <div class="glas-stat-tile${it.tone ? " tone-" + it.tone : ""}">
+      <span class="glas-stat-tile-num">${it.num}</span>
+      <span class="glas-stat-tile-lbl">${escapeHtml(it.label)}</span>
+    </div>`).join("")}</div>`;
+}
+
+// Eine Objekt-Karte für die Kunden-Detailseite: Name, Position(en), qm, nächste Fälligkeit.
+function renderGlasObjektKarte(o, opts) {
+  opts = opts || {};
+  const status = glasObjektStatus(o.id);
+  const info = glasObjektZusammenfassung(o.id);
+  const n = info.naechste;
+  const auswahl = opts.auswahl;
+  return `
+    <div class="glas-objekt-card" style="${glasStatusTint(status)} --stripe:${glasStatusStripe(status)};" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
+      <div class="glas-objekt-card-top">
+        <div style="min-width:0;">
+          <p class="glas-objekt-card-name">${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(o.id) ? "on" : ""}" style="margin-right:6px; vertical-align:middle;"></span>` : ""}${escapeHtml(o.name)}</p>
+          <p class="glas-objekt-card-sub">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
+          ${info.posText ? `<p class="glas-objekt-card-sub">🪟 ${escapeHtml(info.posText)}</p>` : ""}
+        </div>
+        ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>` : ""}
+      </div>
+      <div class="glas-objekt-card-meta">
+        <span class="muted">${n && n.label ? `${n.status === "geplant" ? "geplant" : "fällig"} ${escapeHtml(n.label)}` : "kein Intervall"}</span>
+        ${info.qmText ? `<span class="glas-objekt-card-qm">${info.qmText}</span>` : ""}
+      </div>
+    </div>`;
+}
+
+// Wie viele Objekte eines Kunden haben welchen Status (für Kennzahlen/Badges).
+function glasKundeStatusZaehler(kundeId) {
+  let ueberfaellig = 0, faellig = 0, bald = 0;
+  glasObjekte.filter((o) => o.kunde_id === kundeId).forEach((o) => {
+    const s = glasObjektStatus(o.id);
+    if (s === "ueberfaellig") ueberfaellig++;
+    else if (s === "faellig") faellig++;
+    else if (s === "bald") bald++;
+  });
+  return { ueberfaellig, faellig, bald };
+}
 function glasStatusBadgeClass(status) {
   return status === "ueberfaellig" ? "badge-danger" : status === "bald" ? "badge-open" : status === "faellig" ? "badge-faellig" : "badge-signed";
 }
@@ -719,19 +772,36 @@ function renderKundenTab() {
   const rows = sortiert.length
     ? sortiert.map(({ k, status }) => {
         const objekte = glasObjekte.filter((o) => o.kunde_id === k.id);
+        const z = glasKundeStatusZaehler(k.id);
         return `
           <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${k.id}')` : `goGlasKunde('${k.id}')`}">
             ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(k.id) ? "on" : ""}"></span>` : ""}
-            <div style="flex:1;">
+            <div style="flex:1; min-width:0;">
               <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}</p>
-              <p class="muted" style="margin:3px 0 0;">${objekte.length} Objekt(e)</p>
+              <p class="muted" style="margin:3px 0 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <span>${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}</span>
+                ${z.ueberfaellig ? `<span class="badge ${glasStatusBadgeClass("ueberfaellig")}">${z.ueberfaellig} überfällig</span>` : ""}
+                ${z.faellig + z.bald ? `<span class="badge ${glasStatusBadgeClass(z.faellig ? "faellig" : "bald")}">${z.faellig + z.bald} fällig</span>` : ""}
+              </p>
             </div>
             <span style="font-size:18px; color:var(--text-secondary);">›</span>
           </div>`;
       }).join("")
     : `<p class="muted">Keine Kunden gefunden.</p>`;
 
+  // Kennzahlen über der Kundenliste
+  const objGesamt = glasObjekte.length;
+  const objUeberf = glasObjekte.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
+  const objFaellig = glasObjekte.filter((o) => { const s = glasObjektStatus(o.id); return s === "faellig" || s === "bald"; }).length;
+  const kennzahlen = glasKunden.length ? glasStatTiles([
+    { num: glasKunden.length, label: "Kunden", tone: "accent" },
+    { num: objGesamt, label: "Objekte" },
+    { num: objUeberf, label: "Objekte überfällig", tone: objUeberf ? "crit" : null },
+    { num: objFaellig, label: "fällig / bald", tone: objFaellig ? "warn" : null },
+  ]) : "";
+
   return `
+    ${kennzahlen}
     <div style="display:flex; gap:8px; margin:16px 0 10px; align-items:center; flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="editGlasKunde(null)">+ Neuer Kunde</button>
       <button class="btn btn-sm" onclick="editGlasObjekt(null)">+ Neues Objekt</button>
@@ -926,30 +996,21 @@ function renderKundeDetailPage(id) {
       <button class="btn btn-sm ${glasKundeSubTab === "termine" ? "btn-primary" : ""}" style="flex:1; justify-content:center;" onclick="glasKundeSubTab = 'termine'; if (!glasKundeTermineCache['${id}']) loadGlasKundeTermine('${id}'); renderGlasAdmin();">📅 Termine</button>
     </div>
     ${glasKundeSubTab === "termine" ? renderKundeTermine(id) : `
+      ${(() => {
+        const z = glasKundeStatusZaehler(id);
+        const gesamtQm = objekte.reduce((sum, o) => sum + glasObjektZusammenfassung(o.id).totalQm, 0);
+        return objekte.length ? glasStatTiles([
+          { num: objekte.length, label: "Objekte", tone: "accent" },
+          { num: gesamtQm ? glasZahlDe(gesamtQm) : "–", label: "qm gesamt" },
+          { num: z.ueberfaellig, label: "überfällig", tone: z.ueberfaellig ? "crit" : null },
+          { num: z.faellig + z.bald, label: "fällig / bald", tone: (z.faellig + z.bald) ? "warn" : null },
+        ]) : "";
+      })()}
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
-      <div class="card glas-objekt-liste" style="padding:2px 14px;">
-        ${objekte.length ? objekte.map((o) => {
-          const status = glasObjektStatus(o.id);
-          const auswahl = glasAuswahl.modus === "objekte";
-          const info = glasObjektZusammenfassung(o.id);
-          const n = info.naechste;
-          return `
-          <div class="glas-objekt-row" style="border-top:1px solid var(--border); ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
-            ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(o.id) ? "on" : ""}"></span>` : ""}
-            <div class="glas-objekt-row-main">
-              <p style="margin:0; font-weight:600;">${escapeHtml(o.name)}</p>
-              <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
-              ${info.posText ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🪟 ${escapeHtml(info.posText)}${info.qmText ? ` · ${info.qmText}` : ""}</p>` : ""}
-            </div>
-            <div class="glas-objekt-row-side">
-              ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="font-size:10.5px;">${glasStatusLabel(n.status)}</span>` : ""}
-              ${n && n.label ? `<span class="muted" style="font-size:11.5px; white-space:nowrap;">${n.status === "geplant" ? "geplant " : "fällig "}${escapeHtml(n.label)}</span>` : `<span class="muted" style="font-size:11.5px;">kein Intervall</span>`}
-            </div>
-            <span class="glas-objekt-row-arrow" style="color:var(--text-secondary);">›</span>
-          </div>`;
-        }).join("") : `<p class="muted" style="padding:12px 0;">Noch keine Objekte für diesen Kunden angelegt.</p>`}
-      </div>
-      <div style="display:flex; gap:8px;">
+      ${objekte.length
+        ? `<div class="glas-objekt-cards">${objekte.map((o) => renderGlasObjektKarte(o, { auswahl: glasAuswahl.modus === "objekte" })).join("")}</div>`
+        : `<div class="card"><p class="muted" style="padding:8px 0;">Noch keine Objekte für diesen Kunden angelegt.</p></div>`}
+      <div style="display:flex; gap:8px; margin-top:14px;">
         <button class="btn btn-primary" onclick="editGlasObjekt(null, {presetKundeId:'${k.id}', returnTo:{type:'kunde', id:'${k.id}'}})">+ Neues Objekt für diesen Kunden</button>
         ${objekte.length && glasAuswahl.modus !== "objekte" ? `<button class="btn btn-sm" title="Mehrere auswählen" onclick="glasAuswahlStart('objekte')">☑️ Auswählen</button>` : ""}
       </div>
@@ -4128,7 +4189,27 @@ function glasAlleOffenenPositionen() {
 // Welche Positionen genau drankommen, entscheidet man erst beim Planen (Checkboxen im
 // Tour-Formular) bzw. beim Verschieben (Checkboxen im Picker).
 function renderOffeneListe() {
+  // Kennzahlen über der Liste: pro Objekt der dringendste Status (nicht pro Position),
+  // damit die Zahlen zur Karten-Anzahl darunter passen.
+  const alle = glasAlleOffenenPositionen();
+  const rang = { ueberfaellig: 0, faellig: 1, bald: 2 };
+  const perObj = new Map();
+  alle.forEach((x) => {
+    const cur = perObj.get(x.objekt.id);
+    if (!cur || rang[x.status] < rang[cur]) perObj.set(x.objekt.id, x.status);
+  });
+  const vals = [...perObj.values()];
+  const u = vals.filter((s) => s === "ueberfaellig").length;
+  const f = vals.filter((s) => s === "faellig").length;
+  const bd = vals.filter((s) => s === "bald").length;
+  const kennzahlen = vals.length ? glasStatTiles([
+    { num: u, label: "überfällig", tone: u ? "crit" : null },
+    { num: f, label: "fällig", tone: f ? "warn" : null },
+    { num: bd, label: "bald fällig" },
+  ]) : "";
+
   return `
+    ${kennzahlen}
     <div style="display:flex; gap:8px; margin-bottom:14px;">
       <input type="text" id="offen_search" placeholder="🔍 Objekt/Kunde suchen..." value="${escapeHtml(glasOffeneSearch)}" />
     </div>

@@ -1638,3 +1638,24 @@ html.dark .glas-warncard { background: var(--warning-bg); border-color: #4d421f;
   .glas-objekt-row:hover { background: var(--bg); }
   .glas-objekt-row-main p:first-child { font-size: 15.5px; }
 }
+
+/* ---- Kennzahlen-Kacheln (Kunden/Fällig-Übersicht) ---- */
+.glas-stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 4px 0 16px; }
+.glas-stat-tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px; }
+.glas-stat-tile-num { display: block; font-size: 23px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.1; }
+.glas-stat-tile-lbl { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.glas-stat-tile.tone-accent .glas-stat-tile-num { color: var(--blue); }
+.glas-stat-tile.tone-crit   .glas-stat-tile-num { color: var(--danger); }
+.glas-stat-tile.tone-warn   .glas-stat-tile-num { color: #c8890f; }
+html.dark .glas-stat-tile.tone-warn .glas-stat-tile-num { color: #e5b95e; }
+
+/* ---- Objekt-Karten (Kunden-Detailseite) ---- */
+.glas-objekt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.glas-objekt-card { border: 1px solid var(--border); border-left: 4px solid var(--stripe, var(--border)); border-radius: 12px; padding: 13px 15px; cursor: pointer; background: var(--card); transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.glas-objekt-card:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(20,35,55,0.08); }
+html.dark .glas-objekt-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.glas-objekt-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.glas-objekt-card-name { margin: 0; font-weight: 700; font-size: 15px; }
+.glas-objekt-card-sub { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+.glas-objekt-card-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.glas-objekt-card-qm { font-weight: 700; }
