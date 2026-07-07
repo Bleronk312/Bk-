@@ -85,9 +85,13 @@ function glasFormatQm(qm) {
 
 // s: { kunde_adresse, objekt, adresse, kdnr, position, qm, name, datum, unterschrift }
 // tourDatum: ISO-Datum der Tour, bestimmt "Auszuführende Arbeiten Monat: ..."
-function generateGlasPdf(s, templateKey, tourDatum) {
+// existingDoc (optional): wird ein bestehendes jsPDF-Dokument übergeben, hängt dieser
+// Schein als NEUE Seite an (für "alle Scheine einer Tour in EIN PDF"). Ohne den
+// Parameter verhält sich alles exakt wie bisher (neues Ein-Seiten-PDF).
+function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const doc = existingDoc || new jsPDF({ unit: "mm", format: "a4" });
+  if (existingDoc) doc.addPage();
   const tpl = GLAS_TEMPLATES[templateKey] || GLAS_TEMPLATES.geko;
   const L = GLAS_LAYOUT;
 

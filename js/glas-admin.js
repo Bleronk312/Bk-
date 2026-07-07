@@ -1932,8 +1932,15 @@ function renderTourDetailView() {
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button class="btn btn-sm" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>
         <button class="btn btn-sm" onclick="openGlasMergePicker('${t.id}')">🔀 ${t.frei ? "In andere Tour übernehmen" : "Mit anderer Tour zusammenführen"}</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+        <span class="muted" style="font-size:13px;">Schein-Vorlage:</span>
+        <button class="btn btn-sm ${t.template !== "sub" ? "btn-primary" : ""}" onclick="setGlasTourTemplate('${t.id}','geko')">GEKO Clean</button>
+        <button class="btn btn-sm ${t.template === "sub" ? "btn-primary" : ""}" onclick="setGlasTourTemplate('${t.id}','sub')">Dietrich</button>
+        <span class="muted" style="font-size:11.5px; flex-basis:100%;">Kann jederzeit geändert werden – auch nach dem Unterschreiben. Ändert nur die PDF-Optik, nicht die Unterschrift.</span>
       </div>` : ""}
       <div class="glas-stop-list">${rows}</div>
+      ${glasTourDetailStops.length ? `<button class="btn btn-sm" style="margin-top:12px;" onclick="downloadAlleGlasPdfs()">📄 Alle PDFs herunterladen (${glasTourDetailStops.length})</button>` : ""}
     </div>
     ${t.archiviert_am
       ? `<button class="btn btn-sm" onclick="restoreGlasTour('${t.id}')">↩️ Aus dem Archiv wiederherstellen</button>`
@@ -1949,6 +1956,35 @@ function downloadGlasPdfAdmin(stopId) {
   if (!s || !t) return;
   const doc = generateGlasPdf(s, t.template, t.datum);
   doc.save(glasScheinFilename(s, t.template));
+}
+
+// Alle Scheine einer Tour in EIN PDF (eine Seite pro Stopp) - praktisch am Ende einer
+// Tour zum Sammel-Download/Archivieren. Nur Admin.
+function downloadAlleGlasPdfs() {
+  const t = glasTouren.find((x) => x.id === glasTourDetailId);
+  if (!t || !glasTourDetailStops.length) { showToast("Keine Scheine vorhanden"); return; }
+  try {
+    let doc = null;
+    glasTourDetailStops.forEach((s) => { doc = generateGlasPdf(s, t.template, t.datum, doc); });
+    const clean = (v) => String(v || "").replace(/[^a-z0-9äöüß]+/gi, "_").replace(/^_+|_+$/g, "");
+    doc.save(`Scheine_${clean(t.name || "Tour")}${t.datum ? "_" + t.datum : ""}.pdf`);
+  } catch (e) {
+    showToast("PDF-Erstellung fehlgeschlagen: " + e.message);
+  }
+}
+
+// Schein-Vorlage (GEKO/Dietrich) einer Tour ändern - auch NACH dem Unterschreiben.
+// Die Vorlage steckt an der Tour und bestimmt nur die PDF-Optik; Unterschriften und
+// alle Stopp-Daten bleiben unangetastet. Behebt das versehentlich falsch gewählte Template.
+async function setGlasTourTemplate(tourId, tmpl) {
+  if (glasBusy) return;
+  const t = glasTouren.find((x) => x.id === tourId);
+  if (!t || (t.template || "geko") === tmpl) return;
+  const { error } = await sb.from("glas_touren").update({ template: tmpl }).eq("id", tourId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Vorlage geändert: " + (tmpl === "sub" ? "Dietrich" : "GEKO Clean"));
+  await loadGlasTouren();
+  renderGlasAdmin();
 }
 
 /* ---------------- Touren/Einzelscheine zusammenführen ----------------
