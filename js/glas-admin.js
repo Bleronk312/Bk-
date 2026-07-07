@@ -37,7 +37,7 @@ let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), ges
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
 let glasTourExtras = new Map(); // objekt_id -> [{ nr, art, qm }] - händisch zusätzlich eingetragene Positionen (z.B. Extra-Stunden)
-let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko" }; // Zustand des Tour-Formulars (überlebt Re-Renders)
+let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko", notiz: "" }; // Zustand des Tour-Formulars (überlebt Re-Renders)
 let glasTourenErledigtExpanded = false;
 let glasEditingTourId = null; // gesetzt, wenn eine bestehende Tour bearbeitet statt neu angelegt wird
 let glasAdminSignOpenStopId = null; // Stopp, dessen Unterschrift-Bereich in der Admin-Ansicht gerade offen ist
@@ -1640,7 +1640,7 @@ function glasJetztPlanen(objektId, positionIds) {
   glasPreselectPositionen = new Map([[objektId, new Set(ids)]]);
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]) };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]), notiz: "" };
   glasShowEinzelschein = false;
   glasTourDetailId = null;
   glasShowNewTourForm = true;
@@ -1935,7 +1935,7 @@ function glasStartNewTourForm() {
   glasSelectedObjekte.clear();
   glasPreselectPositionen = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko", notiz: "" };
   renderGlasAdmin();
 }
 
@@ -2053,6 +2053,7 @@ function renderTourDetailView() {
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
       <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
+      ${t.notiz ? `<div class="glas-notiz-box" style="margin-top:10px; white-space:pre-line;">📌 <b>Tour-Notiz (für die MA):</b> ${escapeHtml(t.notiz)}</div>` : ""}
       ${!t.archiviert_am ? `
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button class="btn btn-sm" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>
@@ -2358,6 +2359,7 @@ function syncNewTourFormFromDom() {
   if (get("t_datum") !== undefined) glasNewTour.datum = get("t_datum");
   if (get("t_datum_bis") !== undefined) glasNewTour.datum_bis = get("t_datum_bis");
   if (get("t_template") !== undefined) glasNewTour.template = get("t_template");
+  if (get("t_notiz") !== undefined) glasNewTour.notiz = get("t_notiz");
 }
 
 function renderNewTourForm() {
@@ -2389,6 +2391,11 @@ function renderNewTourForm() {
           <option value="geko" ${glasNewTour.template === "geko" ? "selected" : ""}>GEKO Clean</option>
           <option value="sub" ${glasNewTour.template === "sub" ? "selected" : ""}>Subunternehmen (Dietrich)</option>
         </select>
+      </div>
+      <div class="field">
+        <label class="muted">Tour-Notiz für die Mitarbeiter (optional)</label>
+        <textarea id="t_notiz" rows="2" placeholder="z.B. Schlüssel im Büro abholen · mit 2 Mann · zuerst bei Herz Mariä">${escapeHtml(glasNewTour.notiz || "")}</textarea>
+        <p class="muted" style="margin:5px 0 0; font-size:12px;">Steht dem Mitarbeiter ganz oben, wenn er die Tour öffnet.</p>
       </div>
       <label class="muted">Ausgewählte Objekte (${selectedItems.length})</label>
       ${selectedItems.length ? renderTourSelectedSummary(selectedItems) : `<p class="muted" style="margin:6px 0 14px;">Noch keine Objekte ausgewählt.</p>`}
@@ -2641,6 +2648,7 @@ async function createGlasTour() {
   const datum = document.getElementById("t_datum").value;
   const datumBis = document.getElementById("t_datum_bis").value;
   const template = document.getElementById("t_template").value;
+  const notiz = (document.getElementById("t_notiz")?.value || "").trim();
   const selected = glasObjekte.filter((o) => glasSelectedObjekte.has(o.id));
 
   // Beim Bearbeiten darf die Auswahl leer sein (z.B. Einzelschein mit frei eingetragenem
@@ -2697,6 +2705,7 @@ async function createGlasTour() {
       datum: datum || null,
       datum_bis: datumBis || null,
       template,
+      notiz,
     });
     if (tourErr) throw tourErr;
 
@@ -2832,7 +2841,7 @@ async function editGlasTour(tourId) {
   });
   glasEditingTourId = tourId;
   glasTourSearch = "";
-  glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko" };
+  glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko", notiz: t.notiz || "" };
   glasShowNewTourForm = true;
   glasTourDetailId = null;
   renderGlasAdmin();
@@ -4494,7 +4503,7 @@ function glasOffeneZuTourHinzufuegen() {
   glasPreselectPositionen = map;
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds) };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds), notiz: "" };
   glasShowNewTourForm = true;
   renderGlasAdmin();
 }

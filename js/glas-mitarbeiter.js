@@ -263,7 +263,7 @@ function renderGlasTourCard(t) {
       </div>
       <div style="flex:1; min-width:0;">
         <p style="margin:0; font-weight:700; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
-        <p class="muted" style="margin:3px 0 0;">${t.datum ? formatGlasDate(t.datum) : "Ohne Datum"}${isToday ? " · Heute" : ""}</p>
+        <p class="muted" style="margin:3px 0 0;">${t.datum ? formatGlasDate(t.datum) : "Ohne Datum"}${isToday ? " · Heute" : ""}${t.notiz ? ` · <span style="color:var(--text-primary);">📌 Notiz</span>` : ""}</p>
       </div>
       <span style="font-size:20px; color:var(--text-secondary); flex-shrink:0;">›</span>
     </div>`;
@@ -327,6 +327,7 @@ function renderGlasTourScreen(t) {
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
       <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
     </div>
+    ${t.notiz ? `<div class="glas-hinweis-box" style="margin-top:12px;"><span class="glas-hinweis-icon">📌</span><div><p class="glas-hinweis-title">Notiz zur Tour</p><p class="glas-hinweis-text" style="white-space:pre-line;">${escapeHtml(t.notiz)}</p></div></div>` : ""}
     <p class="muted" style="margin:14px 2px 4px; font-size:12.5px;">Auf einen Stopp tippen – dort stehen alle Infos und die Unterschrift.</p>
     ${renderGlasStopsList(t)}
   `;
