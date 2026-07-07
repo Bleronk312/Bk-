@@ -236,10 +236,13 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
     doc.setFont(FONT, "italic");
     doc.text(s.name, sigX, L.sigLineY - 1.5);
   }
-  if (s.datum) {
+  // Datum am Unterschrift-Feld = Tag der Unterschrift (aus signed_at abgeleitet,
+  // Fallback s.datum) - NICHT das Tour-Planungsdatum.
+  const sigDatum = (typeof glasSignaturDatum === "function" ? glasSignaturDatum(s) : s.datum);
+  if (sigDatum) {
     doc.setFontSize(10.5);
     doc.setFont(FONT, "normal");
-    doc.text(formatGlasDate(s.datum), L.left, L.sigLineY - 1.5);
+    doc.text(formatGlasDate(sigDatum), L.left, L.sigLineY - 1.5);
   }
 
   doc.setLineDashPattern([1, 1], 0);

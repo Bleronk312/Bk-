@@ -68,6 +68,30 @@ function glasSearchMatch(hay, q) {
   return qs.length >= 2 && hs.includes(qs);
 }
 
+// Lokales Datum (YYYY-MM-DD) aus einem Zeitstempel (z.B. signed_at, das als UTC-ISO
+// gespeichert wird). Wird in Ortszeit umgerechnet - so steht auf dem Schein der Tag,
+// an dem wirklich unterschrieben wurde, nicht irgendein Tour-Planungsdatum.
+function glasDatumVonTimestamp(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? "" : glasIsoFromDate(d);
+}
+
+// Uhrzeit "HH:MM" aus einem Zeitstempel (Ortszeit).
+function glasUhrzeitVonTimestamp(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Datum, das aufs Unterschrift-Feld des Scheins gehört = der Tag der Unterschrift.
+// s.datum wird beim Unterschreiben auf den Signier-Tag gesetzt (nicht das Tour-Datum)
+// und ist als eingefrorenes lokales Datum am stabilsten; signed_at ist der Fallback.
+function glasSignaturDatum(s) {
+  return (s && s.datum) || (s && glasDatumVonTimestamp(s.signed_at)) || "";
+}
+
 // Positions-Schnappschuss eines Stopps als Array {nr, art, qm} (leere weggefiltert).
 function glasStopPositionen(s) {
   let pos = [];

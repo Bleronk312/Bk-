@@ -1911,7 +1911,7 @@ function renderTourDetailView() {
             </div>
             ${isDone ? `
               ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
-              <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(s.datum)}</p>
+              <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}</p>
               <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
             ` : `
               <button class="btn btn-sm" style="margin-top:8px;" onclick="toggleGlasAdminSign('${s.id}')">${isSigning ? "Schließen" : "✍️ Unterschreiben lassen"}</button>
