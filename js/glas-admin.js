@@ -117,7 +117,12 @@ function glasObjektStatus(objektId) {
   let hoechster = null;
   for (const p of glasGetObjektPositionen(objektId)) {
     if (glasIstEingeplant(p)) continue;
-    hoechster = glasHoechsterStatus(hoechster, glasFaelligkeitStatus(p).status);
+    const s = glasFaelligkeitStatus(p).status;
+    // Nur echte Dringlichkeit (überfällig/fällig/bald) zählt. "geplant" = erst in der
+    // Zukunft dran und ist KEIN offener Status - sonst gelten frisch erledigte Objekte
+    // weiter als fällig (Bug: 87 "fällig" bei nur 60 wirklich anstehenden).
+    if (!GLAS_STATUS_RANG[s]) continue;
+    hoechster = glasHoechsterStatus(hoechster, s);
   }
   return hoechster;
 }
@@ -1060,7 +1065,9 @@ function renderKundeDetailPage(id) {
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
       ${(() => {
         if (!objekte.length && !(glasKundeTermineCache[id] || []).length) return `<div class="card"><p class="muted" style="padding:8px 0;">Noch keine Objekte für diesen Kunden angelegt.</p></div>`;
-        const zaehler = { alle: objekte.length, faellig: 0, terminiert: 0 };
+        // Fällig + Terminiert + Nichts fällig = Alle (jedes Objekt genau eine Kategorie).
+        // "Erledigt" ist bewusst KEINE Objekt-Kategorie, sondern der Monats-Verlauf.
+        const zaehler = { alle: objekte.length, faellig: 0, terminiert: 0, ok: 0 };
         objekte.forEach((o) => { const kat = glasKundeObjKategorie(o); if (zaehler[kat] !== undefined) zaehler[kat]++; });
 
         // Erledigt-Verlauf: unterschriebene/markierte Scheine im gewählten Monat
@@ -1074,7 +1081,7 @@ function renderKundeDetailPage(id) {
         const chip = (key, label, count) => `<button class="glas-seg-btn ${glasKundeObjFilter === key ? "on" : ""}" onclick="glasKundeObjFilter='${key}'; renderGlasAdmin();">${label}${count === null ? "" : ` (${count})`}</button>`;
         const chips = `
           <div class="glas-seg" style="margin:0 0 12px; flex-wrap:wrap;">
-            ${chip("alle", "Alle", zaehler.alle)}${chip("faellig", "🔔 Fällig", zaehler.faellig)}${chip("terminiert", "📅 Terminiert", zaehler.terminiert)}${chip("erledigt", "✓ Erledigt", cache ? imMonat.length : null)}
+            ${chip("alle", "Alle", zaehler.alle)}${chip("faellig", "🔔 Fällig", zaehler.faellig)}${chip("terminiert", "📅 Terminiert", zaehler.terminiert)}${chip("ok", "✅ Nichts fällig", zaehler.ok)}${chip("erledigt", "✓ Erledigt", cache ? imMonat.length : null)}
           </div>`;
 
         if (glasKundeObjFilter === "erledigt") {
@@ -2426,11 +2433,15 @@ async function deleteGlasSignatur(stopId) {
 
   glasBusy = true; glasProgressText = "Wird zurückgesetzt..."; renderGlasAdmin();
   try {
-    // 1) "Zuletzt gereinigt" der Schein-Positionen aus dem übrigen Verlauf zurückrechnen
+    // 1) "Zuletzt gereinigt" der Schein-Positionen aus dem übrigen Verlauf zurückrechnen.
+    // Zählt nur echte Nachweise: keine archivierten Touren, kein "erledigt" ohne
+    // Unterschrift/Markierung (sonst entstehen Geister-Reinigungen wie bei KITA 402).
     const ids = glasStopPositionen(stop).map((p) => p.id).filter(Boolean);
     if (ids.length) {
-      const { data } = await sb.from("glas_stopps").select("id, datum, signed_at, positionen").eq("status", "erledigt");
-      const andere = (data || []).filter((x) => x.id !== stopId);
+      const { data } = await sb.from("glas_stopps").select("id, datum, signed_at, positionen, name, manuell_erledigt_am, glas_touren(archiviert_am)").eq("status", "erledigt");
+      const andere = (data || []).filter((x) => x.id !== stopId
+        && !(x.glas_touren && x.glas_touren.archiviert_am)
+        && ((x.name || "").trim() !== "" || x.manuell_erledigt_am));
       for (const pid of ids) {
         let letzte = null;
         andere.forEach((x) => {
