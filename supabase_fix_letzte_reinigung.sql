@@ -128,3 +128,39 @@ select o.name as objekt, op.art, op.letzte_reinigung, op.feste_monate
 from glas_objekt_positionen op
 join glas_objekte o on o.id = op.objekt_id
 where o.name ilike '%402%';
+
+-- ---------------------------------------------------------------------------
+-- Kontrolle C: "Geister-Reinigungen" finden - Positionen, deren "zuletzt gereinigt"
+-- durch KEINEN gueltigen Schein gedeckt ist. Vor dem Skript zeigt das genau die
+-- faelschlich verschobenen Objekte (z.B. die 3 Kitas, die ohne Unterschrift auf
+-- November gerutscht sind). Nach dem Skript duerfen hier nur noch Werte stehen,
+-- die bewusst von Hand gepflegt wurden (z.B. beim Anlegen eines Objekts).
+with nachweis as (
+  select pos->>'id' as pos_id,
+         st.objekt_id,
+         lower(trim(pos->>'art')) as art,
+         max(coalesce(st.datum, (st.signed_at)::date)) as am
+  from glas_stopps st
+  join glas_touren t on t.id = st.tour_id
+  cross join lateral jsonb_array_elements(st.positionen::jsonb) as pos
+  where st.status = 'erledigt'
+    and st.positionen like '[%'
+    and t.archiviert_am is null
+    and (coalesce(st.unterschrift, '') <> '' or st.manuell_erledigt_am is not null)
+  group by 1, 2, 3
+)
+select k.name as kunde, o.name as objekt, op.art, op.letzte_reinigung, op.feste_monate
+from glas_objekt_positionen op
+join glas_objekte o on o.id = op.objekt_id
+left join kunden k on k.id = o.kunde_id
+where op.letzte_reinigung is not null
+  and not exists (
+    select 1 from nachweis n
+    where n.pos_id = op.id and n.am >= op.letzte_reinigung)
+  and not exists (
+    select 1 from nachweis n
+    where coalesce(n.pos_id, '') = ''
+      and n.objekt_id = op.objekt_id
+      and n.art = lower(trim(op.art))
+      and n.am >= op.letzte_reinigung)
+order by k.name, o.name;

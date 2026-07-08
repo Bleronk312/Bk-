@@ -202,18 +202,18 @@ function renderGlasObjektKarte(o, opts) {
   const auswahl = opts.auswahl;
   const terminiert = !status && glasGetObjektPositionen(o.id).some(glasIstEingeplant);
   return `
-    <div class="glas-objekt-card" style="${glasStatusTint(status)} --stripe:${glasStatusStripe(status)};" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
+    <div class="glas-objekt-card" style="${glasStatusTint(status)} --stripe:${terminiert ? "var(--blue)" : glasStatusStripe(status)};" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
       <div class="glas-objekt-card-top">
         <div style="min-width:0;">
           <p class="glas-objekt-card-name">${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(o.id) ? "on" : ""}" style="margin-right:6px; vertical-align:middle;"></span>` : ""}${escapeHtml(o.name)}</p>
           <p class="glas-objekt-card-sub">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
           ${info.posText ? `<p class="glas-objekt-card-sub">🪟 ${escapeHtml(info.posText)}</p>` : ""}
         </div>
-        ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>`
-          : terminiert ? `<span class="badge" style="flex-shrink:0; background:var(--info-bg); color:var(--blue);">📅 Terminiert</span>` : ""}
+        ${terminiert ? `<span class="badge" style="flex-shrink:0; background:var(--info-bg); color:var(--blue);">📅 Terminiert</span>`
+          : n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>` : ""}
       </div>
       <div class="glas-objekt-card-meta">
-        <span class="muted">${n && n.label ? `fällig ${escapeHtml(n.label)}` : "kein Intervall"}</span>
+        <span class="muted">${n && n.label ? `fällig ${escapeHtml(n.label)}${terminiert ? " · in Tour eingeplant" : ""}` : "kein Intervall"}</span>
         ${info.qmText ? `<span class="glas-objekt-card-qm">${info.qmText}</span>` : ""}
       </div>
     </div>`;
