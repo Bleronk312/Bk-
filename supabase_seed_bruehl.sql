@@ -1,6 +1,9 @@
--- Stadt Bruehl (Glasreinigung): Kunde + 14 Objekte aus
+-- Stadt Bruehl (Glasreinigung): Kunde + 13 Objekte aus
 -- Glasreinigung_Bruehl_Termine_2x_jaehrlich.xlsx (Kombinierte Tabelle).
--- Alle Objekte: Pos. 10 Glas- und Rahmenreinigung, feste Monate Maerz + Oktober (3,10).
+-- Alle Objekte: Pos. 1 Glas- und Rahmenreinigung, feste Monate Maerz + Oktober (3,10).
+-- Excel-Zeilen 10 (Gesamtschule) und 13 (Turnhalle) sind EIN Objekt
+--   ('Gesamtschule + Turnhalle Otto Wels') mit ZWEI Positionen (nicht summiert):
+--   2212,01 qm (Gesamtschule) + 51,55 qm (Turnhalle).
 -- Kd.-Nr. war in der Excel nicht angegeben (bleibt leer). Vorlage: geko.
 -- Koordinaten werden beim naechsten Oeffnen der Admin-Seite automatisch ergaenzt.
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
@@ -16,7 +19,7 @@ select 'bruehl1', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl1')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl1-p10', 'bruehl1', '10', 'Glas- und Rahmenreinigung', '480,4', 'feste_monate', '3,10', 0
+select 'bruehl1-p1', 'bruehl1', '1', 'Glas- und Rahmenreinigung', '480,4', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl1')
 on conflict (id) do nothing;
 
@@ -26,7 +29,7 @@ select 'bruehl2', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl2')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl2-p10', 'bruehl2', '10', 'Glas- und Rahmenreinigung', '184,23', 'feste_monate', '3,10', 0
+select 'bruehl2-p1', 'bruehl2', '1', 'Glas- und Rahmenreinigung', '184,23', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl2')
 on conflict (id) do nothing;
 
@@ -36,7 +39,7 @@ select 'bruehl3', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl3')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl3-p10', 'bruehl3', '10', 'Glas- und Rahmenreinigung', '326,27', 'feste_monate', '3,10', 0
+select 'bruehl3-p1', 'bruehl3', '1', 'Glas- und Rahmenreinigung', '326,27', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl3')
 on conflict (id) do nothing;
 
@@ -46,7 +49,7 @@ select 'bruehl4', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl4')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl4-p10', 'bruehl4', '10', 'Glas- und Rahmenreinigung', '71,37', 'feste_monate', '3,10', 0
+select 'bruehl4-p1', 'bruehl4', '1', 'Glas- und Rahmenreinigung', '71,37', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl4')
 on conflict (id) do nothing;
 
@@ -56,7 +59,7 @@ select 'bruehl5', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl5')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl5-p10', 'bruehl5', '10', 'Glas- und Rahmenreinigung', '789,88', 'feste_monate', '3,10', 0
+select 'bruehl5-p1', 'bruehl5', '1', 'Glas- und Rahmenreinigung', '789,88', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl5')
 on conflict (id) do nothing;
 
@@ -66,7 +69,7 @@ select 'bruehl6', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl6')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl6-p10', 'bruehl6', '10', 'Glas- und Rahmenreinigung', '691,8', 'feste_monate', '3,10', 0
+select 'bruehl6-p1', 'bruehl6', '1', 'Glas- und Rahmenreinigung', '691,8', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl6')
 on conflict (id) do nothing;
 
@@ -76,7 +79,7 @@ select 'bruehl7', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl7')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl7-p10', 'bruehl7', '10', 'Glas- und Rahmenreinigung', '424,19', 'feste_monate', '3,10', 0
+select 'bruehl7-p1', 'bruehl7', '1', 'Glas- und Rahmenreinigung', '424,19', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl7')
 on conflict (id) do nothing;
 
@@ -86,7 +89,7 @@ select 'bruehl8', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl8')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl8-p10', 'bruehl8', '10', 'Glas- und Rahmenreinigung', '1333,7', 'feste_monate', '3,10', 0
+select 'bruehl8-p1', 'bruehl8', '1', 'Glas- und Rahmenreinigung', '1333,7', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl8')
 on conflict (id) do nothing;
 
@@ -96,17 +99,21 @@ select 'bruehl9', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl9')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl9-p10', 'bruehl9', '10', 'Glas- und Rahmenreinigung', '2099,81', 'feste_monate', '3,10', 0
+select 'bruehl9-p1', 'bruehl9', '1', 'Glas- und Rahmenreinigung', '2099,81', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl9')
 on conflict (id) do nothing;
 
--- Nr. 10: Gesamtschule Otto Wels
+-- Nr. 10 + 13: Gesamtschule + Turnhalle Otto Wels (2 Positionen: Gesamtschule + Turnhalle)
 insert into glas_objekte (id, kunde_id, kunde_name, kunde_adresse, name, adresse, kdnr, ansprechpartner, telefon, template, lat, lng)
-select 'bruehl10', (select id from kunden where name ilike '%brühl%' limit 1), (select name from kunden where name ilike '%brühl%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%brühl%' limit 1), 'Gesamtschule Otto Wels', E'Otto-Wels-Straße 1\n50321 Brühl', '', '', '', 'geko', null, null
+select 'bruehl10', (select id from kunden where name ilike '%brühl%' limit 1), (select name from kunden where name ilike '%brühl%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%brühl%' limit 1), 'Gesamtschule + Turnhalle Otto Wels', E'Otto-Wels-Straße 1\n50321 Brühl', '', '', '', 'geko', null, null
 where not exists (select 1 from glas_objekte where id = 'bruehl10')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl10-p10', 'bruehl10', '10', 'Glas- und Rahmenreinigung', '2212,01', 'feste_monate', '3,10', 0
+select 'bruehl10-p1', 'bruehl10', '1', 'Glas- und Rahmenreinigung', '2212,01', 'feste_monate', '3,10', 0
+where exists (select 1 from glas_objekte where id = 'bruehl10')
+on conflict (id) do nothing;
+insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
+select 'bruehl10-p2', 'bruehl10', '1', 'Glas- und Rahmenreinigung', '51,55', 'feste_monate', '3,10', 1
 where exists (select 1 from glas_objekte where id = 'bruehl10')
 on conflict (id) do nothing;
 
@@ -116,7 +123,7 @@ select 'bruehl11', (select id from kunden where name ilike '%brühl%' limit 1), 
 where not exists (select 1 from glas_objekte where id = 'bruehl11')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl11-p10', 'bruehl11', '10', 'Glas- und Rahmenreinigung', '178,02', 'feste_monate', '3,10', 0
+select 'bruehl11-p1', 'bruehl11', '1', 'Glas- und Rahmenreinigung', '178,02', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl11')
 on conflict (id) do nothing;
 
@@ -126,18 +133,8 @@ select 'bruehl12', (select id from kunden where name ilike '%brühl%' limit 1), 
 where not exists (select 1 from glas_objekte where id = 'bruehl12')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl12-p10', 'bruehl12', '10', 'Glas- und Rahmenreinigung', '118,94', 'feste_monate', '3,10', 0
+select 'bruehl12-p1', 'bruehl12', '1', 'Glas- und Rahmenreinigung', '118,94', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl12')
-on conflict (id) do nothing;
-
--- Nr. 13: Turnhalle Gesamtschule Otto Wels
-insert into glas_objekte (id, kunde_id, kunde_name, kunde_adresse, name, adresse, kdnr, ansprechpartner, telefon, template, lat, lng)
-select 'bruehl13', (select id from kunden where name ilike '%brühl%' limit 1), (select name from kunden where name ilike '%brühl%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%brühl%' limit 1), 'Turnhalle Gesamtschule Otto Wels', E'Otto-Wels-Straße 1\n50321 Brühl', '', '', '', 'geko', null, null
-where not exists (select 1 from glas_objekte where id = 'bruehl13')
-on conflict (id) do nothing;
-insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl13-p10', 'bruehl13', '10', 'Glas- und Rahmenreinigung', '51,55', 'feste_monate', '3,10', 0
-where exists (select 1 from glas_objekte where id = 'bruehl13')
 on conflict (id) do nothing;
 
 -- Nr. 14: HS Clemens-August
@@ -146,7 +143,7 @@ select 'bruehl14', (select id from kunden where name ilike '%brühl%' limit 1), 
 where not exists (select 1 from glas_objekte where id = 'bruehl14')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl14-p10', 'bruehl14', '10', 'Glas- und Rahmenreinigung', '516,39', 'feste_monate', '3,10', 0
+select 'bruehl14-p1', 'bruehl14', '1', 'Glas- und Rahmenreinigung', '516,39', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl14')
 on conflict (id) do nothing;
 
