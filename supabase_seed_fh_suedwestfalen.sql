@@ -5,8 +5,8 @@
 -- Alle Objekte: Pos. 1 Glas- und Rahmenreinigung, feste Monate Februar + August (2,8).
 --   Die grossen Standorte sind fuer August 2026 schon terminiert (Tourenplanung in der App);
 --   der naechste feste Monat ab Anlage ist ohnehin August -> passt automatisch.
--- PLZ recherchiert und verifiziert (Stand 07/2026). AUSNAHME: Maurickestr. 3 (Nr. 14)
---   liess sich nicht sicher verorten -> PLZ/Ort offen, bitte nachtragen.
+-- PLZ recherchiert und verifiziert (Stand 07/2026). HINWEIS: Objekt Nr. 14 war in der
+--   Excel falsch geschrieben ('Maurickestr.') -> korrekt: Mawicker Str. 3, 59469 Ense-Gerlingen.
 -- Ansprechpartner/Telefon aus der Excel (nur wo angegeben).
 -- Koordinaten werden beim naechsten Oeffnen der Admin-Seite automatisch ergaenzt.
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
@@ -132,9 +132,9 @@ select 'fhsw13-p1', 'fhsw13', '1', 'Glas- und Rahmenreinigung', '410', 'feste_mo
 where exists (select 1 from glas_objekte where id = 'fhsw13')
 on conflict (id) do nothing;
 
--- Nr. 14: Maurickestr. 3   [PLZ/Ort offen]
+-- Nr. 14: Ense – Mawicker Str. 3 (in Excel falsch als 'Maurickestr.')
 insert into glas_objekte (id, kunde_id, kunde_name, kunde_adresse, name, adresse, kdnr, ansprechpartner, telefon, template, lat, lng)
-select 'fhsw14', (select id from kunden where name ilike '%südwestfalen%' limit 1), (select name from kunden where name ilike '%südwestfalen%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%südwestfalen%' limit 1), 'Maurickestr. 3', E'Maurickestr. 3', '', '', '', 'geko', null, null
+select 'fhsw14', (select id from kunden where name ilike '%südwestfalen%' limit 1), (select name from kunden where name ilike '%südwestfalen%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%südwestfalen%' limit 1), 'Ense – Mawicker Str. 3', E'Mawicker Str. 3\n59469 Ense-Gerlingen', '', '', '', 'geko', null, null
 where not exists (select 1 from glas_objekte where id = 'fhsw14')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
