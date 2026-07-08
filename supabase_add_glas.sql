@@ -258,6 +258,15 @@ alter table glas_touren add column if not exists ma_versteckt boolean not null d
 -- oben sieht (z.B. "Schluessel im Buero abholen"). In der MA-Liste erscheint ein 📌-Hinweis.
 alter table glas_touren add column if not exists notiz text not null default '';
 
+-- Blanko-Scheine haengen ueber kunde_id direkt am Kunden, damit sie auch OHNE gewaehltes
+-- Objekt im Termine-/Verlauf-Reiter des Kunden auftauchen.
+alter table glas_stopps add column if not exists kunde_id text not null default '';
+
+-- "Als unterschrieben markieren" (ohne Unterschrift, nur Admin): der Zeitstempel haelt
+-- fest, WANN manuell abgehakt wurde - wird ueberall als "als unterschrieben markiert am
+-- ..." ausgewiesen und ist per "Markierung zuruecknehmen" umkehrbar.
+alter table glas_stopps add column if not exists manuell_erledigt_am timestamptz;
+
 -- Benachrichtigungs-Schalter (gelten für alle Admin-Geräte und bleiben dauerhaft an,
 -- bis sie in den Einstellungen wieder ausgeschaltet werden)
 alter table glas_einstellungen add column if not exists push_kalender boolean not null default false;

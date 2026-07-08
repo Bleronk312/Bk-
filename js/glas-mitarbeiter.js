@@ -68,7 +68,7 @@ function glasApplyPendingSigns() {
   for (const item of q) {
     for (const t of glasTouren) {
       const stop = t.stopps.find((s) => s.id === item.stopId);
-      if (stop) Object.assign(stop, { name: item.name, datum: item.datum, unterschrift: item.unterschrift, zusatz: item.zusatz, status: "erledigt", signed_at: item.signedAt, __pendingSync: true });
+      if (stop) Object.assign(stop, { name: item.name, datum: item.datum, unterschrift: item.unterschrift, zusatz: item.zusatz, positionen: item.positionen || stop.positionen, status: "erledigt", signed_at: item.signedAt, __pendingSync: true });
     }
   }
 }
@@ -148,6 +148,7 @@ async function loadGlasTouren() {
         ...t,
         stopps: (stops || []).filter((s) => s.tour_id === t.id),
       }));
+    glasTouren = glasOhneAlteFertigeTouren(glasTouren);
     // Letzten Stand für den Offline-Fall sichern (im Objekt oft kein Empfang).
     // Unterschrift-Bilder (große Base64-PNGs) werden dabei weggelassen, sonst sprengen
     // ein paar unterschriebene Touren das localStorage-Limit und es gäbe GAR keinen
@@ -162,13 +163,32 @@ async function loadGlasTouren() {
     glasOfflineModus = true;
     const cached = glasLoadTourenCache();
     if (cached && cached.length) {
-      glasTouren = cached;
+      glasTouren = glasOhneAlteFertigeTouren(cached);
     } else {
       glasTouren = [];
     }
   }
   // Offline unterschriebene Stopps lokal drüberlegen, bis sie gesendet sind
   glasApplyPendingSigns();
+}
+
+// Fertige Touren (kein offener Stopp mehr) verschwinden AB DEM FOLGETAG automatisch
+// aus der Mitarbeiter-Ansicht - am Erledigungstag selbst bleiben sie sichtbar (PDF,
+// Kontrolle). Im Admin bleiben sie natürlich vollständig erhalten.
+function glasOhneAlteFertigeTouren(touren) {
+  const heute = todayIso();
+  return touren.filter((t) => {
+    const stopps = t.stopps || [];
+    if (!stopps.length) return true;
+    if (stopps.some((s) => s.status === "offen")) return true;
+    let letzter = "";
+    stopps.forEach((s) => {
+      const d = glasDatumVonTimestamp(s.signed_at) || s.datum || glasDatumVonTimestamp(s.ng_am) || "";
+      if (d > letzter) letzter = d;
+    });
+    if (!letzter) letzter = t.datum_bis || t.datum || "";
+    return !letzter || letzter >= heute;
+  });
 }
 
 let glasOfflineModus = false;
@@ -371,7 +391,7 @@ function renderMaStopPositionen(s) {
     ${pos.map((p) => `<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">
       <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
       <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
-      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} qm</span>` : ""}
+      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
     </div>`).join("")}
   </div>`;
 }
@@ -407,7 +427,9 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
       ${isDone
         ? `
       <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
-        <p class="muted" style="margin:0 0 8px;">✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(glasSignaturDatum(s))}</p>
+        <p class="muted" style="margin:0 0 8px;">${!s.unterschrift && s.manuell_erledigt_am
+          ? `✔️ Vom Büro als erledigt markiert am ${formatGlasDate(glasSignaturDatum(s))}`
+          : `✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(glasSignaturDatum(s))}`}</p>
         ${s.__pendingSync ? `<div class="glas-notiz-box" style="margin:0 0 8px; background:var(--warning-bg); border-color:#e0b64a;">⏳ Sicher gespeichert – wird automatisch ans Büro gesendet, sobald wieder Empfang da ist.</div>` : ""}
         ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px; white-space:pre-line;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
@@ -426,6 +448,7 @@ function renderGlasSignForm(s) {
   const today = todayIso();
   return `
     <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+      ${renderGlasStundenInputs(s, "gs-std")}
       <div class="field">
         <label class="muted">Name der unterschreibenden Person</label>
         <input type="text" id="gs_name" placeholder="Vor- und Nachname" style="font-size:16px;" />
@@ -500,6 +523,15 @@ async function saveGlasSignature(stopId) {
     if (stop) { stopRef = stop; tourName = t.name || ""; }
   }
 
+  // Stunden-Positionen: Eingaben sind Pflicht und wandern in den Positions-Schnappschuss
+  let posJson = stopRef?.positionen || "[]";
+  const stdInputs = [...document.querySelectorAll(".gs-std")].map((el) => el.value);
+  if (stdInputs.length) {
+    const res = glasMitStundenAktualisiert(posJson, stdInputs);
+    if (res.fehlt) { showToast("Bitte die gemachten Stunden eintragen (Pflichtfeld)"); return; }
+    posJson = res.json;
+  }
+
   // Erst online versuchen; bei fehlendem Empfang / Netzfehler in die Warteschlange legen,
   // damit im Objekt ohne Netz nichts verloren geht. Eine ECHTE Server-Ablehnung wird
   // dagegen als Fehler angezeigt (Formular bleibt offen) - sie darf nicht als
@@ -508,7 +540,7 @@ async function saveGlasSignature(stopId) {
   let serverFehler = null;
   if (navigator.onLine) {
     try {
-      const { error, payload } = await glasSignStop(stopId, stopRef?.positionen, name, datum, unterschrift, zusatz, signedAt);
+      const { error, payload } = await glasSignStop(stopId, posJson, name, datum, unterschrift, zusatz, signedAt);
       if (!error) {
         if (stopRef) Object.assign(stopRef, payload, { __pendingSync: false });
         saved = true;
@@ -527,8 +559,8 @@ async function saveGlasSignature(stopId) {
     showToast("Gespeichert");
     glasPushUnterschriftAnAdmin(stopRef, name, zusatz, tourName);
   } else {
-    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", tour: tourName, positionen: stopRef?.positionen || "[]", name, datum, unterschrift, zusatz, signedAt });
-    if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, status: "erledigt", signed_at: signedAt, __pendingSync: true });
+    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", tour: tourName, positionen: posJson, name, datum, unterschrift, zusatz, signedAt });
+    if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, positionen: posJson, status: "erledigt", signed_at: signedAt, __pendingSync: true });
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }
 

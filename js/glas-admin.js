@@ -154,13 +154,13 @@ function glasObjektZusammenfassung(objektId) {
   let totalQm = 0;
   let naechste = null; // { status, label, faelligkeit }
   positionen.forEach((p) => {
-    totalQm += glasQmZahl(p.qm);
+    if (!glasIstStundenPos(p)) totalQm += glasQmZahl(p.qm);
     const f = glasFaelligkeitStatus(p);
     if (f.faelligkeit && (!naechste || f.faelligkeit < naechste.faelligkeit)) naechste = f;
   });
   let posText;
   if (!positionen.length) posText = "";
-  else if (positionen.length === 1) posText = `Pos. ${positionen[0].nr} ${positionen[0].art}`;
+  else if (positionen.length === 1) posText = `${positionen[0].nr ? `Pos. ${positionen[0].nr} ` : ""}${positionen[0].art}`;
   else posText = `${positionen.length} Positionen`;
   const qmText = totalQm ? `${glasZahlDe(totalQm)} qm` : "";
   return { positionen, totalQm, qmText, posText, naechste };
@@ -195,6 +195,7 @@ function renderGlasObjektKarte(o, opts) {
   const info = glasObjektZusammenfassung(o.id);
   const n = info.naechste;
   const auswahl = opts.auswahl;
+  const terminiert = !status && glasGetObjektPositionen(o.id).some(glasIstEingeplant);
   return `
     <div class="glas-objekt-card" style="${glasStatusTint(status)} --stripe:${glasStatusStripe(status)};" onclick="${auswahl ? `glasAuswahlToggle('${o.id}')` : `goGlasObjekt('${o.id}')`}">
       <div class="glas-objekt-card-top">
@@ -203,10 +204,11 @@ function renderGlasObjektKarte(o, opts) {
           <p class="glas-objekt-card-sub">${escapeHtml((o.adresse || "").split("\n")[0])}</p>
           ${info.posText ? `<p class="glas-objekt-card-sub">🪟 ${escapeHtml(info.posText)}</p>` : ""}
         </div>
-        ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>` : ""}
+        ${n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>`
+          : terminiert ? `<span class="badge" style="flex-shrink:0; background:var(--info-bg); color:var(--blue);">📅 Terminiert</span>` : ""}
       </div>
       <div class="glas-objekt-card-meta">
-        <span class="muted">${n && n.label ? `${n.status === "geplant" ? "geplant" : "fällig"} ${escapeHtml(n.label)}` : "kein Intervall"}</span>
+        <span class="muted">${n && n.label ? `fällig ${escapeHtml(n.label)}` : "kein Intervall"}</span>
         ${info.qmText ? `<span class="glas-objekt-card-qm">${info.qmText}</span>` : ""}
       </div>
     </div>`;
@@ -427,7 +429,7 @@ function glasNavigate(page) {
 }
 
 function goGlasObjekt(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
-function goGlasKunde(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "kunde", id }); }
+function goGlasKunde(id) { glasAuswahl = { modus: null, ids: new Set() }; glasKundeObjFilter = "alle"; glasNavigate({ type: "kunde", id }); }
 function goGlasTab(tab) {
   glasContentAnimPending = true;
   glasAuswahl = { modus: null, ids: new Set() };
@@ -625,7 +627,7 @@ function renderGlasHome() {
       </div>
 
       <div class="glas-dash-stats glas-dash-stats-2">
-        <div class="glas-stat ${faelligGesamt ? "warn" : ""}" onclick="goGlasTab('faellig')">
+        <div class="glas-stat ${faelligGesamt ? "warn" : ""}" onclick="glasKundenSort='dringend'; goGlasTab('kunden')">
           <span class="glas-stat-num">${faelligGesamt}</span>
           <span class="glas-stat-label">Fällig</span>
         </div>
@@ -637,7 +639,7 @@ function renderGlasHome() {
 
       <div class="glas-dash-actions">
         <button class="btn btn-primary" style="flex:1; justify-content:center;" onclick="glasStartNewTourForm(); glasNavigate({type:'tabs', tab:'touren'});">+ Neue Tour</button>
-        <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Einzelschein erstellen</button>
+        <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
 
       <div class="card">
@@ -964,13 +966,40 @@ let glasKundeTermineCache = {}; // kunde_id -> Array Stopps mit glas_touren (Ver
 
 async function loadGlasKundeTermine(kundeId) {
   const objektIds = glasObjekte.filter((o) => o.kunde_id === kundeId).map((o) => o.id);
-  if (!objektIds.length) { glasKundeTermineCache[kundeId] = []; renderGlasAdmin(); return; }
-  const { data, error } = await sb
-    .from("glas_stopps")
-    .select("*, glas_touren(name, datum, datum_bis, template, archiviert_am)")
-    .in("objekt_id", objektIds);
-  glasKundeTermineCache[kundeId] = error ? [] : (data || []).filter((s) => s.glas_touren && !s.glas_touren.archiviert_am);
+  const sel = "*, glas_touren(name, datum, datum_bis, template, archiviert_am, frei)";
+  let stops = [];
+  if (objektIds.length) {
+    const { data, error } = await sb.from("glas_stopps").select(sel).in("objekt_id", objektIds);
+    if (!error) stops = data || [];
+  }
+  // Blankos ohne Objekt-Bezug hängen über kunde_id direkt am Kunden
+  try {
+    const { data } = await sb.from("glas_stopps").select(sel).eq("kunde_id", kundeId);
+    (data || []).forEach((s) => { if (!s.objekt_id && !stops.some((x) => x.id === s.id)) stops.push(s); });
+  } catch (e) { /* kunde_id-Spalte fehlt noch - dann nur Objekt-Termine */ }
+  glasKundeTermineCache[kundeId] = stops.filter((s) => s.glas_touren && !s.glas_touren.archiviert_am);
   renderGlasAdmin();
+}
+
+// Smart-Filter der Objektliste eines Kunden: jedes Objekt fällt in genau eine Kategorie.
+// "faellig"   = braucht Planung (mind. eine Position überfällig/fällig/bald, nicht eingeplant)
+// "terminiert"= in einer Tour eingeplant (und nichts weiteres offen)
+// "ok"        = aktuell erledigt, nichts fällig
+let glasKundeObjFilter = "alle"; // "alle" | "faellig" | "terminiert" | "ok"
+
+function glasKundeObjKategorie(o) {
+  if (glasObjektStatus(o.id)) return "faellig";
+  if (glasGetObjektPositionen(o.id).some(glasIstEingeplant)) return "terminiert";
+  return "ok";
+}
+
+// Sortierung innerhalb der Karten: Dringendstes zuerst, dann Terminierte, dann Erledigte.
+function glasKundeObjSortRang(o) {
+  const s = glasObjektStatus(o.id);
+  if (s === "ueberfaellig") return 0;
+  if (s === "faellig") return 1;
+  if (s === "bald") return 2;
+  return glasKundeObjKategorie(o) === "terminiert" ? 3 : 4;
 }
 
 function renderKundeDetailPage(id) {
@@ -1010,9 +1039,22 @@ function renderKundeDetailPage(id) {
         ]) : "";
       })()}
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
-      ${objekte.length
-        ? `<div class="glas-objekt-cards">${objekte.map((o) => renderGlasObjektKarte(o, { auswahl: glasAuswahl.modus === "objekte" })).join("")}</div>`
-        : `<div class="card"><p class="muted" style="padding:8px 0;">Noch keine Objekte für diesen Kunden angelegt.</p></div>`}
+      ${(() => {
+        if (!objekte.length) return `<div class="card"><p class="muted" style="padding:8px 0;">Noch keine Objekte für diesen Kunden angelegt.</p></div>`;
+        const zaehler = { alle: objekte.length, faellig: 0, terminiert: 0, ok: 0 };
+        objekte.forEach((o) => { zaehler[glasKundeObjKategorie(o)]++; });
+        const chip = (key, label) => `<button class="glas-seg-btn ${glasKundeObjFilter === key ? "on" : ""}" onclick="glasKundeObjFilter='${key}'; renderGlasAdmin();">${label} (${zaehler[key]})</button>`;
+        const gefiltert = (glasKundeObjFilter === "alle" ? objekte : objekte.filter((o) => glasKundeObjKategorie(o) === glasKundeObjFilter))
+          .slice()
+          .sort((a, b) => (glasKundeObjSortRang(a) - glasKundeObjSortRang(b)) || a.name.localeCompare(b.name, "de"));
+        return `
+          <div class="glas-seg" style="margin:0 0 12px; flex-wrap:wrap;">
+            ${chip("alle", "Alle")}${chip("faellig", "🔔 Fällig")}${chip("terminiert", "📅 Terminiert")}${chip("ok", "✓ Erledigt")}
+          </div>
+          ${gefiltert.length
+            ? `<div class="glas-objekt-cards">${gefiltert.map((o) => renderGlasObjektKarte(o, { auswahl: glasAuswahl.modus === "objekte" })).join("")}</div>`
+            : `<div class="card"><p class="muted" style="padding:8px 0;">Kein Objekt in dieser Kategorie.</p></div>`}`;
+      })()}
       <div style="display:flex; gap:8px; margin-top:14px;">
         <button class="btn btn-primary" onclick="editGlasObjekt(null, {presetKundeId:'${k.id}', returnTo:{type:'kunde', id:'${k.id}'}})">+ Neues Objekt für diesen Kunden</button>
         ${objekte.length && glasAuswahl.modus !== "objekte" ? `<button class="btn btn-sm" title="Mehrere auswählen" onclick="glasAuswahlStart('objekte')">☑️ Auswählen</button>` : ""}
@@ -1035,12 +1077,16 @@ function renderKundeTermine(kundeId) {
 
   const row = (s) => {
     const isDone = s.status === "erledigt";
+    const manuell = isDone && !s.unterschrift && s.manuell_erledigt_am;
+    const erledigtInfo = !isDone ? ""
+      : manuell ? ` · ✔️ als unterschrieben markiert am ${formatGlasDate(glasDatumVonTimestamp(s.manuell_erledigt_am))}`
+      : ` · ✓ ${escapeHtml(s.name || "")}`;
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${isDone ? "#2e9e4f" : "var(--blue)"};"></span>
-        <div style="flex:1; min-width:0; cursor:pointer;" onclick="goGlasObjekt('${s.objekt_id}')">
-          <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(s.glas_touren.datum, s.glas_touren.datum_bis)}${s.glas_touren.name ? " · " + escapeHtml(s.glas_touren.name) : ""}${isDone ? ` · ✓ ${escapeHtml(s.name || "")}` : ""}</p>
+        <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
+          <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(s.glas_touren.datum, s.glas_touren.datum_bis)}${s.glas_touren.name ? " · " + escapeHtml(s.glas_touren.name) : ""}${erledigtInfo}</p>
         </div>
         <span class="badge ${isDone ? "badge-signed" : "badge-open"}">${isDone ? "Erledigt" : "Geplant"}</span>
       </div>`;
@@ -1191,7 +1237,7 @@ const GLAS_CUSTOM_POS = "__custom__";
 function glasPositionSelectOptions(pos) {
   const placeholder = !pos.art && !pos.custom ? `<option value="" selected disabled>Position wählen...</option>` : "";
   const gespeichert = glasPositionen
-    .map((p) => `<option value="${escapeHtml(p.name)}" data-nr="${escapeHtml(p.nr || "10")}" ${!pos.custom && p.name === pos.art ? "selected" : ""}>Pos. ${escapeHtml(p.nr || "10")} – ${escapeHtml(p.name)}</option>`)
+    .map((p) => `<option value="${escapeHtml(p.name)}" data-nr="${escapeHtml(p.nr || "")}" ${!pos.custom && p.name === pos.art ? "selected" : ""}>${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.name)}</option>`)
     .join("");
   const custom = `<option value="${GLAS_CUSTOM_POS}" ${pos.custom ? "selected" : ""}>✏️ Eigene Position eintragen</option>`;
   return placeholder + gespeichert + custom;
@@ -1219,14 +1265,14 @@ function renderPositionenRows(positionen) {
         ${pos.custom ? `
         <div class="row" style="align-items:flex-end; margin-bottom:8px;">
           <div class="field" style="flex:0 0 70px; margin-bottom:0;">
-            <label class="muted">Nr.</label>
-            <input type="text" id="pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="10" />
+            <label class="muted">Nr. (optional)</label>
+            <input type="text" id="pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="–" />
           </div>
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Bezeichnung</label>
             <input type="text" id="pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
           </div>
-        </div>` : (pos.art ? `<p class="muted" style="margin:-2px 0 8px; font-size:11.5px;">Pos.-Nr. ${escapeHtml(pos.nr || "10")}</p>` : "")}
+        </div>` : (pos.art && pos.nr ? `<p class="muted" style="margin:-2px 0 8px; font-size:11.5px;">Pos.-Nr. ${escapeHtml(pos.nr)}</p>` : "")}
         <div class="row" style="align-items:flex-end;">
           <div class="field" style="flex:1.3; margin-bottom:0;">
             <label class="muted">Intervall</label>
@@ -1403,7 +1449,7 @@ async function saveGlasObjekt() {
   const posPayload = positionen.map((p, i) => ({
     id: p.id || genCode(),
     objekt_id: objektId,
-    nr: p.nr || "10",
+    nr: p.nr || "",
     art: p.art || "",
     qm: p.qm || "",
     intervall_typ: p.intervall_typ || "",
@@ -1529,7 +1575,7 @@ function renderObjektDetailPage(id) {
             ? `Nächste Reinigung: ${naechste.label}${naechste.status === "ueberfaellig" ? " (überfällig)" : ""}`
             : "Kein Intervall hinterlegt – rein manuell"}
       </p>
-      ${signed.length ? `<p class="muted" style="margin:4px 0 0;">Zuletzt gereinigt: ${formatGlasDate(signed[0].datum)} von ${escapeHtml(signed[0].name || "")}</p>` : ""}
+      ${signed.length ? `<p class="muted" style="margin:4px 0 0;">Zuletzt gereinigt: ${formatGlasDate(signed[0].datum)}${signed[0].name ? ` von ${escapeHtml(signed[0].name)}` : (!signed[0].unterschrift && signed[0].manuell_erledigt_am) ? " (als unterschrieben markiert)" : ""}</p>` : ""}
     </div>
 
     <div class="card">
@@ -1540,12 +1586,12 @@ function renderObjektDetailPage(id) {
         return `
         <div style="padding:10px 0; border-top:1px solid var(--border);">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <p style="margin:0; font-weight:500;">Pos. ${escapeHtml(p.nr)} – ${escapeHtml(p.art)} ${p.qm ? `(${escapeHtml(p.qm)} qm)` : ""}</p>
+            <p style="margin:0; font-weight:500;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.art)} ${p.qm ? `(${escapeHtml(p.qm)} ${glasPosEinheit(p)})` : ""}</p>
             ${eingeplant
               ? `<span class="badge" style="background:var(--info-bg); color:var(--blue);">📅 Eingeplant</span>`
-              : f.status ? `<span class="badge ${glasStatusBadgeClass(f.status)}">${glasStatusLabel(f.status)}</span>` : ""}
+              : f.status && f.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(f.status)}">${glasStatusLabel(f.status)}</span>` : ""}
           </div>
-          <p class="muted" style="margin:3px 0 0; font-size:12.5px;">${glasIntervallLabel(p)}${f.faelligkeit ? ` · ${glasStatusLabel(f.status)}: ${f.label}` : ""}${p.letzte_reinigung ? ` · Zuletzt: ${formatGlasDate(p.letzte_reinigung)}` : ""}</p>
+          <p class="muted" style="margin:3px 0 0; font-size:12.5px;">${glasIntervallLabel(p)}${f.faelligkeit ? ` · ${f.status === "geplant" ? "fällig" : glasStatusLabel(f.status)}: ${f.label}` : ""}${p.letzte_reinigung ? ` · Zuletzt: ${formatGlasDate(p.letzte_reinigung)}` : ""}</p>
         </div>`;
       }).join("")}
       <button class="btn btn-sm" style="margin-top:12px;" onclick='editGlasObjekt(${JSON.stringify(o.id)}, {returnTo:{type:"objekt", id:${JSON.stringify(o.id)}}})'>Objekt bearbeiten</button>
@@ -1562,11 +1608,13 @@ function renderObjektDetailPage(id) {
               return `
             <div style="padding:10px 0; border-top:1px solid var(--border);">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                <span style="font-size:13.5px; font-weight:600;">${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}</span>
+                <span style="font-size:13.5px; font-weight:600;">${(!s.unterschrift && s.manuell_erledigt_am)
+                  ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als unterschrieben markiert`
+                  : `${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}`}</span>
                 <button class="btn btn-sm" style="padding:4px 8px; flex-shrink:0;" onclick="downloadGlasPdfHistory('${id}','${s.id}')">📄 PDF</button>
               </div>
               ${s.glas_touren?.name ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🚐 ${escapeHtml(s.glas_touren.name)}</p>` : ""}
-              ${pos.length ? `<div style="margin-top:5px; display:flex; flex-direction:column; gap:2px;">${pos.map((p) => `<span class="muted" style="font-size:12px;">• ${escapeHtml(p.art || "")}${p.qm ? ` (${escapeHtml(String(p.qm))} qm)` : ""}</span>`).join("")}</div>` : ""}
+              ${pos.length ? `<div style="margin-top:5px; display:flex; flex-direction:column; gap:2px;">${pos.map((p) => `<span class="muted" style="font-size:12px;">• ${escapeHtml(p.art || "")}${p.qm ? ` (${escapeHtml(String(p.qm))} ${glasPosEinheit(p)})` : ""}</span>`).join("")}</div>` : ""}
               ${s.zusatz ? `<p class="muted" style="margin:4px 0 0; font-size:12px;">➕ ${escapeHtml(s.zusatz)}</p>` : ""}
             </div>`; }).join("") + (signed.length > 5 && !glasObjektDetailShowAllHistory
               ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="glasObjektDetailShowAllHistory = true; renderGlasAdmin();">Alle ${signed.length} anzeigen</button>`
@@ -1805,7 +1853,7 @@ function renderPositionenTab() {
         <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
           ${glasPositionEditingId === p.id ? `
             <div style="display:flex; gap:8px; flex:1; margin-right:10px;">
-              <input type="text" id="pos_edit_nr_${p.id}" value="${escapeHtml(p.nr || "10")}" style="flex:0 0 60px;" />
+              <input type="text" id="pos_edit_nr_${p.id}" value="${escapeHtml(p.nr || "")}" placeholder="Nr. (optional)" style="flex:0 0 60px;" />
               <input type="text" id="pos_edit_${p.id}" value="${escapeHtml(p.name)}" />
             </div>
             <div style="display:flex; gap:8px;">
@@ -1813,7 +1861,7 @@ function renderPositionenTab() {
               <button class="btn btn-sm" onclick="glasPositionEditingId = null; renderGlasAdmin();">Abbrechen</button>
             </div>
           ` : `
-            <p style="margin:0; font-weight:500;">Pos. ${escapeHtml(p.nr || "10")} – ${escapeHtml(p.name)}</p>
+            <p style="margin:0; font-weight:500;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.name)}</p>
             <div style="display:flex; gap:8px;">
               <button class="btn btn-sm" onclick="glasPositionEditingId = '${p.id}'; renderGlasAdmin();">Bearbeiten</button>
               <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasPosition('${p.id}')">Löschen</button>
@@ -1828,7 +1876,7 @@ function renderPositionenTab() {
     <p class="muted" style="margin:0 0 10px; font-weight:600;">Neue Position</p>
     <p class="muted" style="margin:0 0 10px;">Leistungsarten mit fester Standard-Positionsnummer (z.B. Pos. 10 Glas- und Rahmenreinigung, Pos. 15 Hubsteigereinsatz). Wird beim Objekt einfach ausgewählt.</p>
     <div style="display:flex; gap:8px; margin-bottom:14px;">
-      <input type="text" id="pos_new_nr" placeholder="Nr." style="flex:0 0 60px;" value="10" />
+      <input type="text" id="pos_new_nr" placeholder="Nr." style="flex:0 0 60px;" value="" />
       <input type="text" id="pos_new_name" placeholder="z.B. Grundreinigung" />
       <button class="btn btn-primary" onclick="addGlasPosition()">+ Hinzufügen</button>
     </div>
@@ -1840,19 +1888,19 @@ async function addGlasPosition() {
   const nameInput = document.getElementById("pos_new_name");
   const nrInput = document.getElementById("pos_new_nr");
   const name = nameInput.value.trim();
-  const nr = nrInput.value.trim() || "10";
+  const nr = nrInput.value.trim();
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   const { error } = await sb.from("glas_positionen").insert({ id: genCode(), name, nr });
   if (error) { showToast("Fehler: " + error.message); return; }
   nameInput.value = "";
-  nrInput.value = "10";
+  nrInput.value = "";
   await loadGlasPositionen();
   renderGlasAdmin();
 }
 
 async function saveGlasPosition(id) {
   const name = document.getElementById(`pos_edit_${id}`).value.trim();
-  const nr = document.getElementById(`pos_edit_nr_${id}`).value.trim() || "10";
+  const nr = document.getElementById(`pos_edit_nr_${id}`).value.trim();
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   const { error } = await sb.from("glas_positionen").update({ name, nr }).eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
@@ -1913,7 +1961,7 @@ function renderTourenListView() {
   return `
     <div style="display:flex; gap:8px; margin:16px 0;">
       <button class="btn btn-primary" onclick="glasStartNewTourForm();">+ Neue Tour anlegen</button>
-      <button class="btn btn-sm" onclick="openGlasEinzelschein()">+ Einzelnen Schein erstellen</button>
+      <button class="btn btn-sm" onclick="openGlasEinzelschein()">+ Blanko erstellen</button>
       ${(offen.length || erledigt.length) && glasAuswahl.modus !== "touren" ? `<button class="btn btn-sm" title="Mehrere auswählen" style="margin-left:auto;" onclick="glasAuswahlStart('touren')">☑️</button>` : ""}
     </div>
     ${glasAuswahl.modus === "touren" ? glasAuswahlLeiste() : ""}
@@ -1986,7 +2034,7 @@ function renderStopPositionenVorschau(s) {
     <div class="glas-stop-pos-row">
       <span class="glas-stop-pos-nr">${escapeHtml(p.nr || "–")}</span>
       <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
-      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} qm</span>` : ""}
+      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
     </div>`).join("")}</div>`;
 }
 
@@ -2029,14 +2077,20 @@ function renderTourDetailView() {
             </div>
             ${isDone ? `
               ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
-              <p class="muted" style="margin:8px 0 6px; font-size:12px;">Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}</p>
-              <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
+              <p class="muted" style="margin:8px 0 6px; font-size:12px;">${(!s.unterschrift && s.manuell_erledigt_am)
+                ? `✔️ Als unterschrieben markiert am ${formatGlasDate(glasDatumVonTimestamp(s.manuell_erledigt_am))}${glasUhrzeitVonTimestamp(s.manuell_erledigt_am) ? ` um ${glasUhrzeitVonTimestamp(s.manuell_erledigt_am)} Uhr` : ""} (ohne Unterschrift)`
+                : `Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}`}</p>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
+                <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasSignatur('${s.id}')">${(!s.unterschrift && s.manuell_erledigt_am) ? "↩️ Markierung zurücknehmen" : "🗑️ Unterschrift löschen"}</button>
+              </div>
             ` : isNg ? `
               <div class="glas-ng-box">🚫 <strong>Nicht geschafft:</strong> ${escapeHtml(s.ng_grund || "")}${s.ng_notiz ? ` – ${escapeHtml(s.ng_notiz)}` : ""}${s.ng_am ? ` <span class="muted">(${formatGlasDate(glasDatumVonTimestamp(s.ng_am))})</span>` : ""}<br><span class="muted">Das Objekt steht wieder unter „Fällige Objekte" und kann neu eingeplant werden.</span></div>
               <button class="btn btn-sm" style="margin-top:8px;" onclick="revertGlasNg('${s.id}')">↩️ Doch offen / zurücknehmen</button>
             ` : `
               <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
                 <button class="btn btn-sm" onclick="toggleGlasAdminSign('${s.id}')">${isSigning ? "Schließen" : "✍️ Unterschreiben lassen"}</button>
+                <button class="btn btn-sm" onclick="markGlasStopErledigt('${s.id}')">✔️ Als unterschrieben markieren</button>
                 <button class="btn btn-sm" style="color:var(--danger);" onclick="toggleGlasNg('${s.id}')">${isNgOpen ? "Abbrechen" : "🚫 Nicht geschafft"}</button>
               </div>
               ${isSigning ? renderAdminSignArea(s) : ""}
@@ -2219,6 +2273,7 @@ function toggleGlasAdminSign(stopId) {
 function renderAdminSignArea(s) {
   return `
     <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+      ${renderGlasStundenInputs(s, "as-std")}
       <div class="field">
         <label class="muted">Name der unterschreibenden Person</label>
         <input type="text" id="as_name" placeholder="Vor- und Nachname" style="font-size:16px;" />
@@ -2262,7 +2317,17 @@ async function saveGlasAdminSignature(stopId) {
   const versandEmail = document.getElementById("as_email")?.value.trim() || "";
   const zusatz = document.getElementById("as_zusatz")?.value.trim() || "";
   const stop = glasTourDetailStops.find((s) => s.id === stopId);
-  const { error, payload } = await glasSignStop(stopId, stop?.positionen, name, datum, unterschrift, zusatz);
+
+  // Stunden-Positionen (Pos. 2/5): Eingabe ist Pflicht und wandert auf den Schein
+  let posJson = stop?.positionen || "[]";
+  const stdInputs = [...document.querySelectorAll(".as-std")].map((el) => el.value);
+  if (stdInputs.length) {
+    const res = glasMitStundenAktualisiert(posJson, stdInputs);
+    if (res.fehlt) { showToast("Bitte die gemachten Stunden eintragen (Pflichtfeld)"); return; }
+    posJson = res.json;
+  }
+
+  const { error, payload } = await glasSignStop(stopId, posJson, name, datum, unterschrift, zusatz);
   if (error) { showToast("Fehler: " + error.message); return; }
   if (stop) Object.assign(stop, payload);
 
@@ -2279,6 +2344,93 @@ async function saveGlasAdminSignature(stopId) {
     const doc = generateGlasPdf(stop, t?.template || "geko", t?.datum);
     await sendScheinPerMail(versandEmail, doc, glasScheinFilename(stop, t?.template || "geko"));
   }
+}
+
+/* ---------------- Unterschrift löschen / manuell erledigen (nur Admin) ----------------
+   deleteGlasSignatur: versehentlich unterschriebene Scheine zurücksetzen. Der Stopp wird
+   wieder "offen", und "zuletzt gereinigt" der betroffenen Positionen wird aus dem übrigen
+   Verlauf zurückgerechnet (letzte ANDERE Unterschrift, sonst leer) - das Objekt gilt
+   damit wieder als nicht erledigt.
+   markGlasStopErledigt: Schein ohne Unterschrift abhaken (z.B. Blanko, das nie
+   unterschrieben zurückkam). Zählt wie eine Unterschrift (Fälligkeit rückt weiter),
+   wird aber überall als "als unterschrieben markiert am ..." ausgewiesen. */
+async function deleteGlasSignatur(stopId) {
+  if (glasBusy) return;
+  const stop = glasTourDetailStops.find((s) => s.id === stopId);
+  if (!stop) return;
+  const manuell = !stop.unterschrift && stop.manuell_erledigt_am;
+  if (!confirm(manuell
+    ? "Erledigt-Markierung zurücknehmen? Der Stopp gilt danach wieder als offen."
+    : "Unterschrift wirklich löschen? Der Stopp gilt danach wieder als offen und das Objekt als noch nicht erledigt. Das kann nicht rückgängig gemacht werden.")) return;
+
+  glasBusy = true; glasProgressText = "Wird zurückgesetzt..."; renderGlasAdmin();
+  try {
+    // 1) "Zuletzt gereinigt" der Schein-Positionen aus dem übrigen Verlauf zurückrechnen
+    const ids = glasStopPositionen(stop).map((p) => p.id).filter(Boolean);
+    if (ids.length) {
+      const { data } = await sb.from("glas_stopps").select("id, datum, signed_at, positionen").eq("status", "erledigt");
+      const andere = (data || []).filter((x) => x.id !== stopId);
+      for (const pid of ids) {
+        let letzte = null;
+        andere.forEach((x) => {
+          try {
+            if (JSON.parse(x.positionen || "[]").some((p) => p && p.id === pid)) {
+              const d = glasSignaturDatum(x);
+              if (d && (!letzte || d > letzte)) letzte = d;
+            }
+          } catch (e) {}
+        });
+        await sb.from("glas_objekt_positionen").update({ letzte_reinigung: letzte }).eq("id", pid);
+      }
+    }
+
+    // 2) Stopp zurück auf offen (Unterschrift wird entfernt)
+    const payload = { status: "offen", name: null, datum: null, unterschrift: null, signed_at: null, zusatz: "", manuell_erledigt_am: null };
+    let { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+    if (error && /manuell_erledigt_am/.test(error.message || "")) {
+      delete payload.manuell_erledigt_am;
+      ({ error } = await sb.from("glas_stopps").update(payload).eq("id", stopId));
+    }
+    if (error) throw error;
+    Object.assign(stop, { status: "offen", name: null, datum: null, unterschrift: null, signed_at: null, zusatz: "", manuell_erledigt_am: null });
+
+    glasBusy = false; glasProgressText = "";
+    showToast(manuell ? "Markierung zurückgenommen – Stopp ist wieder offen" : "Unterschrift gelöscht – Stopp ist wieder offen");
+    await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
+    renderGlasAdmin();
+  } catch (err) {
+    glasBusy = false; glasProgressText = "";
+    showToast("Fehler: " + err.message);
+    renderGlasAdmin();
+  }
+}
+
+async function markGlasStopErledigt(stopId) {
+  if (glasBusy) return;
+  const stop = glasTourDetailStops.find((s) => s.id === stopId);
+  if (!stop) return;
+  if (!confirm(`„${stop.objekt || "Stopp"}" ohne Unterschrift als unterschrieben markieren? Der Schein zählt dann als erledigt und die Fälligkeit rückt weiter.`)) return;
+
+  const heute = glasTodayIso();
+  const jetzt = new Date().toISOString();
+  const payload = { status: "erledigt", datum: heute, signed_at: jetzt, manuell_erledigt_am: jetzt, unterschrift: null };
+  let { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
+  if (error && /manuell_erledigt_am/.test(error.message || "")) {
+    showToast("Bitte zuerst die neue SQL-Zeile in Supabase ausführen (manuell_erledigt_am)");
+    return;
+  }
+  if (error) { showToast("Fehler: " + error.message); return; }
+  Object.assign(stop, payload);
+
+  // Fälligkeit weiterrücken - exakt wie beim echten Unterschreiben
+  try {
+    const ids = glasStopPositionen(stop).map((p) => p.id).filter(Boolean);
+    if (ids.length) await sb.from("glas_objekt_positionen").update({ letzte_reinigung: heute, faelligkeit_override: null }).in("id", ids);
+  } catch (e) {}
+
+  showToast("Als unterschrieben markiert");
+  await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
+  renderGlasAdmin();
 }
 
 /* ---------------- „Nicht geschafft" (nur Admin) ----------------
@@ -2504,7 +2656,7 @@ function glasTourRemoveExtra(objektId, idx) {
 function glasCleanExtras(objektId) {
   return (glasTourExtras.get(objektId) || [])
     .filter((ex) => (ex.art || "").trim() || (ex.qm || "").trim())
-    .map((ex) => ({ id: null, nr: (ex.nr || "").trim() || "10", art: (ex.art || "").trim(), qm: (ex.qm || "").trim() }));
+    .map((ex) => ({ id: null, nr: (ex.nr || "").trim(), art: (ex.art || "").trim(), qm: (ex.qm || "").trim() }));
 }
 
 function glasInitTourNotiz(objektId) {
@@ -2917,7 +3069,8 @@ async function editEinzelschein(tourId) {
     nr: p.nr || "", art: p.art || "", qm: p.qm != null ? String(p.qm) : "",
     custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
   }));
-  const kunde = glasKunden.find((k) => stop.kunde_kdnr && k.kdnr && stop.kunde_kdnr === k.kdnr)
+  const kunde = glasKunden.find((k) => stop.kunde_id && k.id === stop.kunde_id)
+    || glasKunden.find((k) => stop.kunde_kdnr && k.kdnr && stop.kunde_kdnr === k.kdnr)
     || glasKunden.find((k) => stop.kunde_adresse && k.name && stop.kunde_adresse.startsWith(k.name))
     || null;
 
@@ -2962,7 +3115,7 @@ function renderEinzelscheinForm() {
   return `
     <button class="btn btn-sm" style="margin:16px 0;" onclick="closeGlasEinzelschein()">&larr; Zurück zu allen Touren</button>
     <div class="card">
-      <h2>${istEdit ? "Einzelschein bearbeiten" : "Einzelnen Schein erstellen"}</h2>
+      <h2>${istEdit ? "Blanko bearbeiten" : "Blanko erstellen"}</h2>
       <p class="muted" style="margin:0 0 12px;">Für spontane Termine ohne feste Routenplanung. Erscheint sofort im Mitarbeiter-Link.</p>
       <div class="field">
         <label class="muted">Kunde</label>
@@ -3042,7 +3195,7 @@ function renderEsPositionenRows(positionen) {
         <div class="row" style="align-items:flex-end;">
           <div class="field" style="flex:0 0 70px; margin-bottom:0;">
             <label class="muted">Nr.</label>
-            <input type="text" id="es_pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="10" />
+            <input type="text" id="es_pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="–" />
           </div>
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Bezeichnung</label>
@@ -3187,23 +3340,29 @@ async function saveEinzelschein() {
   // Status/Unterschrift bleiben unangetastet. Beim Neuanlegen einen frischen Stopp einfügen.
   const stopFelder = {
     objekt_id: d.objekt_id || null,
+    // Kunde am Stopp verankern: so taucht auch ein Blanko OHNE gewähltes Objekt sicher
+    // im Verlauf/Termine-Reiter des Kunden auf.
+    kunde_id: d.kunde_id || "",
     objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr,
     kunde_kdnr: glasKunden.find((k) => k.id === d.kunde_id)?.kdnr || "",
     kunde_adresse: d.kunde_adresse,
     positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng,
   };
-  let stoppErr;
-  if (istEdit) {
-    ({ error: stoppErr } = await sb.from("glas_stopps").update(stopFelder).eq("id", d.edit_stop_id));
-  } else {
-    ({ error: stoppErr } = await sb.from("glas_stopps").insert({
-      id: genCode(), tour_id: tourId, reihenfolge: 0, status: "offen",
-      ansprechpartner: esObjekt?.ansprechpartner || "",
-      telefon: esObjekt?.telefon || "",
-      hinweise: esObjekt?.hinweise || "",
-      notiz: esObjekt?.notiz || "",
-      ...stopFelder,
-    }));
+  const stopSchreiben = async (felder) => istEdit
+    ? sb.from("glas_stopps").update(felder).eq("id", d.edit_stop_id)
+    : sb.from("glas_stopps").insert({
+        id: genCode(), tour_id: tourId, reihenfolge: 0, status: "offen",
+        ansprechpartner: esObjekt?.ansprechpartner || "",
+        telefon: esObjekt?.telefon || "",
+        hinweise: esObjekt?.hinweise || "",
+        notiz: esObjekt?.notiz || "",
+        ...felder,
+      });
+  let { error: stoppErr } = await stopSchreiben(stopFelder);
+  if (stoppErr && /kunde_id/.test(stoppErr.message || "")) {
+    // Spalte existiert noch nicht (SQL-Datei nicht ausgeführt) - ohne kunde_id speichern
+    const { kunde_id, ...ohne } = stopFelder;
+    ({ error: stoppErr } = await stopSchreiben(ohne));
   }
   if (stoppErr) { glasBusy = false; showToast("Fehler: " + stoppErr.message); renderGlasAdmin(); return; }
 
@@ -3213,7 +3372,7 @@ async function saveEinzelschein() {
   // Schein in der Touren-Liste sofort da (nicht erst nach manuellem Aktualisieren).
   await Promise.all([loadGlasTouren(), loadGlasEingeplantePositionen()]);
   glasBusy = false;
-  showToast(istEdit ? "Einzelschein gespeichert" : "Einzelschein erstellt – erscheint jetzt im Mitarbeiter-Link");
+  showToast(istEdit ? "Blanko gespeichert" : "Blanko erstellt – erscheint jetzt im Mitarbeiter-Link");
   closeGlasEinzelschein();
 }
 

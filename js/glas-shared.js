@@ -99,16 +99,54 @@ function glasStopPositionen(s) {
   return Array.isArray(pos) ? pos.filter((p) => p && (p.art || p.qm)) : [];
 }
 
+// Stunden-Positionen (Pos. 2 und 5 der Preisliste): hier trägt der Mitarbeiter vor Ort
+// die tatsächlichen Stunden ein - die Menge ist KEINE Fläche und wird deshalb als "Std."
+// angezeigt und nie in qm-Summen gezählt. Bewusst NUR über die Positionsnummer erkannt
+// (nicht über den Namen), damit z.B. eine Extra-Position "2 Stunden zusätzlich" nicht
+// versehentlich zur Pflicht-Eingabe wird.
+function glasIstStundenPos(p) {
+  if (!p) return false;
+  if (p.einheit === "std") return true; // beim Unterschreiben bereits als Stunden erfasst
+  const nr = String(p.nr || "").trim();
+  return nr === "2" || nr === "5";
+}
+
+// Einheit einer Position für Anzeigen: "Std." bei Stunden-Positionen, sonst "qm".
+function glasPosEinheit(p) {
+  return glasIstStundenPos(p) ? "Std." : "qm";
+}
+
 // Gesamt-qm eines Stopps aus dem Positions-Schnappschuss (deutsche Schreibweise).
+// Stunden-Positionen zählen nicht mit - Stunden sind keine Fläche.
 function glasStopQm(s) {
   let sum = 0;
   try {
     JSON.parse(s.positionen || "[]").forEach((p) => {
+      if (glasIstStundenPos(p)) return;
       sum += parseFloat(String(p.qm || "").replace(",", ".")) || 0;
     });
   } catch (e) {}
   if (!sum) return "";
   return String(Math.round(sum * 100) / 100).replace(".", ",");
+}
+
+// Trägt die vor Ort erfassten Stunden in den Positions-Schnappschuss ein. "werte" sind
+// die Eingaben in derselben Reihenfolge, in der die Stunden-Positionen im Formular
+// stehen. Liefert den aktualisierten JSON-String + ob eine Pflicht-Eingabe fehlt.
+function glasMitStundenAktualisiert(positionenJson, werte) {
+  let arr;
+  try { arr = JSON.parse(positionenJson || "[]"); } catch (e) { return { json: positionenJson, fehlt: false }; }
+  if (!Array.isArray(arr)) return { json: positionenJson, fehlt: false };
+  let i = 0, fehlt = false;
+  arr.forEach((p) => {
+    if (!p || !(p.art || p.qm)) return;         // gleiche Filterung wie glasStopPositionen
+    if (!glasIstStundenPos(p)) return;
+    const v = String(werte[i++] ?? "").trim();
+    if (!v) { fehlt = true; return; }
+    p.qm = v;
+    p.einheit = "std";
+  });
+  return { json: JSON.stringify(arr), fehlt };
 }
 
 function formatGlasDate(iso) {
@@ -217,6 +255,24 @@ function glasIntervallLabel(pos) {
   return "Kein Intervall";
 }
 
+// Eingabezeilen für Stunden-Positionen (Pos. 2/5) im Unterschrift-Formular: vor Ort MUSS
+// eingetragen werden, wie viele Stunden gemacht wurden - der Wert steht dann auf dem
+// Schein. Von Mitarbeiter- UND Admin-Seite genutzt (cssKlasse: "gs-std" / "as-std").
+function renderGlasStundenInputs(s, cssKlasse) {
+  const stdPos = glasStopPositionen(s).filter(glasIstStundenPos);
+  if (!stdPos.length) return "";
+  return `
+    <div class="field">
+      <label class="muted">⏱️ Gemachte Stunden (Pflicht)</label>
+      ${stdPos.map((p, i) => `
+        <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+          <span style="flex:1; min-width:0; font-size:13.5px;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.art || "Stunden")}</span>
+          <input type="text" inputmode="decimal" class="${cssKlasse}" id="${cssKlasse}_${i}" value="${escapeHtml(String(p.qm || ""))}" placeholder="Std." style="flex:0 0 90px; font-size:16px; text-align:center;" />
+        </div>`).join("")}
+      <p class="muted" style="margin:6px 0 0; font-size:12px;">z.B. "3" oder "2,5" – steht mit auf dem Abnahmeschein.</p>
+    </div>`;
+}
+
 /* ---------------- Unterschreiben (von Mitarbeiter- UND Admin-Seite genutzt) ---------------- */
 
 // Markiert einen Stopp als unterschrieben und setzt "zuletzt gereinigt" nur für die
@@ -224,6 +280,9 @@ function glasIntervallLabel(pos) {
 // für alle Positionen des Objekts) - inkl. Zurücksetzen einer evtl. manuellen Verschiebung.
 async function glasSignStop(stopId, positionenJson, name, datum, unterschrift, zusatz, signedAt) {
   const payload = { name, datum, unterschrift, status: "erledigt", signed_at: signedAt || new Date().toISOString(), zusatz: (zusatz || "").trim() };
+  // Der Positions-Schnappschuss wird mitgespeichert, damit vor Ort erfasste Werte
+  // (z.B. Stunden bei Pos. 2/5) fest auf dem Schein landen.
+  if (typeof positionenJson === "string" && positionenJson) payload.positionen = positionenJson;
   let { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
   if (error && /zusatz/.test(error.message || "")) {
     // Spalte existiert noch nicht (SQL-Datei nicht ausgeführt) - ohne Zusatz speichern

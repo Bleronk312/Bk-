@@ -179,14 +179,17 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
 
   let gesamtQm = 0;
   positionen.forEach((pos) => {
+    const istStd = typeof glasIstStundenPos === "function" && glasIstStundenPos(pos);
     const qmText = glasFormatQm(pos.qm);
     doc.setFont(FONT, "bold");
-    doc.text(`Pos.: ${pos.nr || ""}`, posX, by);
+    if (pos.nr) doc.text(`Pos.: ${pos.nr}`, posX, by);
     doc.setFont(FONT, "normal");
     doc.text(pos.art || "", descX, by);
-    if (qmText) doc.text(`${qmText} qm`, L.qmX, by);
-    const num = parseFloat(String(pos.qm).replace(",", "."));
-    if (!isNaN(num)) gesamtQm += num;
+    if (qmText) doc.text(`${qmText} ${istStd ? "Std." : "qm"}`, L.qmX, by);
+    if (!istStd) {
+      const num = parseFloat(String(pos.qm).replace(",", "."));
+      if (!isNaN(num)) gesamtQm += num;
+    }
     by += L.bulletLineGap;
   });
 
