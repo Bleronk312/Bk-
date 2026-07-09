@@ -4858,6 +4858,7 @@ function glasOffeneZuTourHinzufuegen() {
 
 let glasScheineDaten = null;      // alle erledigten Stopps (ohne Unterschriftsbild) - einmal geladen
 let glasScheineGran = "tag";      // "tag" | "woche" | "monat"
+let glasScheineAnker = "";        // Anker-Tag des gewählten Zeitraums (leer = heute)
 let glasScheineSearch = "";
 
 let glasScheineLaden = false;
@@ -4914,43 +4915,68 @@ function glasScheinKunde(s) {
   return (s.kunde_adresse || "").split("\n")[0] || "";
 }
 
+// Grenzen (von/bis ISO) + Label des Zeitraums, in dem der Anker-Tag liegt - je nach
+// Granularität ein einzelner Tag, eine Woche (Mo–So) oder ein ganzer Monat.
+function glasPeriodeGrenzen(anker, gran) {
+  if (gran === "woche") {
+    const mo = glasMontagVon(anker);
+    const so = glasAddDaysIso(mo, 6);
+    return { von: mo, bis: so, label: `KW ${glasIsoWeek(anker)} · ${formatGlasDate(mo)} – ${formatGlasDate(so)}` };
+  }
+  if (gran === "monat") {
+    const [y, m] = anker.split("-").map(Number);
+    return { von: `${anker.slice(0, 7)}-01`, bis: glasIsoFromDate(new Date(y, m, 0)), label: `${GLAS_MONATE_LANG[m - 1]} ${y}` };
+  }
+  const heute = glasTodayIso();
+  const d = new Date(anker + "T00:00:00");
+  const prefix = anker === heute ? "Heute · " : anker === glasAddDaysIso(heute, -1) ? "Gestern · " : "";
+  return { von: anker, bis: anker, label: `${prefix}${GLAS_WOCHENTAGE[d.getDay()]}, ${formatGlasDate(anker)}` };
+}
+
+// Anker um eine Periode vor/zurück (Tag ±1, Woche ±7 Tage, Monat ±1 Monat)
+function glasAnkerStep(anker, gran, dir) {
+  if (gran === "woche") return glasAddDaysIso(anker, 7 * dir);
+  if (gran === "monat") return glasAddMonthsIso(`${anker.slice(0, 7)}-01`, dir);
+  return glasAddDaysIso(anker, dir);
+}
+
+// Perioden-Navigator: ‹ Label › + Datums-Picker zum gezielten Springen. setterFn ist der
+// Name einer globalen Funktion, die den neuen Anker (ISO-Tag) entgegennimmt.
+function renderPeriodeNavigator(anker, gran, setterFn) {
+  const { label } = glasPeriodeGrenzen(anker, gran);
+  return `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+      <button class="btn btn-sm" title="Zurück" onclick="${setterFn}(glasAnkerStep('${anker}','${gran}',-1))">‹</button>
+      <b style="flex:1; text-align:center; min-width:130px; font-size:14px;">${escapeHtml(label)}</b>
+      <button class="btn btn-sm" title="Weiter" onclick="${setterFn}(glasAnkerStep('${anker}','${gran}',1))">›</button>
+      <input type="date" value="${anker}" title="Zu einem Tag springen" onchange="${setterFn}(this.value)" style="width:auto;" />
+      <button class="btn btn-sm" onclick="${setterFn}(glasTodayIso())">Heute</button>
+    </div>`;
+}
+
+function glasScheineSetAnker(iso) { if (iso) { glasScheineAnker = iso; glasUpdateTabContent(); } }
+
 function renderScheineTab() {
   if (glasScheineDaten === null) {
     loadGlasScheine();
     return `<p class="muted" style="margin-top:16px;"><span class="spinner"></span> Abnahmescheine werden geladen...</p>`;
   }
+  if (!glasScheineAnker) glasScheineAnker = glasTodayIso();
   const seg = (val, label) => `<button class="glas-seg-btn ${glasScheineGran === val ? "on" : ""}" onclick="glasScheineGran='${val}'; glasUpdateTabContent();">${label}</button>`;
   return `
     <div style="margin:14px 0 10px;">
-      <input type="text" id="scheine_search" placeholder="🔍 Objekt, Kunde, Unterzeichner, Kd.-Nr. ..." value="${escapeHtml(glasScheineSearch)}" autocomplete="off" />
+      <input type="text" id="scheine_search" placeholder="🔍 Über alle suchen: Objekt, Kunde, Unterzeichner, Kd.-Nr. ..." value="${escapeHtml(glasScheineSearch)}" autocomplete="off" />
     </div>
     <div class="glas-seg" style="margin-bottom:10px;">
-      ${seg("tag", "Nach Tag")}${seg("woche", "Nach Woche")}${seg("monat", "Nach Monat")}
+      ${seg("tag", "Tag")}${seg("woche", "Woche")}${seg("monat", "Monat")}
     </div>
     <div id="scheineListe">${renderScheineListe()}</div>`;
 }
 
-// Nur die gefilterte, gruppierte Liste (in #scheineListe) - so bleibt beim Tippen im
-// Suchfeld der Fokus erhalten (nur dieser Container wird neu gebaut).
-function renderScheineListe() {
-  const q = glasScheineSearch.trim().toLowerCase();
-  const gefiltert = (glasScheineDaten || []).filter((s) => !q || glasSearchMatch(`${s.objekt || ""} ${glasScheinKunde(s)} ${s.name || ""} ${s.glas_touren?.name || ""} ${s.kdnr || ""} ${s.kunde_kdnr || ""}`, q));
-
-  const gruppen = new Map();
-  gefiltert.forEach((s) => {
-    const per = glasScheinPeriode(glasSignaturDatum(s), glasScheineGran);
-    let g = gruppen.get(per.key);
-    if (!g) { g = { label: per.label, sortKey: per.key, items: [] }; gruppen.set(per.key, g); }
-    g.items.push(s);
-  });
-  const liste = [...gruppen.values()].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-  liste.forEach((g) => g.items.sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || "")));
-  const gesamt = gefiltert.length;
-
-  const zeile = (s) => {
-    const manuell = !s.name && s.manuell_erledigt_am;
-    const qm = glasStopQm(s);
-    return `
+function glasScheinZeile(s) {
+  const manuell = !s.name && s.manuell_erledigt_am;
+  const qm = glasStopQm(s);
+  return `
       <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
         <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
           <p style="margin:0; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
@@ -4958,15 +4984,42 @@ function renderScheineListe() {
         </div>
         <button class="btn btn-sm" style="flex-shrink:0;" onclick="downloadGlasScheinPdf('${s.id}')">📄 PDF</button>
       </div>`;
-  };
+}
 
+// Inhalt von #scheineListe. Mit Suchtext: alle Treffer gruppiert. Ohne Suchtext: der über
+// den Navigator gewählte Zeitraum (bestimmter Tag / Woche / Monat).
+function renderScheineListe() {
+  const q = glasScheineSearch.trim().toLowerCase();
+
+  if (q) {
+    const gefiltert = (glasScheineDaten || []).filter((s) => glasSearchMatch(`${s.objekt || ""} ${glasScheinKunde(s)} ${s.name || ""} ${s.glas_touren?.name || ""} ${s.kdnr || ""} ${s.kunde_kdnr || ""}`, q));
+    const gruppen = new Map();
+    gefiltert.forEach((s) => {
+      const per = glasScheinPeriode(glasSignaturDatum(s), glasScheineGran);
+      let g = gruppen.get(per.key);
+      if (!g) { g = { label: per.label, sortKey: per.key, items: [] }; gruppen.set(per.key, g); }
+      g.items.push(s);
+    });
+    const liste = [...gruppen.values()].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+    liste.forEach((g) => g.items.sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || "")));
+    return `
+      <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${gefiltert.length} Treffer für „${escapeHtml(glasScheineSearch.trim())}"</p>
+      ${liste.length
+        ? liste.map((g) => `<p class="glas-section-title">${escapeHtml(g.label)} <span class="muted" style="font-weight:400;">· ${g.items.length}</span></p><div class="card" style="padding:4px 18px;">${g.items.map(glasScheinZeile).join("")}</div>`).join("")
+        : `<div class="card"><p class="muted" style="padding:8px 0;">Keine Treffer.</p></div>`}`;
+  }
+
+  // Gewählter Zeitraum
+  const { von, bis } = glasPeriodeGrenzen(glasScheineAnker, glasScheineGran);
+  const items = (glasScheineDaten || [])
+    .filter((s) => { const d = glasSignaturDatum(s); return d >= von && d <= bis; })
+    .sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || ""));
   return `
-    <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${gesamt} unterschriebene${gesamt === 1 ? "r" : ""} Abnahmeschein${gesamt === 1 ? "" : "e"}${q ? " (gefiltert)" : ""}</p>
-    ${liste.length
-      ? liste.map((g) => `
-        <p class="glas-section-title">${escapeHtml(g.label)} <span class="muted" style="font-weight:400;">· ${g.items.length}</span></p>
-        <div class="card" style="padding:4px 18px;">${g.items.map(zeile).join("")}</div>`).join("")
-      : `<div class="card"><p class="muted" style="padding:8px 0;">${(glasScheineDaten || []).length ? "Keine Treffer." : "Noch keine unterschriebenen Abnahmescheine."}</p></div>`}`;
+    ${renderPeriodeNavigator(glasScheineAnker, glasScheineGran, "glasScheineSetAnker")}
+    <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${items.length} Abnahmeschein${items.length === 1 ? "" : "e"} in diesem Zeitraum</p>
+    ${items.length
+      ? `<div class="card" style="padding:4px 18px;">${items.map(glasScheinZeile).join("")}</div>`
+      : `<div class="card"><p class="muted" style="padding:8px 0;">In diesem Zeitraum wurde nichts unterschrieben. Nutze ‹ ›, den Datums-Picker oder die Suche oben.</p></div>`}`;
 }
 
 async function downloadGlasScheinPdf(stopId) {
@@ -4994,6 +5047,8 @@ let glasStatistikDaten = null;   // alle erledigten Stopps (einmal geladen, dann
 let glasStatZeitraum = "12m";    // "12m" | "jahr" | "vorjahr" | "alles"
 let glasStatMetrik = "qm";       // "qm" | "scheine"
 let glasStatGran = "monat";      // "tag" | "woche" | "monat" - Granularität des Verlaufs
+let glasStatSelKey = null;       // angeklickte Verlaufs-Periode -> Detailansicht dieses Tags/Woche/Monats
+function glasStatSetSel(key) { glasStatSelKey = glasStatSelKey === key ? null : key; renderGlasAdmin(); }
 
 // Perioden-Schlüssel + kompaktes Label für den Statistik-Verlauf je nach Granularität
 function glasStatPeriode(datum, gran) {
@@ -5057,6 +5112,30 @@ function glasStatMonatLabel(ym) {
   return `${GLAS_STAT_MONATE[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
 }
 
+// Detail des angeklickten Verlaufs-Zeitraums (ein Tag / eine Woche / ein Monat)
+function renderStatEinzelPeriode(rows) {
+  const sel = rows.filter((x) => glasStatPeriode(x.datum, glasStatGran).key === glasStatSelKey);
+  const label = sel.length ? glasStatPeriode(sel[0].datum, glasStatGran).label : glasStatSelKey;
+  let qm = 0; const objekte = new Set(); const kunden = new Set();
+  sel.forEach((x) => { qm += glasStatQmVon(x); objekte.add(x.objekt_id || x.objekt); kunden.add(glasStatKundeVon(x)); });
+  const liste = [...sel].sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
+  return `
+    <div class="card" style="border-color:var(--info-border); background:var(--info-bg);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+        <p style="margin:0; font-weight:700;">📅 ${escapeHtml(label)}</p>
+        <button class="btn btn-sm" onclick="glasStatSelKey=null; renderGlasAdmin();">✕ zurück</button>
+      </div>
+      <p class="muted" style="margin:0 0 6px; font-size:13px;">${glasStatQmText(qm)} qm · ${sel.length} Schein${sel.length === 1 ? "" : "e"} · ${objekte.size} Objekt${objekte.size === 1 ? "" : "e"} · ${kunden.size} Kunde${kunden.size === 1 ? "" : "n"}</p>
+      ${liste.map((x) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+          <div style="flex:1; min-width:0;">
+            <p style="margin:0; font-weight:500; font-size:13.5px;">${escapeHtml(x.objekt || "Schein")}</p>
+            <p class="muted" style="margin:1px 0 0; font-size:12px;">${escapeHtml(glasStatKundeVon(x))} · ${formatGlasDate(x.datum)}${glasStatQmVon(x) ? " · " + glasStatQmText(glasStatQmVon(x)) + " qm" : ""}</p>
+          </div>
+        </div>`).join("")}
+    </div>`;
+}
+
 function renderStatistikPage() {
   if (glasStatistikDaten === null) {
     loadGlasStatistik();
@@ -5114,7 +5193,7 @@ function renderStatistikPage() {
     <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück zu den Einstellungen</button>
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
       <h1 style="margin:0;">📊 Statistiken</h1>
-      <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasStatZeitraum = this.value; renderGlasAdmin();">
+      <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasStatZeitraum = this.value; glasStatSelKey = null; renderGlasAdmin();">
         <option value="12m" ${glasStatZeitraum === "12m" ? "selected" : ""}>Letzte 12 Monate</option>
         <option value="jahr" ${glasStatZeitraum === "jahr" ? "selected" : ""}>Dieses Jahr</option>
         <option value="vorjahr" ${glasStatZeitraum === "vorjahr" ? "selected" : ""}>Letztes Jahr</option>
@@ -5124,7 +5203,7 @@ function renderStatistikPage() {
         <option value="qm" ${glasStatMetrik === "qm" ? "selected" : ""}>nach qm</option>
         <option value="scheine" ${glasStatMetrik === "scheine" ? "selected" : ""}>nach Scheinen</option>
       </select>
-      <select style="width:auto; font-size:13px;" onchange="glasStatGran = this.value; renderGlasAdmin();">
+      <select style="width:auto; font-size:13px;" onchange="glasStatGran = this.value; glasStatSelKey = null; renderGlasAdmin();">
         <option value="tag" ${glasStatGran === "tag" ? "selected" : ""}>pro Tag</option>
         <option value="woche" ${glasStatGran === "woche" ? "selected" : ""}>pro Woche</option>
         <option value="monat" ${glasStatGran === "monat" ? "selected" : ""}>pro Monat</option>
@@ -5141,16 +5220,19 @@ function renderStatistikPage() {
 
     <div class="card">
       <h2>Verlauf pro ${granLabel}</h2>
+      <p class="muted" style="margin:-4px 0 8px; font-size:12px;">Auf einen Balken tippen zeigt genau diesen ${granLabel} im Detail.</p>
       <div style="max-height:${glasStatGran === "tag" ? "340px" : "none"}; overflow-y:auto;">
-      ${perioden.length ? perioden.map(([, v]) => `
-        <div style="display:flex; align-items:center; gap:10px; padding:3px 0;">
+      ${perioden.length ? perioden.map(([key, v]) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:3px 0; cursor:pointer; border-radius:6px; ${glasStatSelKey === key ? "background:var(--info-bg);" : ""}" onclick="glasStatSetSel('${key}')">
           <span class="muted" style="flex:0 0 56px; font-size:12px;">${escapeHtml(v.label)}</span>
           <div style="flex:1; background:var(--bg); border-radius:5px; overflow:hidden;">
-            <div style="width:${Math.max(2, Math.round((v.wert / maxPeriode) * 100))}%; background:var(--blue); border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(v.wert * 10) / 10)}</div>
+            <div style="width:${Math.max(2, Math.round((v.wert / maxPeriode) * 100))}%; background:${glasStatSelKey === key ? "#1e7a34" : "var(--blue)"}; border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(v.wert * 10) / 10)}</div>
           </div>
         </div>`).join("") : `<p class="muted">Noch keine unterschriebenen Abnahmen in diesem Zeitraum.</p>`}
       </div>
     </div>
+
+    ${glasStatSelKey ? renderStatEinzelPeriode(rows) : ""}
 
     ${rows.length ? `
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
