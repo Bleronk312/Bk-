@@ -597,6 +597,8 @@ function glasUpdateTabContent() {
     : tab === "einstellungen" ? renderEinstellungenTab()
     : renderTourenTab();
 
+  if (isHome && !glasGlobalSearch.trim()) glasAnimateHome();
+
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
   if (tab === "kalender") {
@@ -679,8 +681,18 @@ function renderFaelligTab() {
 function renderGlasHome() {
   const today = glasTodayIso();
   const offene = glasAlleOffenenPositionen();
-  // "Kommend" (1 Monat vorher, weiß) zählt bewusst NICHT in die Fällig-Zahl mit.
-  const faelligGesamt = offene.filter((x) => x.status !== "kommend").length;
+
+  // Kennzahlen pro OBJEKT (dringendster Status), damit die Zahlen zu den Karten passen.
+  const rang = { ueberfaellig: 0, faellig: 1, kommend: 2 };
+  const perObj = new Map();
+  offene.forEach((x) => {
+    const cur = perObj.get(x.objekt.id);
+    if (cur === undefined || rang[x.status] < rang[cur]) perObj.set(x.objekt.id, x.status);
+  });
+  const vals = [...perObj.values()];
+  const uCount = vals.filter((s) => s === "ueberfaellig").length;
+  const fCount = vals.filter((s) => s === "faellig").length;
+  const terminiert = glasObjekte.filter((o) => glasGetObjektPositionen(o.id).some((p) => glasIstEingeplant(p))).length;
 
   const aktiveTouren = glasTouren.filter((t) => !t.archiviert_am);
   const heuteTouren = aktiveTouren.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
@@ -690,17 +702,51 @@ function renderGlasHome() {
     .slice(0, 3);
   const heuteTermine = glasTermine.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
 
-  const tourZeile = (t) => {
+  // Farbige Status-Kachel (Zahl zählt beim Öffnen hoch -> data-count)
+  const tile = (cls, icon, num, label, onclick) => `
+    <div class="glas-home-tile ${cls}" onclick="${onclick}">
+      <span class="ght-ic">${icon}</span>
+      <span class="ght-num" data-count="${num}">0</span>
+      <span class="ght-lbl">${label}</span>
+    </div>`;
+
+  const tourCard = (t) => {
     const stops = t.glas_stopps || [];
     const done = stops.filter((s) => s.status === "erledigt").length;
+    const total = stops.length;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const allDone = glasTourAllDone(t);
+    const farbe = glasTourKalenderFarbe(t);
+    const pill = allDone
+      ? `<span class="gtc-pill p-ok">Fertig</span>`
+      : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`;
     return `
-      <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourKalenderFarbe(t)};"></span>
-        <div style="flex:1; min-width:0;">
-          <p style="margin:0; font-weight:600;">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
+      <div class="glas-tour-card" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
+        <div class="gtc-row">
+          <div class="gtc-ic" style="background:${farbe}22; color:${farbe};">🚐</div>
+          <div class="gtc-grow">
+            <p class="gtc-name">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
+            <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}</p>
+          </div>
+          ${pill}
         </div>
-        <span style="color:var(--text-secondary);">›</span>
+        ${t.notiz ? `<div class="gtc-notiz">📝 ${escapeHtml(t.notiz)}</div>` : ""}
+        ${total ? `<div class="glas-prog"><div class="glas-prog-bar"><div class="glas-prog-fill${allDone ? " done" : ""}" data-w="${pct}"></div></div><div class="glas-prog-lab"><span>${done} von ${total} erledigt</span><span>${pct}%</span></div></div>` : ""}
+      </div>`;
+  };
+
+  const terminCard = (t) => {
+    const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
+    return `
+      <div class="glas-tour-card" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
+        <div class="gtc-row">
+          <div class="gtc-ic" style="background:${c.dot}22; color:${c.dot};">📌</div>
+          <div class="gtc-grow">
+            <p class="gtc-name">${escapeHtml(t.titel)}</p>
+            ${t.datum_bis && t.datum_bis !== t.datum ? `<p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}</p>` : ""}
+          </div>
+          <span class="gtc-pill p-plan">Termin</span>
+        </div>
       </div>`;
   };
 
@@ -713,15 +759,11 @@ function renderGlasHome() {
         </div>
       </div>
 
-      <div class="glas-dash-stats glas-dash-stats-2">
-        <div class="glas-stat ${faelligGesamt ? "warn" : ""}" onclick="glasKundenSort='dringend'; goGlasTab('kunden')">
-          <span class="glas-stat-num">${faelligGesamt}</span>
-          <span class="glas-stat-label">Fällig</span>
-        </div>
-        <div class="glas-stat" onclick="goGlasTab('touren')">
-          <span class="glas-stat-num">${heuteTouren.length}</span>
-          <span class="glas-stat-label">Touren heute</span>
-        </div>
+      <div class="glas-home-tiles">
+        ${tile("t-crit", "🔴", uCount, "Überfällig", "glasKundenSort='dringend'; goGlasTab('kunden')")}
+        ${tile("t-warn", "🟠", fCount, "Fällig", "glasKundenSort='dringend'; goGlasTab('kunden')")}
+        ${tile("t-info", "📅", terminiert, "Terminiert", "goGlasTab('touren')")}
+        ${tile("t-ok", "🚐", heuteTouren.length, "Touren heute", "goGlasTab('touren')")}
       </div>
 
       <div class="glas-dash-actions">
@@ -729,29 +771,44 @@ function renderGlasHome() {
         <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
 
-      <div class="card">
-        <h2 style="margin:0; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasToggleHomeSektion('heute')">
-          <span>Heute</span><span style="color:var(--text-secondary); font-size:13px;">${glasHomeOffen.heute ? "▲" : "▼"}</span>
-        </h2>
+      <div class="glas-home-sec">
+        <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('heute')">
+          <span>Heute</span><span class="chev">${glasHomeOffen.heute ? "▲" : "▼"}</span>
+        </div>
         ${!glasHomeOffen.heute ? "" : (heuteTouren.length || heuteTermine.length
-          ? heuteTouren.map(tourZeile).join("") + heuteTermine.map((t) => {
-              const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
-              return `<div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
-                <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
-                <div style="flex:1;"><p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p></div>
-                <span style="color:var(--text-secondary);">›</span></div>`;
-            }).join("")
-          : `<p class="muted" style="margin:10px 0 2px;">Heute ist nichts geplant. 🎉</p>`)}
+          ? heuteTouren.map(tourCard).join("") + heuteTermine.map(terminCard).join("")
+          : `<p class="glas-home-empty">Heute ist nichts geplant. 🎉</p>`)}
       </div>
 
       ${naechsteTouren.length ? `
-      <div class="card">
-        <h2 style="margin:0; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasToggleHomeSektion('naechste')">
-          <span>Als Nächstes</span><span style="color:var(--text-secondary); font-size:13px;">${glasHomeOffen.naechste ? "▲" : "▼"}</span>
-        </h2>
-        ${glasHomeOffen.naechste ? naechsteTouren.map(tourZeile).join("") : ""}
+      <div class="glas-home-sec">
+        <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('naechste')">
+          <span>Als Nächstes</span><span class="chev">${glasHomeOffen.naechste ? "▲" : "▼"}</span>
+        </div>
+        ${glasHomeOffen.naechste ? naechsteTouren.map(tourCard).join("") : ""}
       </div>` : ""}
     </div>`;
+}
+
+// Nach dem Rendern der Startseite: Kachel-Zahlen hochzählen + Fortschrittsbalken füllen.
+function glasAnimateHome() {
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll(".glas-home-tile .ght-num[data-count]").forEach((n) => {
+    const to = parseInt(n.getAttribute("data-count"), 10) || 0;
+    if (reduce || to === 0) { n.textContent = to; return; }
+    const start = performance.now(), dur = 650;
+    const step = (t) => {
+      const p = Math.min(1, (t - start) / dur);
+      n.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  document.querySelectorAll(".glas-prog-fill[data-w]").forEach((f) => {
+    const w = f.getAttribute("data-w") || "0";
+    if (reduce) { f.style.width = w + "%"; return; }
+    requestAnimationFrame(() => setTimeout(() => { f.style.width = w + "%"; }, 60));
+  });
 }
 
 let glasHomeOffen = { heute: true, naechste: true };
