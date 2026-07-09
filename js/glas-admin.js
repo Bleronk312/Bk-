@@ -45,6 +45,42 @@ let glasAdminSigPad = null;
 let glasNgOpenStopId = null; // Stopp, dessen "Nicht geschafft"-Grundauswahl gerade offen ist (nur Admin)
 let glasNgGrund = "";        // aktuell gewählter Grund im Picker (überlebt Re-Render)
 const GLAS_NG_GRUENDE = ["Kein Zugang / niemand da", "Keine Zeit mehr", "Wetter", "Baustelle / gesperrt", "Sonstiges"];
+let glasStopMenuOpenId = null; // Stopp, dessen ⋯-Aktionsmenü gerade offen ist (Tour-Detail)
+
+function toggleGlasStopMenu(id) {
+  glasStopMenuOpenId = glasStopMenuOpenId === id ? null : id;
+  renderGlasAdmin();
+}
+function closeGlasStopMenu() { glasStopMenuOpenId = null; renderGlasAdmin(); }
+
+// Aktionsmenü eines Stopps in der Tour-Detailansicht (Admin). Bündelt alle Aktionen
+// (Route, Anrufen, Unterschreiben, markieren, nicht geschafft, PDF, löschen) in einem
+// aufklappbaren ⋯-Menü, damit die Stopp-Karte nicht mit Buttons zugepflastert ist.
+function renderGlasStopMenu(s) {
+  const isDone = s.status === "erledigt";
+  const isNg = s.status === "nicht_geschafft";
+  const wazeUrl = s.lat ? `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes` : wazeLink(s.adresse);
+  const it = (inner) => `<div class="glas-stopmenu-item">${inner}</div>`;
+  let actions = "";
+  if (isDone) {
+    actions =
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; downloadGlasPdfAdmin('${s.id}')">📄 PDF öffnen</button>`) +
+      it(`<button class="glas-stopmenu-btn danger" onclick="glasStopMenuOpenId=null; deleteGlasSignatur('${s.id}')">${(!s.unterschrift && s.manuell_erledigt_am) ? "↩️ Markierung zurücknehmen" : "🗑️ Unterschrift löschen"}</button>`);
+  } else if (isNg) {
+    actions = it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; revertGlasNg('${s.id}')">↩️ Doch offen / zurücknehmen</button>`);
+  } else {
+    actions =
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; toggleGlasAdminSign('${s.id}')">✍️ Unterschreiben lassen</button>`) +
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; markGlasStopErledigt('${s.id}')">✔️ Als unterschrieben markieren</button>`) +
+      it(`<button class="glas-stopmenu-btn danger" onclick="glasStopMenuOpenId=null; toggleGlasNg('${s.id}')">🚫 Nicht geschafft</button>`);
+  }
+  return `
+    <div class="glas-stopmenu">
+      ${it(`<a class="glas-stopmenu-btn" href="${wazeUrl}" target="_blank" rel="noopener">📍 Route (Waze)</a>`)}
+      ${s.telefon ? it(`<a class="glas-stopmenu-btn" href="${telLink(s.telefon)}">📞 Anrufen</a>`) : ""}
+      ${actions}
+    </div>`;
+}
 
 let glasKundePickerOpen = false;
 let glasKundePickerSearch = "";
@@ -2165,6 +2201,7 @@ function renderTourDetailView() {
             : isNg
               ? `<span class="badge" style="flex-shrink:0; background:var(--border); color:var(--text-secondary);">🚫 Nicht geschafft</span>`
               : `<span class="badge badge-open" style="flex-shrink:0;">Offen</span>`;
+          const menuOpen = glasStopMenuOpenId === s.id;
           return `
         <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}">
           <div class="glas-stop-num">${idx + 1}</div>
@@ -2174,33 +2211,23 @@ function renderTourDetailView() {
                 ${s.objekt ? `<p style="margin:0; font-weight:600; font-size:13.5px;">${escapeHtml(s.objekt)}${qm ? ` <span style="color:var(--text-secondary); font-weight:500;">· ${qm} qm</span>` : ""}</p>` : ""}
                 <p class="muted" style="margin:1px 0 0; font-size:12.5px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
               </div>
-              ${badge}
+              <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                ${badge}
+                <button class="glas-stopmenu-toggle${menuOpen ? " on" : ""}" title="Aktionen" onclick="toggleGlasStopMenu('${s.id}')">⋯</button>
+              </div>
             </div>
+            ${menuOpen ? renderGlasStopMenu(s) : ""}
             ${renderStopPositionenVorschau(s)}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
-            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-              <a class="btn btn-sm" href="${wazeUrl}" target="_blank" rel="noopener">📍 Waze</a>
-              ${s.telefon ? `<a class="btn btn-sm" href="${telLink(s.telefon)}">📞 Anrufen</a>` : ""}
-            </div>
             ${isDone ? `
               ${s.zusatz ? `<div class="glas-notiz-box" style="margin-top:8px; white-space:pre-line;">➕ Zusätzlich gemacht: ${escapeHtml(s.zusatz)}</div>` : ""}
-              <p class="muted" style="margin:8px 0 6px; font-size:12px;">${(!s.unterschrift && s.manuell_erledigt_am)
+              <p class="muted" style="margin:8px 0 0; font-size:12px;">${(!s.unterschrift && s.manuell_erledigt_am)
                 ? `✔️ Als unterschrieben markiert am ${formatGlasDate(glasDatumVonTimestamp(s.manuell_erledigt_am))}${glasUhrzeitVonTimestamp(s.manuell_erledigt_am) ? ` um ${glasUhrzeitVonTimestamp(s.manuell_erledigt_am)} Uhr` : ""} (ohne Unterschrift)`
                 : `Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}`}</p>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button class="btn btn-sm" onclick="downloadGlasPdfAdmin('${s.id}')">📄 PDF</button>
-                <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasSignatur('${s.id}')">${(!s.unterschrift && s.manuell_erledigt_am) ? "↩️ Markierung zurücknehmen" : "🗑️ Unterschrift löschen"}</button>
-              </div>
             ` : isNg ? `
               <div class="glas-ng-box">🚫 <strong>Nicht geschafft:</strong> ${escapeHtml(s.ng_grund || "")}${s.ng_notiz ? ` – ${escapeHtml(s.ng_notiz)}` : ""}${s.ng_am ? ` <span class="muted">(${formatGlasDate(glasDatumVonTimestamp(s.ng_am))})</span>` : ""}<br><span class="muted">Das Objekt steht wieder unter „Fällige Objekte" und kann neu eingeplant werden.</span></div>
-              <button class="btn btn-sm" style="margin-top:8px;" onclick="revertGlasNg('${s.id}')">↩️ Doch offen / zurücknehmen</button>
             ` : `
-              <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                <button class="btn btn-sm" onclick="toggleGlasAdminSign('${s.id}')">${isSigning ? "Schließen" : "✍️ Unterschreiben lassen"}</button>
-                <button class="btn btn-sm" onclick="markGlasStopErledigt('${s.id}')">✔️ Als unterschrieben markieren</button>
-                <button class="btn btn-sm" style="color:var(--danger);" onclick="toggleGlasNg('${s.id}')">${isNgOpen ? "Abbrechen" : "🚫 Nicht geschafft"}</button>
-              </div>
               ${isSigning ? renderAdminSignArea(s) : ""}
               ${isNgOpen ? renderGlasNgArea(s) : ""}
             `}

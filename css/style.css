@@ -479,6 +479,35 @@ label {
 }
 .glas-stop-row.done .glas-stop-num { background: #d9f2dd; border-color: #bfe6c8; color: #1e7a34; }
 .glas-stop-row.ng { opacity: 0.72; }
+/* ⋯-Aktionsmenü pro Stopp (Tour-Detail) - bündelt alle Buttons, damit die Karte ruhig bleibt */
+.glas-stopmenu-toggle {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 1px 9px;
+  font-size: 18px; line-height: 1.2;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.glas-stopmenu-toggle:hover, .glas-stopmenu-toggle.on { background: var(--bg); color: var(--text-primary); }
+.glas-stopmenu {
+  margin: 8px 0 4px auto;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  overflow: hidden;
+}
+.glas-stopmenu-item + .glas-stopmenu-item { border-top: 1px solid var(--border); }
+.glas-stopmenu-btn {
+  display: block; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 11px 14px; font-size: 14px;
+  background: none; border: none; color: var(--text-primary);
+  cursor: pointer; text-decoration: none;
+}
+.glas-stopmenu-btn:hover { background: var(--bg); }
+.glas-stopmenu-btn.danger { color: var(--danger); }
 .glas-stop-row.ng .glas-stop-num { background: var(--border); border-color: var(--border); color: var(--text-secondary); }
 .glas-ng-box {
   margin-top: 8px;
