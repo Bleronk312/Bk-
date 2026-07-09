@@ -201,7 +201,12 @@ label {
 .badge-open { background: var(--warning-bg); color: var(--warning-text); }
 .badge-signed { background: var(--success-bg); color: var(--success-text); }
 .badge-danger { background: #fdecea; color: var(--danger); }
-.badge-faellig { background: #e2f1f5; color: #206a80; }
+/* Fällig = orange, Kommend = neutral/weiß, Terminiert = blau (5-Zustands-Logik) */
+.badge-faellig { background: #fdf0dc; color: #b26a08; }
+.badge-kommend { background: var(--surface-2, #eef0f2); color: var(--text-secondary); border: 1px solid var(--border); }
+.badge-terminiert { background: #e2f1f5; color: #206a80; }
+:root[data-theme="dark"] .badge-faellig { background: #3a2a12; color: #e6a94e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge-faellig { background: #3a2a12; color: #e6a94e; } }
 
 .glas-ring {
   width: 46px;

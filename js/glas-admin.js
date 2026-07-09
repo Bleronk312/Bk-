@@ -104,9 +104,11 @@ function matchesSearch(o, q) {
   return glasSearchMatch(`${o.name} ${o.adresse} ${o.kunde_name} ${o.kdnr}`, q);
 }
 
-// Höchste Dringlichkeit unter allen Positionen eines Objekts: 'ueberfaellig' | 'bald' | null.
-// Bereits eingeplante Positionen (offener Stopp in aktiver Tour) zählen nicht mehr als offen.
-const GLAS_STATUS_RANG = { ueberfaellig: 3, faellig: 2, bald: 1 };
+// Höchste Dringlichkeit unter allen Positionen eines Objekts: 'ueberfaellig' | 'faellig' | null.
+// NUR diese beiden zählen als "fällig" (in Zahlen/Chips). "Kommend" (1 Monat vorher, weiß)
+// ist bewusst NICHT dabei - ein Objekt, das erst kommt, taucht nicht in der Fällig-Zahl auf.
+// Bereits eingeplante Positionen (offener Stopp in aktiver Tour) zählen ebenfalls nicht.
+const GLAS_STATUS_RANG = { ueberfaellig: 3, faellig: 2 };
 function glasHoechsterStatus(a, b) {
   if (!a) return b;
   if (!b) return a;
@@ -136,14 +138,14 @@ function glasKundeStatus(kundeId) {
   return hoechster;
 }
 
+// Karten-Tönung: Überfällig = rot, Fällig = orange, Kommend/sonst = neutral (weiß).
 function glasStatusTint(status) {
   return status === "ueberfaellig" ? "background:var(--tint-ueberfaellig-bg); border-color:var(--tint-ueberfaellig-bd);"
-    : status === "bald" ? "background:var(--tint-bald-bg); border-color:var(--tint-bald-bd);"
-    : status === "faellig" ? "background:var(--tint-faellig-bg); border-color:var(--tint-faellig-bd);"
+    : status === "faellig" ? "background:var(--tint-bald-bg); border-color:var(--tint-bald-bd);"
     : "";
 }
 function glasStatusDot(status) {
-  return status === "ueberfaellig" ? "🔴 " : status === "bald" ? "🟡 " : status === "faellig" ? "🔵 " : "";
+  return status === "ueberfaellig" ? "🔴 " : status === "faellig" ? "🟠 " : status === "kommend" ? "⚪ " : "";
 }
 
 // Deutsche qm-Zahl ("87,6" / "1.234,5") in eine Zahl umwandeln.
@@ -176,11 +178,11 @@ function glasZahlDe(n) {
   return (Math.round(n * 100) / 100).toString().replace(".", ",");
 }
 
-// Farbe des Status-Balkens links an einer Objekt-Karte.
+// Farbe des Status-Balkens links an einer Objekt-Karte: Überfällig rot, Fällig orange,
+// Kommend/sonst neutral (Terminiert = blau wird in der Karte separat gesetzt).
 function glasStatusStripe(status) {
   return status === "ueberfaellig" ? "var(--danger)"
-    : status === "bald" ? "#d08a1f"
-    : status === "faellig" ? "var(--blue)"
+    : status === "faellig" ? "#d08a1f"
     : "var(--border)";
 }
 
@@ -213,25 +215,35 @@ function renderGlasObjektKarte(o, opts) {
           : n && n.status && n.status !== "geplant" ? `<span class="badge ${glasStatusBadgeClass(n.status)}" style="flex-shrink:0;">${glasStatusLabel(n.status)}</span>` : ""}
       </div>
       <div class="glas-objekt-card-meta">
-        <span class="muted">${n && n.label ? `fällig ${escapeHtml(n.label)}${terminiert ? " · in Tour eingeplant" : ""}` : "kein Intervall"}</span>
+        <span class="muted">${n && n.label
+          ? (terminiert ? `nächste Reinigung ${escapeHtml(n.label)} · in Tour eingeplant`
+            : n.status === "kommend" ? `kommend ${escapeHtml(n.label)}`
+            : n.status === "ueberfaellig" ? `überfällig seit ${escapeHtml(n.label)}`
+            : n.status === "faellig" ? `fällig ${escapeHtml(n.label)}`
+            : `nächste Reinigung ${escapeHtml(n.label)}`)
+          : "kein Intervall"}</span>
         ${info.qmText ? `<span class="glas-objekt-card-qm">${info.qmText}</span>` : ""}
       </div>
     </div>`;
 }
 
 // Wie viele Objekte eines Kunden haben welchen Status (für Kennzahlen/Badges).
+// glasObjektStatus liefert nur noch 'ueberfaellig' | 'faellig' | null ("kommend" zählt
+// bewusst nicht mit, siehe GLAS_STATUS_RANG).
 function glasKundeStatusZaehler(kundeId) {
-  let ueberfaellig = 0, faellig = 0, bald = 0;
+  let ueberfaellig = 0, faellig = 0;
   glasObjekte.filter((o) => o.kunde_id === kundeId).forEach((o) => {
     const s = glasObjektStatus(o.id);
     if (s === "ueberfaellig") ueberfaellig++;
     else if (s === "faellig") faellig++;
-    else if (s === "bald") bald++;
   });
-  return { ueberfaellig, faellig, bald };
+  return { ueberfaellig, faellig };
 }
 function glasStatusBadgeClass(status) {
-  return status === "ueberfaellig" ? "badge-danger" : status === "bald" ? "badge-open" : status === "faellig" ? "badge-faellig" : "badge-signed";
+  return status === "ueberfaellig" ? "badge-danger"
+    : status === "faellig" ? "badge-faellig"
+    : status === "kommend" ? "badge-kommend"
+    : "badge-signed";
 }
 
 /* ========================================================================
@@ -605,7 +617,8 @@ function renderFaelligTab() {
 function renderGlasHome() {
   const today = glasTodayIso();
   const offene = glasAlleOffenenPositionen();
-  const faelligGesamt = offene.length; // überfällig + bald fällig + fällig (diesen Monat) zusammen
+  // "Kommend" (1 Monat vorher, weiß) zählt bewusst NICHT in die Fällig-Zahl mit.
+  const faelligGesamt = offene.filter((x) => x.status !== "kommend").length;
 
   const aktiveTouren = glasTouren.filter((t) => !t.archiviert_am);
   const heuteTouren = aktiveTouren.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
@@ -775,7 +788,7 @@ function renderKundenTab() {
 
   // Eigenes Suchfeld hier bewusst entfernt - die globale Suche oben (Kunde, Objekt, Kd.-Nr.)
   // deckt das bereits vollständig ab, ein zweites Feld war redundant.
-  const statusRang = { ueberfaellig: 0, faellig: 1, bald: 2 };
+  const statusRang = { ueberfaellig: 0, faellig: 1 };
   const mitStatus = glasKunden.map((k) => ({ k, status: glasKundeStatus(k.id) }));
   const sortiert = [...mitStatus].sort((a, b) => {
     if (glasKundenSort === "az") return a.k.name.localeCompare(b.k.name, "de");
@@ -798,7 +811,7 @@ function renderKundenTab() {
               <p class="muted" style="margin:3px 0 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                 <span>${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}</span>
                 ${z.ueberfaellig ? `<span class="badge ${glasStatusBadgeClass("ueberfaellig")}">${z.ueberfaellig} überfällig</span>` : ""}
-                ${z.faellig + z.bald ? `<span class="badge ${glasStatusBadgeClass(z.faellig ? "faellig" : "bald")}">${z.faellig + z.bald} fällig</span>` : ""}
+                ${z.faellig ? `<span class="badge ${glasStatusBadgeClass("faellig")}">${z.faellig} fällig</span>` : ""}
               </p>
             </div>
             <span style="font-size:18px; color:var(--text-secondary);">›</span>
@@ -809,12 +822,12 @@ function renderKundenTab() {
   // Kennzahlen über der Kundenliste
   const objGesamt = glasObjekte.length;
   const objUeberf = glasObjekte.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
-  const objFaellig = glasObjekte.filter((o) => { const s = glasObjektStatus(o.id); return s === "faellig" || s === "bald"; }).length;
+  const objFaellig = glasObjekte.filter((o) => glasObjektStatus(o.id) === "faellig").length;
   const kennzahlen = glasKunden.length ? glasStatTiles([
     { num: glasKunden.length, label: "Kunden", tone: "accent" },
     { num: objGesamt, label: "Objekte" },
     { num: objUeberf, label: "Objekte überfällig", tone: objUeberf ? "crit" : null },
-    { num: objFaellig, label: "fällig / bald", tone: objFaellig ? "warn" : null },
+    { num: objFaellig, label: "fällig", tone: objFaellig ? "warn" : null },
   ]) : "";
 
   return `
@@ -1022,7 +1035,6 @@ function glasKundeObjSortRang(o) {
   const s = glasObjektStatus(o.id);
   if (s === "ueberfaellig") return 0;
   if (s === "faellig") return 1;
-  if (s === "bald") return 2;
   return glasKundeObjKategorie(o) === "terminiert" ? 3 : 4;
 }
 
@@ -1059,7 +1071,7 @@ function renderKundeDetailPage(id) {
           { num: objekte.length, label: "Objekte", tone: "accent" },
           { num: gesamtQm ? glasZahlDe(gesamtQm) : "–", label: "qm gesamt" },
           { num: z.ueberfaellig, label: "überfällig", tone: z.ueberfaellig ? "crit" : null },
-          { num: z.faellig + z.bald, label: "fällig / bald", tone: (z.faellig + z.bald) ? "warn" : null },
+          { num: z.faellig, label: "fällig", tone: z.faellig ? "warn" : null },
         ]) : "";
       })()}
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
@@ -1597,7 +1609,7 @@ function renderObjektDetailPage(id) {
   // ist alles Fällige bereits eingeplant, zeigt das Banner "Eingeplant" statt "überfällig"
   const alleEingeplant = positionen.some(glasIstEingeplant) && positionen.filter((p) => !glasIstEingeplant(p)).every((p) => {
     const s = glasFaelligkeitStatus(p).status;
-    return s !== "ueberfaellig" && s !== "bald";
+    return s !== "ueberfaellig" && s !== "faellig";
   });
   const naechste = positionen
     .filter((p) => !glasIstEingeplant(p))
@@ -2663,7 +2675,7 @@ function glasInitTourPosSelection(objektId) {
   const positionen = glasGetObjektPositionen(objektId);
   const faellige = positionen.filter((p) => {
     const s = glasFaelligkeitStatus(p).status;
-    return s === "ueberfaellig" || s === "bald";
+    return s === "ueberfaellig" || s === "faellig" || s === "kommend";
   });
   const auswahl = (faellige.length ? faellige : positionen).map((p) => p.id || p.nr);
   glasPreselectPositionen.set(objektId, new Set(auswahl));
@@ -4293,6 +4305,8 @@ function glasIsoWeek(iso) {
 let glasKalSearchOpen = false;
 let glasKalSearch = "";
 let glasKalUrlaubEinblenden = (() => { try { return localStorage.getItem("glas_kal_urlaub") !== "0"; } catch (e) { return true; } })();
+// Eigene Büro-Termine (📌) im Kalender ein-/ausblenden - die Glas-Touren (🚐) bleiben immer da.
+let glasKalTermineEinblenden = (() => { try { return localStorage.getItem("glas_kal_termine") !== "0"; } catch (e) { return true; } })();
 
 function glasToggleKalSearch() {
   glasKalSearchOpen = !glasKalSearchOpen;
@@ -4304,6 +4318,12 @@ function glasToggleKalSearch() {
 function glasToggleKalUrlaub() {
   glasKalUrlaubEinblenden = !glasKalUrlaubEinblenden;
   try { localStorage.setItem("glas_kal_urlaub", glasKalUrlaubEinblenden ? "1" : "0"); } catch (e) {}
+  glasUpdateTabContent();
+}
+
+function glasToggleKalTermine() {
+  glasKalTermineEinblenden = !glasKalTermineEinblenden;
+  try { localStorage.setItem("glas_kal_termine", glasKalTermineEinblenden ? "1" : "0"); } catch (e) {}
   glasUpdateTabContent();
 }
 
@@ -4358,22 +4378,24 @@ function renderKalenderMonat() {
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
+    // 🚐 Glas-Touren (für die Mitarbeiter) - immer sichtbar
     ...activeTouren.map((t) => {
       const allDone = glasTourAllDone(t);
       return {
         datum: t.datum, datum_bis: t.datum_bis,
         bg: allDone ? "#34a853" : "#3b82c4", fg: "#fff",
-        label: t.name ? t.name : (t.frei ? "Einzelschein" : "Tour"),
+        label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
       };
     }),
-    ...glasTermine.filter((t) => t.datum).flatMap((t) => {
+    // 📌 Eigene Büro-Termine - über den Schalter ausblendbar
+    ...(glasKalTermineEinblenden ? glasTermine.filter((t) => t.datum).flatMap((t) => {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
       // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
       return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
         datum: occ.datum, datum_bis: occ.datum_bis,
-        bg: c.dot, fg: "#fff", label: t.titel || "Termin",
+        bg: c.dot, fg: "#fff", label: `📌 ${t.titel || "Termin"}`,
       }));
-    }),
+    }) : []),
     // Urlaube (einblendbar über 🏖️): bewusst dezenter gestylt als Touren/Termine -
     // heller Hintergrund in der Mitarbeiter-Farbe mit feinem Rand
     ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => {
@@ -4418,6 +4440,7 @@ function renderKalenderMonat() {
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; padding:0 8px;">
         <p style="margin:0; font-weight:700; font-size:17px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${monatsNamen[month]} ${year}</p>
         <button class="btn btn-sm${glasKalSearchOpen ? " btn-primary" : ""}" title="Suchen" onclick="glasToggleKalSearch()">🔍</button>
+        <button class="btn btn-sm${glasKalTermineEinblenden ? " btn-primary" : ""}" title="Eigene Termine (📌) ein-/ausblenden" onclick="glasToggleKalTermine()">📌</button>
         <button class="btn btn-sm${glasKalUrlaubEinblenden ? " btn-primary" : ""}" title="Urlaube ein-/ausblenden" onclick="glasToggleKalUrlaub()">🏖️</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
@@ -4432,7 +4455,8 @@ function renderKalenderMonat() {
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
       <div class="glas-cal-grid with-kw${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
-      <button class="btn btn-sm" style="margin:12px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
+      <p class="muted" style="margin:8px 8px 0; font-size:11.5px;">🚐 Glasreinigung (Mitarbeiter) · 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</p>
+      <button class="btn btn-sm" style="margin:8px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
   `;
@@ -4455,7 +4479,7 @@ function renderKalenderTagPanel(iso) {
       <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourAllDone(t) ? "#2e9e4f" : "var(--blue)"};"></span>
         <div style="flex:1; min-width:0;">
-          <p style="margin:0; font-weight:600;">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
+          <p style="margin:0; font-weight:600;">🚐 ${t.name ? escapeHtml(t.name) : (t.frei ? "Blanko" : "Tour")}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
         </div>
         <span style="color:var(--text-secondary);">›</span>
@@ -4468,7 +4492,7 @@ function renderKalenderTagPanel(iso) {
       <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="openGlasTermin('${t.id}')">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
         <div style="flex:1; min-width:0;">
-          <p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p>
+          <p style="margin:0; font-weight:600;">📌 ${escapeHtml(t.titel)}</p>
           ${t.datum_bis && t.datum_bis !== t.datum ? `<p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)}</p>` : ""}
           ${glasWiederholungLabel(t.wiederholung) ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🔁 ${glasWiederholungLabel(t.wiederholung)}</p>` : ""}
           ${t.adresse ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">📍 ${escapeHtml(t.adresse)}</p>` : ""}
@@ -4528,13 +4552,13 @@ function glasAlleOffenenPositionen() {
     glasGetObjektPositionen(o.id).forEach((p) => {
       if (glasIstEingeplant(p)) return; // ist schon in einer offenen Tour -> nicht mehr "offen"
       const f = glasFaelligkeitStatus(p);
-      if (f.status === "ueberfaellig" || f.status === "bald" || f.status === "faellig") {
+      if (f.status === "ueberfaellig" || f.status === "faellig" || f.status === "kommend") {
         result.push({ objekt: o, position: p, ...f });
       }
     });
   });
-  // überfällig zuerst, dann fällig, dann bald - innerhalb einer Gruppe nach Datum
-  const rang = { ueberfaellig: 0, faellig: 1, bald: 2 };
+  // überfällig zuerst, dann fällig, dann kommend - innerhalb einer Gruppe nach Datum
+  const rang = { ueberfaellig: 0, faellig: 1, kommend: 2 };
   result.sort((a, b) => (rang[a.status] - rang[b.status]) || a.faelligkeit.localeCompare(b.faelligkeit));
   return result;
 }
@@ -4546,7 +4570,7 @@ function renderOffeneListe() {
   // Kennzahlen über der Liste: pro Objekt der dringendste Status (nicht pro Position),
   // damit die Zahlen zur Karten-Anzahl darunter passen.
   const alle = glasAlleOffenenPositionen();
-  const rang = { ueberfaellig: 0, faellig: 1, bald: 2 };
+  const rang = { ueberfaellig: 0, faellig: 1, kommend: 2 };
   const perObj = new Map();
   alle.forEach((x) => {
     const cur = perObj.get(x.objekt.id);
@@ -4555,11 +4579,11 @@ function renderOffeneListe() {
   const vals = [...perObj.values()];
   const u = vals.filter((s) => s === "ueberfaellig").length;
   const f = vals.filter((s) => s === "faellig").length;
-  const bd = vals.filter((s) => s === "bald").length;
+  const k = vals.filter((s) => s === "kommend").length;
   const kennzahlen = vals.length ? glasStatTiles([
     { num: u, label: "überfällig", tone: u ? "crit" : null },
     { num: f, label: "fällig", tone: f ? "warn" : null },
-    { num: bd, label: "bald fällig" },
+    { num: k, label: "kommend" },
   ]) : "";
 
   return `
@@ -4583,9 +4607,9 @@ function renderOffeneListeErgebnisse() {
     if (!g) { g = { objekt: x.objekt, eintraege: [] }; gruppen.set(x.objekt.id, g); }
     g.eintraege.push(x);
   });
-  const rang = { ueberfaellig: 0, faellig: 1, bald: 2 };
+  const rang = { ueberfaellig: 0, faellig: 1, kommend: 2 };
   const liste = [...gruppen.values()].map((g) => {
-    g.status = g.eintraege.reduce((s, e) => (rang[e.status] < rang[s] ? e.status : s), "bald");
+    g.status = g.eintraege.reduce((s, e) => (rang[e.status] < rang[s] ? e.status : s), "kommend");
     g.fruehestes = g.eintraege.reduce((min, e) => (e.faelligkeit < min ? e.faelligkeit : min), g.eintraege[0].faelligkeit);
     return g;
   }).sort((a, b) => (rang[a.status] - rang[b.status]) || a.fruehestes.localeCompare(b.fruehestes));
