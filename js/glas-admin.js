@@ -4447,7 +4447,7 @@ function renderKalenderMonat() {
     // 🚐 Glas-Touren (für die Mitarbeiter). Farbe: orange = geplant, grün = fertig.
     ...(glasKalTourenEinblenden ? activeTouren.map((t) => ({
       datum: t.datum, datum_bis: t.datum_bis,
-      bg: glasTourKalenderFarbe(t), fg: "#fff",
+      col: glasTourKalenderFarbe(t),
       label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
     })) : []),
     // 📌 Eigene Büro-Termine - über den Schalter ausblendbar
@@ -4456,18 +4456,16 @@ function renderKalenderMonat() {
       // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
       return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
         datum: occ.datum, datum_bis: occ.datum_bis,
-        bg: c.dot, fg: "#fff", label: `📌 ${t.titel || "Termin"}`,
+        col: c.dot, label: `📌 ${t.titel || "Termin"}`,
       }));
     }) : []),
-    // Urlaube (einblendbar über 🏖️): bewusst dezenter gestylt als Touren/Termine -
-    // heller Hintergrund in der Mitarbeiter-Farbe mit feinem Rand
-    ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => {
-      const c = glasMaFarbe(u.mitarbeiter_id);
-      return {
-        datum: u.von, datum_bis: u.bis || u.von,
-        bg: `${c}26`, fg: c, ring: `${c}66`, label: glasMaName(u.mitarbeiter_id),
-      };
-    }) : []),
+    // Urlaube (einblendbar über 🏖️): bewusst dezenter/transparenter gestylt als Touren/
+    // Termine, damit man sie klar unterscheiden kann (is-urlaub)
+    ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => ({
+      datum: u.von, datum_bis: u.bis || u.von,
+      col: glasMaFarbe(u.mitarbeiter_id), urlaub: true,
+      label: `🏖️ ${glasMaName(u.mitarbeiter_id)}`,
+    })) : []),
   ];
 
   // Pro Tag die Events sammeln (mehrtägige erscheinen auf jedem betroffenen Tag als Chip,
@@ -4486,7 +4484,7 @@ function renderKalenderMonat() {
       const chips = dayEvents.slice(0, maxChips).map((t) => {
         const contLeft = t.datum < iso;
         const contRight = (t.datum_bis || t.datum) > iso;
-        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};${t.ring ? ` box-shadow: inset 0 0 0 1px ${t.ring};` : ""}">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
       }).join("");
       const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
 

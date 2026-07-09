@@ -64,6 +64,9 @@ html.dark .glas-cal-cell { border-top-color: var(--border); }
 html.dark .glas-cal-cell:hover { background: #1e2833; }
 html.dark .glas-cal-cell.is-selected { background: #1d3450; }
 html.dark .glas-cal-cell.out-month .glas-cal-daynum { color: #46525f; }
+html.dark .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n-1),
+html.dark .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n) { background: #161e27; }
+html.dark .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n) .glas-cal-daynum { color: #ef6a5c; }
 html.dark .glas-cal-kw { border-top-color: var(--border); color: #4d5a68; }
 html.dark .glas-seg-btn.on { background: #26313f; }
 html.dark .glas-menu-item:hover { background: #222c38; }
@@ -313,73 +316,93 @@ label {
 .glas-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 0;
+  gap: 0; /* 0 = mehrtägige Balken laufen lückenlos durch (Touren/Urlaub) */
 }
 .glas-cal-cell {
-  min-height: 100px;
-  padding: 3px 0 5px;
+  min-height: 92px;
+  padding: 4px 0 6px; /* horizontal 0 -> Chips reichen bis zum Rand = durchgehende Balken */
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 2px;
   border: none;
-  border-top: 1px solid #eceef2;
-  transition: background 0.12s ease;
+  border-top: 1px solid #eef1f5;
+  transition: background 0.13s ease;
   overflow: hidden;
 }
-.glas-cal-cell:hover { background: #f5f7fa; }
-.glas-cal-cell.is-selected { background: #eaf2fb; }
-.glas-cal-cell.out-month .glas-cal-daynum { color: #cdd2d9; }
+.glas-cal-cell:hover { background: #f4f7fb; }
+.glas-cal-cell:active { background: #eaf1f9; }
+.glas-cal-cell.is-selected { background: #e8f1fb; box-shadow: inset 0 0 0 1.5px var(--blue); border-radius: 10px; }
+.glas-cal-cell.out-month .glas-cal-daynum { color: #cdd2d9; opacity: 0.7; }
 .glas-cal-cell.out-month .glas-cal-chip { opacity: 0.4; }
 .glas-cal-daynum {
-  align-self: center;
+  align-self: flex-start;
+  margin-left: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 19px; height: 19px;
+  min-width: 20px; height: 20px;
   border-radius: 50%;
-  font-size: 11.5px; font-weight: 500;
+  font-size: 12px; font-weight: 600;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
-/* Samstag blau, Sonntag rot - wie im Vorbild */
-.glas-cal-grid .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum { color: #2d7dc4; }
-.glas-cal-grid .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: #d6453b; }
-/* Mit KW-Spalte hat jede Zeile 8 Zellen - Sa/So verschieben sich entsprechend */
+/* Mit KW-Spalte hat jede Zeile 8 Zellen - Samstag blau, Sonntag rot */
 .glas-cal-grid.with-kw { grid-template-columns: 15px repeat(7, 1fr); }
-.glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n-1) .glas-cal-daynum,
-.glas-cal-grid.with-kw .glas-cal-cell:nth-child(7n) .glas-cal-daynum { color: inherit; }
 .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n-1) .glas-cal-daynum { color: #2d7dc4; }
 .glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n) .glas-cal-daynum { color: #d6453b; }
+/* dezente Wochenend-Tönung */
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n-1),
+.glas-cal-grid.with-kw .glas-cal-cell:nth-child(8n) { background: #f8fafc; }
 .glas-cal-kw {
-  border-top: 1px solid #eceef2;
-  padding-top: 7px;
+  border-top: 1px solid #eef1f5;
+  padding-top: 8px;
   text-align: center;
   font-size: 8.5px;
-  font-weight: 600;
+  font-weight: 700;
   color: #b6bdc7;
 }
-.glas-cal-daynum.is-today { background: var(--blue); color: white !important; font-weight: 700; }
-.glas-cal-chip {
-  font-size: 8px;
-  font-weight: 500;
-  letter-spacing: -0.3px;
-  line-height: 1.2;
-  border-radius: 3px;
-  padding: 1px 3px;
-  margin: 0 1px;
-  white-space: nowrap;
-  overflow: hidden; /* hart abschneiden wie TimeTree - die "..." kosten nur Platz */
+.glas-cal-daynum.is-today {
+  background: var(--blue); color: white !important; font-weight: 700;
+  box-shadow: 0 2px 7px rgba(45, 125, 196, 0.45);
 }
-.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+/* Getönte, weiche Chips: EINE Basisfarbe pro Termin (--c), Hintergrund & Text werden
+   per color-mix theme-aware berechnet (funktioniert hell UND dunkel). */
+.glas-cal-chip {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  line-height: 1.18;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--c, var(--blue)) 15%, var(--card));
+  color: color-mix(in srgb, var(--c, var(--blue)) 68%, var(--text));
+  /* bis zu 2 Zeilen -> mehr Text sichtbar als vorher, nie weniger */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  word-break: break-word;
+  overflow: hidden;
+}
+.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-.glas-cal-more { font-size: 7.5px; color: var(--text-secondary); text-align: center; }
+/* Urlaub bewusst transparenter/kursiv zum Unterscheiden von Touren & Terminen */
+.glas-cal-chip.is-urlaub {
+  background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
+  color: color-mix(in srgb, var(--c, var(--blue)) 80%, var(--text));
+  font-style: italic;
+}
+.glas-cal-more { font-size: 8.5px; font-weight: 700; color: var(--text-secondary); padding: 0 4px; }
 
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
-  .glas-cal-cell { min-height: 132px; padding: 5px 0; gap: 2px; }
-  .glas-cal-daynum { width: 23px; height: 23px; font-size: 13px; }
-  .glas-cal-chip { font-size: 11px; padding: 2px 6px; letter-spacing: 0; }
+  .glas-cal-cell { min-height: 120px; padding: 6px 0 8px; gap: 3px; }
+  .glas-cal-daynum { min-width: 24px; height: 24px; font-size: 13px; }
+  .glas-cal-chip { font-size: 11px; padding: 2px 7px; letter-spacing: 0; border-radius: 6px; }
+  .glas-cal-grid.with-kw { grid-template-columns: 20px repeat(7, 1fr); }
 }
 
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
