@@ -598,6 +598,7 @@ function glasUpdateTabContent() {
     : renderTourenTab();
 
   if (isHome && !glasGlobalSearch.trim()) glasAnimateHome();
+  glasAnimateProgress();
 
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
@@ -790,7 +791,7 @@ function renderGlasHome() {
     </div>`;
 }
 
-// Nach dem Rendern der Startseite: Kachel-Zahlen hochzählen + Fortschrittsbalken füllen.
+// Nach dem Rendern der Startseite: Kachel-Zahlen hochzählen.
 function glasAnimateHome() {
   const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
   document.querySelectorAll(".glas-home-tile .ght-num[data-count]").forEach((n) => {
@@ -804,10 +805,23 @@ function glasAnimateHome() {
     };
     requestAnimationFrame(step);
   });
+}
+
+// Fortschrittsbalken (Touren-Karten) + Fortschritts-Ring (Tour-Detail) füllen sich beim
+// Rendern flüssig auf. Läuft nach jedem Tab-Render (Start, Touren, Tour-Detail).
+function glasAnimateProgress() {
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
   document.querySelectorAll(".glas-prog-fill[data-w]").forEach((f) => {
     const w = f.getAttribute("data-w") || "0";
     if (reduce) { f.style.width = w + "%"; return; }
     requestAnimationFrame(() => setTimeout(() => { f.style.width = w + "%"; }, 60));
+  });
+  document.querySelectorAll(".glas-ring-fill[data-pct]").forEach((c) => {
+    const pct = parseFloat(c.getAttribute("data-pct")) || 0;
+    const circ = 251.2;
+    const off = (circ * (1 - pct / 100)).toFixed(1);
+    if (reduce) { c.style.strokeDashoffset = off; return; }
+    requestAnimationFrame(() => setTimeout(() => { c.style.strokeDashoffset = off; }, 120));
   });
 }
 
@@ -2164,16 +2178,27 @@ function renderTourenCard(t) {
   const z = glasTourZaehler(t);
   const allDone = glasTourAllDone(t);
   const auswahl = glasAuswahl.modus === "touren";
+  const total = z.gesamt;
+  const done = z.erledigt;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const farbe = glasTourKalenderFarbe(t);
+  const pill = allDone
+    ? `<span class="gtc-pill p-ok">Fertig</span>`
+    : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`;
   return `
-    <div class="card" style="cursor:pointer; ${allDone ? "background:var(--success-bg);" : ""}" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
-      <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
-        ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>` : ""}
-        <div style="flex:1;">
-          <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.frei ? ` <span class="badge badge-open">Einzelschein</span>` : ""}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary);">🙈 nicht bei MA</span>` : ""}</p>
-          <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${z.gesamt} Stopp(s) · ${z.erledigt}/${z.gesamt} erledigt${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}</p>
+    <div class="glas-tour-card" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
+      <div class="gtc-row">
+        ${auswahl
+          ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>`
+          : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">${t.frei ? "📄" : "🚐"}</div>`}
+        <div class="gtc-grow">
+          <p class="gtc-name">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary); font-size:10px;">🙈</span>` : ""}</p>
+          <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}${t.frei ? " · Einzelschein" : ""}</p>
         </div>
-        <span style="font-size:18px; color:var(--text-secondary);">›</span>
+        ${pill}
       </div>
+      ${t.notiz ? `<div class="gtc-notiz">📝 ${escapeHtml(t.notiz)}</div>` : ""}
+      ${total ? `<div class="glas-prog"><div class="glas-prog-bar"><div class="glas-prog-fill${allDone ? " done" : ""}" data-w="${pct}"></div></div><div class="glas-prog-lab"><span>${done} von ${total} erledigt</span><span>${pct}%</span></div></div>` : ""}
     </div>`;
 }
 
@@ -2268,11 +2293,16 @@ function renderTourDetailView() {
 
   const done = glasTourDetailStops.filter((s) => s.status === "erledigt").length;
   const ngDetail = glasTourDetailStops.filter((s) => s.status === "nicht_geschafft").length;
+  const totalStops = glasTourDetailStops.length;
+  const pctStops = totalStops ? Math.round((done / totalStops) * 100) : 0;
+  const offenGesamt = glasTourDetailStops.filter((s) => s.status === "offen").length;
+  const firstOpenIdx = glasTourDetailStops.findIndex((s) => s.status === "offen");
   const rows = glasTourDetailStops.length
     ? glasTourDetailStops
         .map((s, idx) => {
           const isDone = s.status === "erledigt";
           const isNg = s.status === "nicht_geschafft";
+          const isNext = idx === firstOpenIdx;
           const isSigning = glasAdminSignOpenStopId === s.id;
           const isNgOpen = glasNgOpenStopId === s.id;
           const qm = glasStopQm(s);
@@ -2284,11 +2314,12 @@ function renderTourDetailView() {
               : `<span class="badge badge-open" style="flex-shrink:0;">Offen</span>`;
           const menuOpen = glasStopMenuOpenId === s.id;
           return `
-        <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}">
-          <div class="glas-stop-num">${idx + 1}</div>
+        <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}${isNext ? " next" : ""}">
+          <div class="glas-stop-num">${isDone ? "✓" : (idx + 1)}</div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
               <div style="min-width:0;">
+                ${isNext ? `<span class="glas-next-tag">Als Nächstes</span>` : ""}
                 ${s.objekt ? `<p style="margin:0; font-weight:600; font-size:13.5px;">${escapeHtml(s.objekt)}${qm ? ` <span style="color:var(--text-secondary); font-weight:500;">· ${qm} qm</span>` : ""}</p>` : ""}
                 <p class="muted" style="margin:1px 0 0; font-size:12.5px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
               </div>
@@ -2322,7 +2353,21 @@ function renderTourDetailView() {
     <button class="btn btn-sm" style="margin:16px 0;" onclick="closeGlasTourDetail()">&larr; Zurück zu allen Touren</button>
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
-      <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt${ngDetail ? ` · ${ngDetail} nicht geschafft` : ""} · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
+      <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
+      ${totalStops ? `
+      <div class="glas-ring-hero">
+        <div class="glas-ring">
+          <svg width="78" height="78" viewBox="0 0 92 92">
+            <circle cx="46" cy="46" r="40" fill="none" stroke="var(--prog-track)" stroke-width="9"></circle>
+            <circle class="glas-ring-fill" cx="46" cy="46" r="40" fill="none" stroke="${done === totalStops ? "#2e9e4f" : "var(--blue)"}" stroke-width="9" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2" data-pct="${pctStops}"></circle>
+          </svg>
+          <div class="glas-ring-txt"><b>${done}/${totalStops}</b><span>erledigt</span></div>
+        </div>
+        <div class="glas-ring-info">
+          <p class="grh-t">${offenGesamt > 0 ? `Noch ${offenGesamt} Objekt${offenGesamt === 1 ? "" : "e"}` : (ngDetail ? "Durch – teils nicht geschafft" : "Alles erledigt 🎉")}</p>
+          <p class="grh-m">${glasTourAllDone(t) ? `<span class="gtc-pill p-ok">Fertig</span>` : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`}${ngDetail ? ` <span class="muted" style="font-size:12px;">· ${ngDetail} nicht geschafft</span>` : ""}</p>
+        </div>
+      </div>` : ""}
       ${t.notiz ? `<div class="glas-notiz-box" style="margin-top:10px; white-space:pre-line;">📌 <b>Tour-Notiz (für die MA):</b> ${escapeHtml(t.notiz)}</div>` : ""}
       ${!t.archiviert_am ? `
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
