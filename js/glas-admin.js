@@ -552,16 +552,21 @@ function renderGlasAdmin() {
   // Kalender-App: keine Glas-Reiterleiste (Touren/Kunden gehören dort nicht hin) - auf
   // Unterseiten wie den Einstellungen stattdessen ein klarer Zurück-zum-Kalender-Balken.
   // Auf dem Kalender selbst wird diese Leiste per CSS (glas-cal-pur) ausgeblendet.
+  // Reiterleiste. Auf dem Handy sitzt sie fest am UNTEREN Rand (Bottom-Nav, Icon über
+  // Label); auf dem Desktop bleibt sie oben (per CSS). Icon + Beschriftung getrennt,
+  // damit sie sich unten sauber stapeln lassen.
+  const tb = (active, ic, lb, onclick) =>
+    `<button class="tab-btn ${active ? "active" : ""}" onclick="${onclick}"><span class="tb-ic">${ic}</span><span class="tb-lb">${lb}</span></button>`;
   const glasNav = glasCalApp
     ? `<div class="tabs"><button class="tab-btn active" style="justify-content:flex-start; gap:6px;" onclick="goGlasTab('kalender')">‹ Zurück zum Kalender</button></div>`
-    : `<div class="tabs">
-      <button class="tab-btn ${isHome ? "active" : ""}" onclick="goGlasHome()">🏠 Start</button>
-      <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
-      <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
-      <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
-      <button class="tab-btn ${tab === "scheine" ? "active" : ""}" onclick="goGlasTab('scheine')">📄 Scheine</button>
-      <button class="tab-btn ${["faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
-    </div>
+    : `<div class="glas-bottomnav"><div class="tabs">
+      ${tb(isHome, "🏠", "Start", "goGlasHome()")}
+      ${tb(tab === "touren", "🚐", "Touren", "goGlasTab('touren')")}
+      ${tb(tab === "kunden", "👥", "Kunden", "goGlasTab('kunden')")}
+      ${tb(tab === "kalender", "📅", "Kalender", "goGlasTab('kalender')")}
+      ${tb(tab === "scheine", "📄", "Scheine", "goGlasTab('scheine')")}
+      ${tb(["faellig", "einstellungen"].includes(tab) || glasMenuOpen, "☰", "Mehr", "glasToggleMenu()")}
+    </div></div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
   view.innerHTML = `
     ${glasNav}
@@ -4729,8 +4734,9 @@ function renderKalenderTagPanel(iso) {
   }).join("");
 
   return `
-    <div class="modal-overlay" onclick="if(event.target===this){glasKalenderSelectedDay=null; renderGlasAdmin();}">
-      <div class="modal-box glas-day-modal-box glas-screen-in">
+    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasKalenderSelectedDay=null; renderGlasAdmin();}">
+      <div class="glas-day-sheet">
+        <div class="glas-sheet-grip"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <p style="margin:0; font-weight:700; font-size:16px;">${wt}, ${formatGlasDate(iso)}</p>
           <div style="display:flex; gap:6px; flex-shrink:0;">

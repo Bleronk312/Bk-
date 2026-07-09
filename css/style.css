@@ -390,6 +390,61 @@ label {
   .glas-cal-chip { font-size: 11px; padding: 2px 6px; letter-spacing: 0; }
 }
 
+/* ============ Untere Reiterleiste (Bottom-Nav) + Tages-Sheet ============ */
+/* Handy (Standard): Reiter fest am unteren Rand, Icon über Label. */
+.glas-bottomnav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -4px 20px rgba(20, 30, 50, 0.06);
+}
+.glas-bottomnav .tabs {
+  margin: 0; border-bottom: none; gap: 0; overflow: visible;
+  padding: 3px 2px; touch-action: auto;
+}
+.glas-bottomnav .tab-btn {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 2px; margin: 0; border-bottom: none; font-weight: 600;
+}
+.glas-bottomnav .tab-btn .tb-ic { font-size: 19px; line-height: 1; transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.glas-bottomnav .tab-btn .tb-lb { font-size: 10px; line-height: 1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glas-bottomnav .tab-btn.active { color: var(--blue); border-bottom: none; }
+.glas-bottomnav .tab-btn.active .tb-ic { transform: translateY(-2px) scale(1.12); }
+body.glas-cal-pur .glas-bottomnav { display: none; }
+
+@media (max-width: 759px) {
+  /* Platz unten, damit die fixe Leiste nichts verdeckt */
+  body:not(.glas-cal-pur) .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 70px) !important; }
+  body:not(.glas-cal-pur) .glas-fab { bottom: calc(env(safe-area-inset-bottom, 0px) + 82px); }
+  /* "Mehr"-Menü öffnet sich ÜBER der unteren Leiste statt darunter */
+  .glas-menu-dd { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 60px); z-index: 51; margin: 0; }
+}
+
+/* Desktop: Reiter wieder oben wie gewohnt (Icon neben Label) */
+@media (min-width: 760px) {
+  .glas-bottomnav { position: static; background: transparent; border-top: none; box-shadow: none; padding-bottom: 0; }
+  .glas-bottomnav .tabs { border-bottom: 1px solid var(--border); margin-bottom: 18px; gap: 4px; padding: 0; }
+  .glas-bottomnav .tab-btn { flex: 0 0 auto; flex-direction: row; gap: 6px; padding: 8px 14px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .glas-bottomnav .tab-btn .tb-lb { font-size: 14px; }
+  .glas-bottomnav .tab-btn .tb-ic { font-size: 14px; }
+  .glas-bottomnav .tab-btn.active { border-bottom-color: var(--blue); }
+}
+
+/* Tages-Detail als Sheet, das von unten hereinfährt (statt zentriertem Popup) */
+.modal-overlay.glas-day-sheet-ov { align-items: flex-end; justify-content: center; padding: 0; }
+.glas-day-sheet {
+  background: var(--card); width: 100%; max-width: 520px;
+  border-radius: 20px 20px 0 0;
+  padding: 8px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  max-height: 84vh; overflow-y: auto;
+  box-shadow: 0 -10px 40px rgba(20, 30, 50, 0.22);
+  animation: glasSheetUp 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes glasSheetUp { from { transform: translateY(100%); } to { transform: none; } }
+.glas-sheet-grip { width: 38px; height: 5px; border-radius: 3px; background: var(--border); margin: 4px auto 12px; }
+@media (prefers-reduced-motion: reduce) { .glas-day-sheet { animation: none; } }
+
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
 .glas-welcome {
   text-align: center;
