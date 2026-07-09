@@ -1997,14 +1997,27 @@ function renderTourenTab() {
   return renderTourenListView();
 }
 
+// Eine Tour ist ABGESCHLOSSEN, sobald kein Stopp mehr "offen" ist - jeder Stopp ist
+// also entweder unterschrieben ("erledigt") oder bewusst als "nicht geschafft" markiert.
+// So bleibt eine Tour, bei der 2 von 7 nicht geschafft wurden, nicht ewig als offen
+// hängen, sondern gilt als durch (wandert ins Erledigt, verschwindet am Folgetag bei den MA).
 function glasTourAllDone(t) {
   const stops = t.glas_stopps || [];
-  return stops.length > 0 && stops.every((s) => s.status === "erledigt");
+  return stops.length > 0 && stops.every((s) => s.status === "erledigt" || s.status === "nicht_geschafft");
+}
+// Nur die wirklich unterschriebenen Stopps (für "X erledigt"-Zähler)
+function glasTourZaehler(t) {
+  const stops = t.glas_stopps || [];
+  return {
+    gesamt: stops.length,
+    erledigt: stops.filter((s) => s.status === "erledigt").length,
+    nichtGeschafft: stops.filter((s) => s.status === "nicht_geschafft").length,
+    offen: stops.filter((s) => s.status === "offen").length,
+  };
 }
 
 function renderTourenCard(t) {
-  const stops = t.glas_stopps || [];
-  const done = stops.filter((s) => s.status === "erledigt").length;
+  const z = glasTourZaehler(t);
   const allDone = glasTourAllDone(t);
   const auswahl = glasAuswahl.modus === "touren";
   return `
@@ -2013,7 +2026,7 @@ function renderTourenCard(t) {
         ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>` : ""}
         <div style="flex:1;">
           <p style="margin:0 0 4px; font-weight:600;">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.frei ? ` <span class="badge badge-open">Einzelschein</span>` : ""}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary);">🙈 nicht bei MA</span>` : ""}</p>
-          <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${stops.length} Stopp(s) · ${done}/${stops.length} erledigt</p>
+          <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${z.gesamt} Stopp(s) · ${z.erledigt}/${z.gesamt} erledigt${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}</p>
         </div>
         <span style="font-size:18px; color:var(--text-secondary);">›</span>
       </div>
@@ -2110,6 +2123,7 @@ function renderTourDetailView() {
   if (!t) return `<p class="muted">Tour nicht gefunden.</p>`;
 
   const done = glasTourDetailStops.filter((s) => s.status === "erledigt").length;
+  const ngDetail = glasTourDetailStops.filter((s) => s.status === "nicht_geschafft").length;
   const rows = glasTourDetailStops.length
     ? glasTourDetailStops
         .map((s, idx) => {
@@ -2173,7 +2187,7 @@ function renderTourDetailView() {
     <button class="btn btn-sm" style="margin:16px 0;" onclick="closeGlasTourDetail()">&larr; Zurück zu allen Touren</button>
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : "Ohne Namen"}</p>
-      <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
+      <p class="muted" style="margin:0;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${glasTourDetailStops.length} erledigt${ngDetail ? ` · ${ngDetail} nicht geschafft` : ""} · ${t.template === "sub" ? "Dietrich" : "GEKO"}</p>
       ${t.notiz ? `<div class="glas-notiz-box" style="margin-top:10px; white-space:pre-line;">📌 <b>Tour-Notiz (für die MA):</b> ${escapeHtml(t.notiz)}</div>` : ""}
       ${!t.archiviert_am ? `
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
