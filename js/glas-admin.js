@@ -715,16 +715,16 @@ function renderGlasHome() {
     const stops = t.glas_stopps || [];
     const done = stops.filter((s) => s.status === "erledigt").length;
     const total = stops.length;
-    const pct = total ? Math.round((done / total) * 100) : 0;
     const allDone = glasTourAllDone(t);
     const farbe = glasTourKalenderFarbe(t);
     const pill = allDone
       ? `<span class="gtc-pill p-ok">Fertig</span>`
       : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`;
+    const leading = total ? glasMiniRing(done, total) : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">🚐</div>`;
     return `
       <div class="glas-tour-card" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
         <div class="gtc-row">
-          <div class="gtc-ic" style="background:${farbe}22; color:${farbe};">🚐</div>
+          ${leading}
           <div class="gtc-grow">
             <p class="gtc-name">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
             <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}</p>
@@ -732,7 +732,6 @@ function renderGlasHome() {
           ${pill}
         </div>
         ${t.notiz ? `<div class="gtc-notiz">📝 ${escapeHtml(t.notiz)}</div>` : ""}
-        ${total ? `<div class="glas-prog"><div class="glas-prog-bar"><div class="glas-prog-fill${allDone ? " done" : ""}" data-w="${pct}"></div></div><div class="glas-prog-lab"><span>${done} von ${total} erledigt</span><span>${pct}%</span></div></div>` : ""}
       </div>`;
   };
 
@@ -788,6 +787,20 @@ function renderGlasHome() {
         </div>
         ${glasHomeOffen.naechste ? naechsteTouren.map(tourCard).join("") : ""}
       </div>` : ""}
+    </div>`;
+}
+
+// Kleiner Fortschritts-Ring für Touren-Karten: zeigt X/Y erledigt (füllt sich per
+// glasAnimateProgress auf). Nutzt viewBox 92 (r=40, Umfang 251.2) wie der große Ring.
+function glasMiniRing(done, total) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const col = (total > 0 && done === total) ? "#2e9e4f" : "var(--blue)";
+  return `<div class="glas-mini-ring">
+      <svg width="46" height="46" viewBox="0 0 92 92">
+        <circle cx="46" cy="46" r="40" fill="none" stroke="var(--prog-track)" stroke-width="11"></circle>
+        <circle class="glas-ring-fill" cx="46" cy="46" r="40" fill="none" stroke="${col}" stroke-width="11" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2" data-pct="${pct}"></circle>
+      </svg>
+      <span class="glas-mini-ring-txt">${done}/${total}</span>
     </div>`;
 }
 
@@ -2180,17 +2193,18 @@ function renderTourenCard(t) {
   const auswahl = glasAuswahl.modus === "touren";
   const total = z.gesamt;
   const done = z.erledigt;
-  const pct = total ? Math.round((done / total) * 100) : 0;
   const farbe = glasTourKalenderFarbe(t);
   const pill = allDone
     ? `<span class="gtc-pill p-ok">Fertig</span>`
     : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`;
+  const leading = auswahl
+    ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>`
+    : total ? glasMiniRing(done, total)
+    : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">${t.frei ? "📄" : "🚐"}</div>`;
   return `
     <div class="glas-tour-card" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
       <div class="gtc-row">
-        ${auswahl
-          ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>`
-          : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">${t.frei ? "📄" : "🚐"}</div>`}
+        ${leading}
         <div class="gtc-grow">
           <p class="gtc-name">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary); font-size:10px;">🙈</span>` : ""}</p>
           <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}${t.frei ? " · Einzelschein" : ""}</p>
@@ -2198,7 +2212,6 @@ function renderTourenCard(t) {
         ${pill}
       </div>
       ${t.notiz ? `<div class="gtc-notiz">📝 ${escapeHtml(t.notiz)}</div>` : ""}
-      ${total ? `<div class="glas-prog"><div class="glas-prog-bar"><div class="glas-prog-fill${allDone ? " done" : ""}" data-w="${pct}"></div></div><div class="glas-prog-lab"><span>${done} von ${total} erledigt</span><span>${pct}%</span></div></div>` : ""}
     </div>`;
 }
 
@@ -4641,7 +4654,9 @@ function renderKalenderTagPanel(iso) {
   const wochentage = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
   const wt = wochentage[new Date(iso + "T00:00:00").getDay()];
 
-  const tourRows = touren.map((t) => {
+  // Das Tages-Panel zeigt NUR die aktuell eingeblendeten Ebenen (🚐/📌/🏖️) - hat man
+  // z.B. Termine ausgeblendet, tauchen sie hier auch nicht auf.
+  const tourRows = (glasKalTourenEinblenden ? touren : []).map((t) => {
     const stops = t.glas_stopps || [];
     const done = stops.filter((s) => s.status === "erledigt").length;
     return `
@@ -4655,7 +4670,7 @@ function renderKalenderTagPanel(iso) {
       </div>`;
   }).join("");
 
-  const terminRows = termine.map((t) => {
+  const terminRows = (glasKalTermineEinblenden ? termine : []).map((t) => {
     const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
     return `
       <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="openGlasTermin('${t.id}')">
@@ -4698,7 +4713,7 @@ function renderKalenderTagPanel(iso) {
           </div>
         </div>
         ${tourRows}${terminRows}${urlaubRows}
-        ${!touren.length && !termine.length && !urlaubeAmTag.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
+        ${!(glasKalTourenEinblenden && touren.length) && !(glasKalTermineEinblenden && termine.length) && !urlaubeAmTag.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
       </div>
     </div>`;
 }
@@ -5155,6 +5170,14 @@ function renderScheineTab() {
     <div class="glas-seg" style="margin-bottom:10px;">
       ${seg("tag", "Tag")}${seg("woche", "Woche")}${seg("monat", "Monat")}
     </div>
+    <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
+      ${glasScheineSelMode
+        ? `<button class="btn btn-sm" onclick="glasScheineSelAllVisible()">Alle</button>
+           <button class="btn btn-primary btn-sm" onclick="glasScheineDownloadSel()"${glasScheineSel.size ? "" : " disabled"}>📄 ${glasScheineSel.size} als PDF</button>
+           <button class="btn btn-sm" style="margin-left:auto;" onclick="glasToggleScheineSelMode()">Fertig</button>`
+        : `<button class="btn btn-sm" onclick="downloadGlasScheineVisible()">📄 Alle als PDF</button>
+           <button class="btn btn-sm" onclick="glasToggleScheineSelMode()">☑️ Auswählen</button>`}
+    </div>
     <div id="scheineListe">${renderScheineListe()}</div>`;
 }
 
@@ -5165,11 +5188,20 @@ function glasScheinZeile(s, showDate = true) {
   const sub = `${escapeHtml(glasScheinKunde(s))}${qm ? ` · ${qm} qm` : ""}`
     + `${showDate ? ` · ${formatGlasDate(glasSignaturDatum(s))}` : ""}`
     + `${manuell ? " · ✔️ markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}${uhr ? ` ${uhr}` : ""}` : ""}`;
+  const titel = `<p class="glas-schein-t">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>`;
+  if (glasScheineSelMode) {
+    const on = glasScheineSel.has(s.id);
+    return `
+      <div class="glas-schein-card" style="cursor:pointer;" onclick="glasScheineSelToggle('${s.id}')">
+        <span class="glas-pick ${on ? "on" : ""}"></span>
+        <div class="glas-schein-grow">${titel}<p class="glas-schein-s">${sub}</p></div>
+      </div>`;
+  }
   return `
       <div class="glas-schein-card">
         <div class="glas-schein-ic${manuell ? " manuell" : ""}">📄</div>
         <div class="glas-schein-grow"${s.objekt_id ? ` style="cursor:pointer;" onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
-          <p class="glas-schein-t">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          ${titel}
           <p class="glas-schein-s">${sub}</p>
         </div>
         <button class="glas-schein-dl" title="PDF herunterladen" onclick="downloadGlasScheinPdf('${s.id}')">⬇</button>
@@ -5192,6 +5224,7 @@ function renderScheineListe() {
     });
     const liste = [...gruppen.values()].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
     liste.forEach((g) => g.items.sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || "")));
+    glasScheineVisibleIds = gefiltert.map((s) => s.id);
     return `
       <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${gefiltert.length} Treffer für „${escapeHtml(glasScheineSearch.trim())}"</p>
       ${liste.length
@@ -5204,6 +5237,7 @@ function renderScheineListe() {
   const items = (glasScheineDaten || [])
     .filter((s) => { const d = glasSignaturDatum(s); return d >= von && d <= bis; })
     .sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || ""));
+  glasScheineVisibleIds = items.map((s) => s.id);
 
   // Innerhalb von Woche/Monat nach Tagen gruppieren (mit Tages-Überschrift). Bei "Tag"
   // reicht der Navigator oben als Datum -> keine zusätzliche Überschrift.
@@ -5224,6 +5258,52 @@ function renderScheineListe() {
     ${items.length
       ? listeHtml
       : `<div class="card"><p class="muted" style="padding:8px 0;">In diesem Zeitraum wurde nichts unterschrieben. Nutze ‹ ›, den Datums-Picker oder die Suche oben.</p></div>`}`;
+}
+
+// Auswahl-Modus für die Scheine-Liste: mehrere ankreuzen und gebündelt als EIN PDF laden.
+let glasScheineSelMode = false;
+let glasScheineSel = new Set();
+let glasScheineVisibleIds = []; // die aktuell in der Liste sichtbaren Schein-IDs
+function glasToggleScheineSelMode() {
+  glasScheineSelMode = !glasScheineSelMode;
+  if (!glasScheineSelMode) glasScheineSel.clear();
+  glasUpdateTabContent();
+}
+function glasScheineSelToggle(id) {
+  if (glasScheineSel.has(id)) glasScheineSel.delete(id); else glasScheineSel.add(id);
+  glasUpdateTabContent();
+}
+function glasScheineSelAllVisible() {
+  const alleDa = glasScheineVisibleIds.every((i) => glasScheineSel.has(i));
+  if (alleDa) glasScheineVisibleIds.forEach((i) => glasScheineSel.delete(i));
+  else glasScheineVisibleIds.forEach((i) => glasScheineSel.add(i));
+  glasUpdateTabContent();
+}
+function glasScheineDownloadSel() { downloadGlasScheineBulk([...glasScheineSel]); }
+function downloadGlasScheineVisible() { downloadGlasScheineBulk(glasScheineVisibleIds); }
+
+// Mehrere Abnahmescheine in EIN PDF (eine Seite pro Schein). Lädt die Unterschriftsbilder
+// der ausgewählten Scheine gezielt nach (sie werden aus Speichergründen nicht mitgeladen).
+async function downloadGlasScheineBulk(ids) {
+  const items = (glasScheineDaten || []).filter((s) => ids.includes(s.id));
+  if (!items.length) { showToast("Keine Scheine ausgewählt"); return; }
+  showToast(`${items.length} Schein${items.length === 1 ? "" : "e"} werden geladen…`);
+  try {
+    const mitBild = items.filter((s) => s.__hatBild).map((s) => s.id);
+    const bilder = {};
+    for (let i = 0; i < mitBild.length; i += 100) {
+      const { data } = await sb.from("glas_stopps").select("id, unterschrift").in("id", mitBild.slice(i, i + 100));
+      (data || []).forEach((r) => { bilder[r.id] = r.unterschrift; });
+    }
+    let doc = null;
+    items.forEach((s) => {
+      const tmpl = s.glas_touren?.template || "geko";
+      doc = generateGlasPdf({ ...s, unterschrift: bilder[s.id] || null }, tmpl, s.glas_touren?.datum, doc);
+    });
+    const clean = (v) => String(v || "").replace(/[^a-z0-9äöüß]+/gi, "_").replace(/^_+|_+$/g, "");
+    doc.save(`Abnahmescheine_${items.length}${glasScheineAnker ? "_" + clean(glasScheineAnker) : ""}.pdf`);
+    if (glasScheineSelMode) { glasScheineSelMode = false; glasScheineSel.clear(); glasUpdateTabContent(); }
+  } catch (e) { showToast("PDF-Erstellung fehlgeschlagen: " + e.message); }
 }
 
 async function downloadGlasScheinPdf(stopId) {
