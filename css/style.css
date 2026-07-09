@@ -369,6 +369,9 @@ label {
   white-space: nowrap;
   overflow: hidden;
 }
+/* Leere Lane-Zeile: hält exakt die Chip-Höhe frei (unsichtbar), damit mehrtägige Balken
+   Tag für Tag auf derselben Linie liegen und lückenlos durchlaufen. */
+.glas-cal-chip-spacer { visibility: hidden; }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
 /* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */

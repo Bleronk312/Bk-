@@ -4588,6 +4588,23 @@ function renderKalenderMonat() {
   // selbst ist NICHTS direkt anklickbar außer dem Tag - erst im Tages-Modal wählt man
   // dann Tour oder Termin aus (verhindert Fehlklicks auf dem Handy).
   const maxChips = 6;
+
+  // Feste "Lane" (Zeile) je Termin über den GESAMTEN Zeitraum: mehrtägige Balken liegen
+  // damit auf jedem Tag in derselben Zeile und laufen lückenlos durch. Ohne das drückt ein
+  // Einzeltermin den Mehrtages-Balken an einem Tag nach unten -> Balken bricht (der Bug).
+  // Greedy-Packing: nach Startdatum sortiert (längere zuerst -> bekommen niedrige Lanes),
+  // jeder Termin in die erste freie Lane, die sich in seinem Zeitraum nicht überschneidet.
+  const laneEnds = []; // laneEnds[l] = Enddatum des letzten Termins in Lane l
+  events
+    .map((e, i) => ({ e, i, s: e.datum, en: e.datum_bis || e.datum }))
+    .sort((a, b) => a.s.localeCompare(b.s) || b.en.localeCompare(a.en) || a.i - b.i)
+    .forEach((it) => {
+      let lane = 0;
+      while (lane < laneEnds.length && laneEnds[lane] >= it.s) lane++;
+      it.e._lane = lane;
+      laneEnds[lane] = it.en;
+    });
+
   const cellsHtml = weeks
     .map((week) => `<div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>` + week.map((iso) => {
       const d = parseInt(iso.slice(8, 10), 10);
@@ -4596,12 +4613,21 @@ function renderKalenderMonat() {
       const inMonth = parseInt(iso.slice(5, 7), 10) - 1 === month;
       const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
 
-      const chips = dayEvents.slice(0, maxChips).map((t) => {
-        const contLeft = t.datum < iso;
-        const contRight = (t.datum_bis || t.datum) > iso;
-        return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
-      }).join("");
-      const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
+      // Termine an ihrer festen Lane platzieren; leere Lanes dazwischen als unsichtbarer
+      // Platzhalter (gleiche Höhe) -> die Balken bleiben Tag für Tag auf einer Linie.
+      const byLane = [];
+      let overflow = 0;
+      dayEvents.forEach((t) => { if (t._lane < maxChips) byLane[t._lane] = t; else overflow++; });
+      const chips = byLane.length
+        ? Array.from({ length: byLane.length }, (_, l) => {
+            const t = byLane[l];
+            if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
+            const contLeft = t.datum < iso;
+            const contRight = (t.datum_bis || t.datum) > iso;
+            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+          }).join("")
+        : "";
+      const more = overflow ? `<div class="glas-cal-more">+${overflow}</div>` : "";
 
       return `
         <div class="glas-cal-cell${isSelected ? " is-selected" : ""}${inMonth ? "" : " out-month"}" onclick="glasKalenderSelectedDay = glasKalenderSelectedDay === '${iso}' ? null : '${iso}'; renderGlasAdmin();">
