@@ -118,13 +118,11 @@ const GLAS_TERMIN_FARBEN = {
   gruen: { bg: "#d9f2dd", fg: "#1e7a34", dot: "#2e9e4f" },
 };
 
-// Farbe einer Tour im Kalender: fertig = grün, in der Zukunft geplant = orange,
-// heute/laufend = blau. Einheitlich für Monatsraster und Tages-Panel.
-const GLAS_TOUR_FARBE = { fertig: "#2e9e4f", geplant: "#e8833a", laufend: "#3b82c4" };
+// Farbe einer Tour im Kalender: eingeplant/offen = orange, fertig = grün.
+// (Kein eigenes "heute"-Blau mehr - das war dem Termin-Türkis zu ähnlich.)
+const GLAS_TOUR_FARBE = { fertig: "#2e9e4f", geplant: "#e8833a" };
 function glasTourKalenderFarbe(t) {
-  if (glasTourAllDone(t)) return GLAS_TOUR_FARBE.fertig;
-  if (t.datum && t.datum > glasTodayIso()) return GLAS_TOUR_FARBE.geplant;
-  return GLAS_TOUR_FARBE.laufend;
+  return glasTourAllDone(t) ? GLAS_TOUR_FARBE.fertig : GLAS_TOUR_FARBE.geplant;
 }
 
 /* ========================================================================
@@ -4388,7 +4386,7 @@ function renderKalenderSuchErgebnisse() {
     </div>`;
   return `<div style="margin-top:6px;">
     ${termine.map((t) => { const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis; return row(`openGlasTermin('${t.id}')`, c.dot, `📌 ${escapeHtml(t.titel)}`, formatGlasDateRange(t.datum, t.datum_bis)); }).join("")}
-    ${touren.map((t) => row(`glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}')`, "#3b82c4", `🚐 ${escapeHtml(t.name || "Tour")}`, formatGlasDateRange(t.datum, t.datum_bis))).join("")}
+    ${touren.map((t) => row(`glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}')`, glasTourKalenderFarbe(t), `🚐 ${escapeHtml(t.name || "Tour")}`, formatGlasDateRange(t.datum, t.datum_bis))).join("")}
     ${objekte.map((o) => row(`goGlasObjekt('${o.id}')`, "#8b9bb0", `🏢 ${escapeHtml(o.name)}`, escapeHtml(o.kunde_name || ""))).join("")}
   </div>`;
 }
@@ -4497,7 +4495,6 @@ function renderKalenderMonat() {
       <div class="glas-cal-grid with-kw${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
       <div class="muted" style="margin:8px 8px 0; font-size:11.5px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center;">
         <span>🚐 Tour:</span>
-        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.laufend}; vertical-align:middle;"></span> heute</span>
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.geplant}; vertical-align:middle;"></span> geplant</span>
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.fertig}; vertical-align:middle;"></span> fertig</span>
         <span style="margin-left:6px;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TERMIN_FARBEN.tuerkis.dot}; vertical-align:middle;"></span> 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
