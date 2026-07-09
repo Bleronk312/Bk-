@@ -366,8 +366,9 @@ label {
   background: var(--blue); color: white !important; font-weight: 700;
   box-shadow: 0 2px 7px rgba(45, 125, 196, 0.45);
 }
-/* Getönte, weiche Chips: EINE Basisfarbe pro Termin (--c), Hintergrund & Text werden
-   per color-mix theme-aware berechnet (funktioniert hell UND dunkel). */
+/* Chips: EINE Basisfarbe pro Termin (--c). Touren & Termine sind kräftig/voll gefärbt
+   mit weißem Text (wie gewohnt) - nur runder & mit 2 Zeilen Platz. Urlaub ist bewusst
+   transparent (siehe .is-urlaub), damit man ihn klar unterscheiden kann. */
 .glas-cal-chip {
   font-size: 9px;
   font-weight: 600;
@@ -376,8 +377,8 @@ label {
   border-radius: 5px;
   padding: 1px 5px;
   margin: 0 2px;
-  background: color-mix(in srgb, var(--c, var(--blue)) 15%, var(--card));
-  color: color-mix(in srgb, var(--c, var(--blue)) 68%, var(--text));
+  background: var(--c, var(--blue));
+  color: #fff;
   /* bis zu 2 Zeilen -> mehr Text sichtbar als vorher, nie weniger */
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -388,7 +389,7 @@ label {
 }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-/* Urlaub bewusst transparenter/kursiv zum Unterscheiden von Touren & Terminen */
+/* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
 .glas-cal-chip.is-urlaub {
   background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
   color: color-mix(in srgb, var(--c, var(--blue)) 80%, var(--text));
