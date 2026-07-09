@@ -1079,7 +1079,9 @@ let glasKundeObjFilter = "alle"; // "alle" | "faellig" | "terminiert" | "erledig
 let glasKundeErlMonat = null;    // { year, month } für den Erledigt-Verlauf
 
 function glasKundeObjKategorie(o) {
-  if (glasObjektStatus(o.id)) return "faellig";
+  const s = glasObjektStatus(o.id);
+  if (s === "ueberfaellig") return "ueberfaellig";
+  if (s === "faellig") return "faellig";
   if (glasGetObjektPositionen(o.id).some(glasIstEingeplant)) return "terminiert";
   return "ok";
 }
@@ -1128,21 +1130,15 @@ function renderKundeDetailPage(id) {
     </div>
     ${glasKundeSubTab === "termine" ? renderKundeTermine(id) : `
       ${(() => {
-        const z = glasKundeStatusZaehler(id);
         const gesamtQm = objekte.reduce((sum, o) => sum + glasObjektZusammenfassung(o.id).totalQm, 0);
-        return objekte.length ? glasStatTiles([
-          { num: objekte.length, label: "Objekte", tone: "accent" },
-          { num: gesamtQm ? glasZahlDe(gesamtQm) : "–", label: "qm gesamt" },
-          { num: z.ueberfaellig, label: "überfällig", tone: z.ueberfaellig ? "crit" : null },
-          { num: z.faellig, label: "fällig", tone: z.faellig ? "warn" : null },
-        ]) : "";
+        return objekte.length ? `<p class="muted" style="margin:-4px 0 10px; font-size:13px;">${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}${gesamtQm ? ` · ${glasZahlDe(gesamtQm)} qm gesamt` : ""}</p>` : "";
       })()}
       ${glasAuswahl.modus === "objekte" ? glasAuswahlLeiste() : ""}
       ${(() => {
         if (!objekte.length && !(glasKundeTermineCache[id] || []).length) return `<div class="card"><p class="muted" style="padding:8px 0;">Noch keine Objekte für diesen Kunden angelegt.</p></div>`;
-        // Fällig + Terminiert + Nichts fällig = Alle (jedes Objekt genau eine Kategorie).
-        // "Erledigt" ist bewusst KEINE Objekt-Kategorie, sondern der Monats-Verlauf.
-        const zaehler = { alle: objekte.length, faellig: 0, terminiert: 0, ok: 0 };
+        // Überfällig + Fällig + Terminiert + Nichts fällig = Alle (jedes Objekt genau eine
+        // Kategorie). "Erledigt" ist bewusst KEINE Objekt-Kategorie, sondern der Monats-Verlauf.
+        const zaehler = { alle: objekte.length, ueberfaellig: 0, faellig: 0, terminiert: 0, ok: 0 };
         objekte.forEach((o) => { const kat = glasKundeObjKategorie(o); if (zaehler[kat] !== undefined) zaehler[kat]++; });
 
         // Erledigt-Verlauf: unterschriebene/markierte Scheine im gewählten Monat
@@ -1156,7 +1152,7 @@ function renderKundeDetailPage(id) {
         const chip = (key, label, count) => `<button class="glas-seg-btn ${glasKundeObjFilter === key ? "on" : ""}" onclick="glasKundeObjFilter='${key}'; renderGlasAdmin();">${label}${count === null ? "" : ` (${count})`}</button>`;
         const chips = `
           <div class="glas-seg" style="margin:0 0 12px; flex-wrap:wrap;">
-            ${chip("alle", "Alle", zaehler.alle)}${chip("faellig", "🔔 Fällig", zaehler.faellig)}${chip("terminiert", "📅 Terminiert", zaehler.terminiert)}${chip("ok", "✅ Nichts fällig", zaehler.ok)}${chip("erledigt", "✓ Erledigt", cache ? imMonat.length : null)}
+            ${chip("alle", "Alle", zaehler.alle)}${zaehler.ueberfaellig ? chip("ueberfaellig", "🔴 Überfällig", zaehler.ueberfaellig) : ""}${chip("faellig", "🟠 Fällig", zaehler.faellig)}${chip("terminiert", "📅 Terminiert", zaehler.terminiert)}${chip("ok", "✅ Nichts fällig", zaehler.ok)}${chip("erledigt", "✓ Erledigt", cache ? imMonat.length : null)}
           </div>`;
 
         if (glasKundeObjFilter === "erledigt") {
