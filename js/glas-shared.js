@@ -221,32 +221,32 @@ function glasFaelligkeitStatus(pos) {
   const faelligkeit = glasBerechneFaelligkeit(pos);
   if (!faelligkeit) return { faelligkeit: null, status: null, tage: null, label: null };
 
-  // Fünf-Zustands-Logik (Monatsgenau bei festen Monaten):
-  //   Kommend      = der Monat VOR dem Fälligkeitsmonat            (monatsDiff +1)
-  //   Fällig       = Fälligkeitsmonat UND der Folgemonat           (monatsDiff 0 oder -1)
+  // Fünf-Zustands-Logik (Monatsgenau bei festen Monaten) - mit Vorlauf zum Planen:
+  //   Kommend      = 2 Monate vor dem Fälligkeitsmonat             (monatsDiff +2)
+  //   Fällig       = ab 1 Monat vorher, Fälligkeitsmonat UND Folgemonat (monatsDiff +1, 0, -1)
   //   Überfällig   = alles danach                                  (monatsDiff <= -2)
-  //   (weiter in der Zukunft = "geplant", noch nicht relevant)     (monatsDiff >= +2)
+  //   (weiter in der Zukunft = "geplant", noch nicht relevant)     (monatsDiff >= +3)
   if (pos.intervall_typ === "feste_monate" && !pos.faelligkeit_override) {
     const [fJahr, fMonat] = faelligkeit.split("-").map(Number);
     const heute = new Date(glasTodayIso() + "T00:00:00");
     const monatsDiff = (fJahr * 12 + fMonat) - (heute.getFullYear() * 12 + heute.getMonth() + 1);
     const status = monatsDiff <= -2 ? "ueberfaellig"
-      : (monatsDiff === 0 || monatsDiff === -1) ? "faellig"
-      : monatsDiff === 1 ? "kommend"
+      : monatsDiff <= 1 ? "faellig"
+      : monatsDiff === 2 ? "kommend"
       : "geplant";
     const label = `${String(fMonat).padStart(2, "0")}.${String(fJahr).slice(-2)}`;
     return { faelligkeit, status, tage: null, label };
   }
 
-  // Rollierende Intervalle analog auf Tagesbasis (~1 Monat Vorlauf/Nachlauf):
-  //   Kommend    = fällig in den nächsten ~31 Tagen
-  //   Fällig     = ab Fälligkeitstag bis ~31 Tage danach
+  // Rollierende Intervalle analog auf Tagesbasis (~1 Monat Vorlauf, ~2 Monate für kommend):
+  //   Kommend    = fällig in ~32-62 Tagen
+  //   Fällig     = ab ~31 Tage vorher bis ~31 Tage danach
   //   Überfällig = mehr als ~31 Tage über der Fälligkeit
   const today = glasTodayIso();
   const tage = Math.round((new Date(faelligkeit) - new Date(today)) / 86400000);
   const status = tage < -31 ? "ueberfaellig"
-    : tage <= 0 ? "faellig"
-    : tage <= 31 ? "kommend"
+    : tage <= 31 ? "faellig"
+    : tage <= 62 ? "kommend"
     : "geplant";
   return { faelligkeit, status, tage, label: formatGlasDate(faelligkeit) };
 }
