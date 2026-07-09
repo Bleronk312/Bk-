@@ -31,6 +31,7 @@ let removeAnhangFlag = false;
 let scheineSearchQuery = "";
 let signFormOpen = false;
 let materialSurveyOpen = false;
+let materialAnsichtOpen = false; // Material-Angaben zuerst ansehen, dann erst bearbeiten
 let photoEditOpen = false;
 let sigPad = null;
 let currentViewScheine = null;
@@ -318,6 +319,7 @@ function renderScheineItem(s) {
         <div class="scheine-actions">
           <button class="btn btn-sm" onclick="openView('${s.id}')">Öffnen</button>
           <button class="btn btn-sm" onclick="openEdit('${s.id}')">Bearbeiten</button>
+          <button class="btn btn-sm" onclick="duplicateSchein('${s.id}')">⧉ Duplizieren</button>
           <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
           <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
           ${signed ? `<button class="btn btn-sm" onclick="archiveScheine('${s.id}')">Archivieren</button>` : ""}
@@ -343,6 +345,7 @@ async function loadKategorienData() {
 async function openView(id) {
   signFormOpen = false;
   materialSurveyOpen = false;
+  materialAnsichtOpen = false;
   photoEditOpen = false;
   vorherFotos = [];
   nachherFotos = [];
@@ -459,8 +462,8 @@ function renderViewScheine(s) {
         <span>📦 Material eintragen (jederzeit möglich)</span>
         <button class="btn btn-sm" onclick="openMaterialSurvey()">Jetzt eintragen</button>
       </div>
-    ` : `
-      <button class="btn btn-sm" onclick="openMaterialSurvey()" style="margin-bottom:14px;">📦 Material-Angaben bearbeiten</button>
+    ` : materialAnsichtOpen ? renderMaterialAnzeige(s) : `
+      <button class="btn btn-sm" onclick="openMaterialAnsicht()" style="margin-bottom:14px;">📦 Material-Angaben ansehen</button>
     `}
     ${signed && (s.vorher_fotos || s.nachher_fotos) ? `
       <div class="scheine-actions" style="margin-bottom:14px;">
@@ -506,9 +509,11 @@ function renderViewScheine(s) {
       ${s.archiviert ? `
         <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
         <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
+        <button class="btn btn-sm" onclick="duplicateSchein('${s.id}')">⧉ Duplizieren</button>
         <button class="btn btn-primary" onclick="restoreScheine('${s.id}')">Wiederherstellen</button>
       ` : `
         <button class="btn btn-primary" onclick="openEdit('${s.id}')">Bearbeiten</button>
+        <button class="btn btn-sm" onclick="duplicateSchein('${s.id}')">⧉ Duplizieren</button>
         <button class="btn btn-sm" onclick="downloadPdf('${s.id}')">PDF</button>
         <button class="btn btn-sm" onclick="sharePdf('${s.id}')">Teilen</button>
         ${signed ? `<button class="btn btn-sm" onclick="archiveScheine('${s.id}')">Archivieren</button>` : ""}
@@ -592,12 +597,34 @@ async function saveSignatureAdmin(id) {
   }
 }
 
+// Einen bestehenden Schein (fertig, archiviert oder unfertig) duplizieren: öffnet direkt
+// das Bearbeiten-Formular mit übernommenem Kunde/Objekt/Leistung, aber frischer ID und
+// OHNE Unterschrift/Fotos/Material - gespeichert wird ein komplett neuer Schein.
+async function duplicateSchein(id) {
+  showToast("Wird dupliziert...");
+  const s = await fetchFullScheine(id);
+  if (!s) { showToast("Schein nicht gefunden"); return; }
+  openEdit(null, {
+    id: genCode(),
+    kunde: s.kunde || "",
+    adresse: s.adresse || "",
+    ansprechpartner: s.ansprechpartner || "",
+    telefon: s.telefon || "",
+    kategorie: s.kategorie || "",
+    leistungen: s.leistungen || "",
+    monat: aktuellerMonatName(), // durchzuführender Monat = jetzt
+    kdnr: s.kdnr || "",
+    interne_notiz: s.interne_notiz || "",
+    anhang: null, anhang_name: null, anhang_type: null,
+  });
+}
+
 // Aktueller Monatsname auf Deutsch, z.B. "Juli" - für den Vorschlag beim neuen Schein.
 function aktuellerMonatName() {
   return ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][new Date().getMonth()];
 }
 
-async function openEdit(id) {
+async function openEdit(id, prefill) {
   pendingAnhang = null;
   removeAnhangFlag = false;
 
@@ -606,6 +633,9 @@ async function openEdit(id) {
     document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
     s = await fetchFullScheine(id);
     if (!s) { switchTab("scheine"); return; }
+  } else if (prefill) {
+    // Duplikat: Kunde/Objekt/Leistung sind schon hinterlegt, der Rest ist frei bearbeitbar
+    s = prefill;
   } else {
     s = {
       id: genCode(), kunde: "", adresse: "", ansprechpartner: "", telefon: "",
@@ -624,7 +654,8 @@ async function openEdit(id) {
   document.getElementById("view").innerHTML = `
     <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
     <div class="card">
-      <h2>${id ? "Schein bearbeiten" : "Neuer Abnahmeschein"}</h2>
+      <h2>${id ? "Schein bearbeiten" : prefill ? "Abnahmeschein duplizieren" : "Neuer Abnahmeschein"}</h2>
+      ${prefill ? `<p class="muted" style="margin:-6px 0 12px;">Kunde &amp; Objektadresse sind übernommen. Alles andere kannst du anpassen – gespeichert wird ein neuer, noch nicht unterschriebener Schein.</p>` : ""}
 
       ${kunden.length ? `
       <div class="field">
@@ -1329,7 +1360,14 @@ async function downloadPhotosPdf(id) {
   if (!s) return;
   showToast("PDF wird erstellt...");
   const doc = await generatePhotosPdf(s);
-  doc.save(`Fotos_${sanitizeFilenamePart(firstLine(s.adresse)) || "Schein"}.pdf`);
+  doc.save(fotosPdfName(s));
+}
+
+// Dateiname der Vorher-/Nachher-Foto-PDF - beginnt (wie der Abnahmeschein) mit "Anhang".
+function fotosPdfName(s) {
+  const kdnr = sanitizeFilenamePart(s.kdnr) || "ohneKdNr";
+  const strasse = sanitizeFilenamePart(firstLine(s.adresse)) || "Adresse";
+  return `Anhang_Fotos_${kdnr}_${strasse}.pdf`;
 }
 
 async function sharePhotosPdf(id) {
@@ -1337,7 +1375,7 @@ async function sharePhotosPdf(id) {
   if (!s) return;
   showToast("PDF wird erstellt...");
   const doc = await generatePhotosPdf(s);
-  const name = `Fotos_${sanitizeFilenamePart(firstLine(s.adresse)) || "Schein"}.pdf`;
+  const name = fotosPdfName(s);
   const blob = doc.output("blob");
   const file = new File([blob], name, { type: "application/pdf" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1432,8 +1470,46 @@ function renderMaterialSurvey(s) {
   `;
 }
 
+// Read-only Anzeige der Material-Angaben. Erst wenn man sie ansieht, erscheint der
+// Bearbeiten-Button (damit man nicht aus Versehen bestehende Angaben überschreibt).
+function renderMaterialAnzeige(s) {
+  const full = isFullMaterialCategory(s.kategorie);
+  const zeile = (label, wert) => `<div style="display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-top:1px solid var(--border); font-size:13.5px;"><span class="muted">${label}</span><span style="font-weight:500; text-align:right;">${wert}</span></div>`;
+  const ja = (v) => v ? "Ja" : "–";
+  let rows = zeile("Stunden vor Ort", s.material_stunden ? `${escapeHtml(String(s.material_stunden))} Std.` : "–");
+  if (full) {
+    rows += zeile("Graffiti Ex Spray", s.material_graffiti_ex_spray || "–");
+    rows += zeile("Graffiti Gel", s.material_graffiti_gel || "–");
+    rows += zeile("Paint Cleaner", s.material_paint_cleaner || "–");
+    rows += zeile("Streichen mit Farbe", ja(s.material_streichen));
+    rows += zeile("Hochdruckreiniger", ja(s.material_hochdruck));
+    rows += zeile("Sandstrahlgerät", ja(s.material_sandstrahl));
+  } else if (s.material_freitext) {
+    rows += zeile("Verwendetes Material", escapeHtml(s.material_freitext));
+  }
+  return `
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <h2 style="margin:0;">📦 Material-Angaben</h2>
+        <button class="btn btn-sm" onclick="closeMaterialAnsicht()">Schließen</button>
+      </div>
+      <div style="margin-top:8px;">${rows}</div>
+      <button class="btn btn-primary btn-sm" style="margin-top:14px;" onclick="openMaterialSurvey()">✏️ Bearbeiten</button>
+    </div>`;
+}
+
+function openMaterialAnsicht() {
+  materialAnsichtOpen = true;
+  renderViewScheine(currentViewScheine);
+}
+function closeMaterialAnsicht() {
+  materialAnsichtOpen = false;
+  renderViewScheine(currentViewScheine);
+}
+
 function openMaterialSurvey() {
   materialSurveyOpen = true;
+  materialAnsichtOpen = false;
   renderViewScheine(currentViewScheine);
 }
 
