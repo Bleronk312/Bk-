@@ -486,6 +486,10 @@ function goGlasHome() {
 
 function glasNavigate(page) {
   glasMenuOpen = false; // offenes ☰-Menü schließt bei jeder Navigation
+  // Beim Öffnen des Kalenders die Ebenen auf Standard: Touren+Termine an, Urlaub aus.
+  if (page.type === "tabs" && page.tab === "kalender" && !(glasPage && glasPage.type === "tabs" && glasPage.tab === "kalender")) {
+    glasResetKalEbenen();
+  }
   glasPage = page;
   glasGlobalSearch = ""; // alte Suche nicht über die Navigation hinweg stehen lassen
   if (page.type === "objekt-form") { renderGlasAdmin(); return; }
@@ -4341,12 +4345,20 @@ function glasIsoWeek(iso) {
   return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
 }
 
-// Versteckte Kalender-Suche (🔍) + Urlaubs-Einblendung (🏖️, bleibt gemerkt)
+// Kalender-Ebenen: Touren (🚐) + Termine (📌) sind beim Öffnen IMMER an, Urlaub (🏖️)
+// beim Öffnen IMMER aus. Die Schalter wirken nur für die aktuelle Kalender-Sitzung und
+// werden bei jedem erneuten Öffnen zurückgesetzt (glasResetKalEbenen).
 let glasKalSearchOpen = false;
 let glasKalSearch = "";
-let glasKalUrlaubEinblenden = (() => { try { return localStorage.getItem("glas_kal_urlaub") !== "0"; } catch (e) { return true; } })();
-// Eigene Büro-Termine (📌) im Kalender ein-/ausblenden - die Glas-Touren (🚐) bleiben immer da.
-let glasKalTermineEinblenden = (() => { try { return localStorage.getItem("glas_kal_termine") !== "0"; } catch (e) { return true; } })();
+let glasKalTourenEinblenden = true;
+let glasKalTermineEinblenden = true;
+let glasKalUrlaubEinblenden = false;
+
+function glasResetKalEbenen() {
+  glasKalTourenEinblenden = true;
+  glasKalTermineEinblenden = true;
+  glasKalUrlaubEinblenden = false;
+}
 
 function glasToggleKalSearch() {
   glasKalSearchOpen = !glasKalSearchOpen;
@@ -4355,17 +4367,9 @@ function glasToggleKalSearch() {
   if (glasKalSearchOpen) setTimeout(() => document.getElementById("kal_search")?.focus(), 60);
 }
 
-function glasToggleKalUrlaub() {
-  glasKalUrlaubEinblenden = !glasKalUrlaubEinblenden;
-  try { localStorage.setItem("glas_kal_urlaub", glasKalUrlaubEinblenden ? "1" : "0"); } catch (e) {}
-  glasUpdateTabContent();
-}
-
-function glasToggleKalTermine() {
-  glasKalTermineEinblenden = !glasKalTermineEinblenden;
-  try { localStorage.setItem("glas_kal_termine", glasKalTermineEinblenden ? "1" : "0"); } catch (e) {}
-  glasUpdateTabContent();
-}
+function glasToggleKalTouren() { glasKalTourenEinblenden = !glasKalTourenEinblenden; glasUpdateTabContent(); }
+function glasToggleKalTermine() { glasKalTermineEinblenden = !glasKalTermineEinblenden; glasUpdateTabContent(); }
+function glasToggleKalUrlaub() { glasKalUrlaubEinblenden = !glasKalUrlaubEinblenden; glasUpdateTabContent(); }
 
 // Sucht Termine, Touren und Objekte - direkt aus dem Kalender heraus
 function renderKalenderSuchErgebnisse() {
@@ -4418,13 +4422,12 @@ function renderKalenderMonat() {
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
-    // 🚐 Glas-Touren (für die Mitarbeiter) - immer sichtbar. Farbe: grün fertig,
-    // orange = in der Zukunft geplant, blau = heute/laufend.
-    ...activeTouren.map((t) => ({
+    // 🚐 Glas-Touren (für die Mitarbeiter). Farbe: orange = geplant, grün = fertig.
+    ...(glasKalTourenEinblenden ? activeTouren.map((t) => ({
       datum: t.datum, datum_bis: t.datum_bis,
       bg: glasTourKalenderFarbe(t), fg: "#fff",
       label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
-    })),
+    })) : []),
     // 📌 Eigene Büro-Termine - über den Schalter ausblendbar
     ...(glasKalTermineEinblenden ? glasTermine.filter((t) => t.datum).flatMap((t) => {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
@@ -4478,6 +4481,7 @@ function renderKalenderMonat() {
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; padding:0 8px;">
         <p style="margin:0; font-weight:700; font-size:17px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${monatsNamen[month]} ${year}</p>
         <button class="btn btn-sm${glasKalSearchOpen ? " btn-primary" : ""}" title="Suchen" onclick="glasToggleKalSearch()">🔍</button>
+        <button class="btn btn-sm${glasKalTourenEinblenden ? " btn-primary" : ""}" title="Touren (🚐) ein-/ausblenden" onclick="glasToggleKalTouren()">🚐</button>
         <button class="btn btn-sm${glasKalTermineEinblenden ? " btn-primary" : ""}" title="Eigene Termine (📌) ein-/ausblenden" onclick="glasToggleKalTermine()">📌</button>
         <button class="btn btn-sm${glasKalUrlaubEinblenden ? " btn-primary" : ""}" title="Urlaube ein-/ausblenden" onclick="glasToggleKalUrlaub()">🏖️</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
@@ -4496,7 +4500,7 @@ function renderKalenderMonat() {
       <div class="muted" style="margin:8px 8px 0; font-size:11.5px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center;">
         <span>🚐 Tour:</span>
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.geplant}; vertical-align:middle;"></span> geplant</span>
-        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.fertig}; vertical-align:middle;"></span> fertig</span>
+        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.fertig}; vertical-align:middle;"></span> fertig${glasKalTourenEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
         <span style="margin-left:6px;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TERMIN_FARBEN.tuerkis.dot}; vertical-align:middle;"></span> 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
       </div>
       <button class="btn btn-sm" style="margin:8px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
