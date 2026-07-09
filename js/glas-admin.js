@@ -559,12 +559,13 @@ function renderGlasAdmin() {
       <button class="tab-btn ${tab === "touren" ? "active" : ""}" onclick="goGlasTab('touren')">🚐 Touren</button>
       <button class="tab-btn ${tab === "kunden" ? "active" : ""}" onclick="goGlasTab('kunden')">👥 Kunden</button>
       <button class="tab-btn ${tab === "kalender" ? "active" : ""}" onclick="goGlasTab('kalender')">📅 Kalender</button>
+      <button class="tab-btn ${tab === "scheine" ? "active" : ""}" onclick="goGlasTab('scheine')">📄 Scheine</button>
       <button class="tab-btn ${["faellig", "einstellungen"].includes(tab) || glasMenuOpen ? "active" : ""}" onclick="glasToggleMenu()">☰ Mehr</button>
     </div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
   view.innerHTML = `
     ${glasNav}
-    ${isHome || glasCalApp || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
+    ${glasCalApp || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
   glasUpdateTabContent();
@@ -587,12 +588,12 @@ function glasUpdateTabContent() {
   const isHome = glasPage.type === "home";
   const tab = isHome ? "" : glasPage.tab;
 
-  content.innerHTML = isHome ? renderGlasHome()
-    : glasGlobalSearch.trim()
-    ? renderGlobalSearchResults()
+  content.innerHTML = glasGlobalSearch.trim() ? renderGlobalSearchResults()
+    : isHome ? renderGlasHome()
     : tab === "kunden" ? renderKundenTab()
     : tab === "faellig" ? renderFaelligTab()
     : tab === "kalender" ? renderKalenderTab()
+    : tab === "scheine" ? renderScheineTab()
     : tab === "einstellungen" ? renderEinstellungenTab()
     : renderTourenTab();
 
@@ -613,6 +614,14 @@ function glasUpdateTabContent() {
       glasOffeneSearch = e.target.value;
       const box = document.getElementById("offeneListeErgebnisse");
       if (box) box.innerHTML = renderOffeneListeErgebnisse();
+    };
+  }
+  if (!glasGlobalSearch.trim() && tab === "scheine") {
+    const searchEl = document.getElementById("scheine_search");
+    if (searchEl) searchEl.oninput = (e) => {
+      glasScheineSearch = e.target.value;
+      const box = document.getElementById("scheineListe");
+      if (box) box.innerHTML = renderScheineListe();
     };
   }
   if (!glasGlobalSearch.trim() && tab === "touren" && glasShowNewTourForm && !glasTourDetailId) {
@@ -953,7 +962,7 @@ async function glasAuswahlLoeschen() {
 // Nach Lösch-Aktionen alles neu laden, was Objekte/Touren anzeigt (Startseite,
 // Offene Liste, Kalender), damit nirgendwo Reste hängen bleiben.
 async function glasReloadNachLoeschen() {
-  glasKundeTermineCache = {};
+  glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
   glasObjektDetailHistory = {};
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasEingeplantePositionen()]);
 }
@@ -1198,35 +1207,45 @@ function renderKundeDetailPage(id) {
 function renderKundeTermine(kundeId) {
   const cached = glasKundeTermineCache[kundeId];
   if (!cached) return `<p class="muted"><span class="spinner"></span> Lade Termine...</p>`;
-  if (!cached.length) return `<p class="muted">Noch keine Termine für diesen Kunden.</p>`;
 
-  const today = glasTodayIso();
-  const withDate = cached.filter((s) => s.glas_touren?.datum);
-  const kommend = withDate.filter((s) => (s.glas_touren.datum_bis || s.glas_touren.datum) >= today && s.status !== "erledigt")
-    .sort((a, b) => a.glas_touren.datum.localeCompare(b.glas_touren.datum));
-  const vergangen = withDate.filter((s) => !kommend.includes(s))
-    .sort((a, b) => b.glas_touren.datum.localeCompare(a.glas_touren.datum));
+  // Anstehend = noch OFFENE Stopps in aktiven Touren (egal welches Datum - solange nicht
+  //   unterschrieben, steht es an, auch wenn das Tour-Datum schon vorbei ist).
+  // Erledigt = NUR wirklich unterschriebene / als unterschrieben markierte Scheine.
+  // "Nicht geschafft" wird bewusst NICHT gezeigt - diese Objekte sind über die
+  //   Fällig-/Überfällig-Logik automatisch zurückgestuft.
+  const anstehend = cached.filter((s) => s.status === "offen")
+    .sort((a, b) => (a.glas_touren?.datum || "9999").localeCompare(b.glas_touren?.datum || "9999"));
+  const erledigt = cached.filter((s) => s.status === "erledigt")
+    .sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || ""));
 
-  const row = (s) => {
-    const isDone = s.status === "erledigt";
-    const manuell = isDone && !s.unterschrift && s.manuell_erledigt_am;
-    const erledigtInfo = !isDone ? ""
-      : manuell ? ` · ✔️ als unterschrieben markiert am ${formatGlasDate(glasDatumVonTimestamp(s.manuell_erledigt_am))}`
-      : ` · ✓ ${escapeHtml(s.name || "")}`;
+  if (!anstehend.length && !erledigt.length) return `<p class="muted">Noch keine Termine für diesen Kunden.</p>`;
+
+  const rowAnstehend = (s) => `
+      <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:#e8833a;"></span>
+        <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
+          <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${s.glas_touren?.datum ? formatGlasDateRange(s.glas_touren.datum, s.glas_touren.datum_bis) : "ohne Datum"}${s.glas_touren?.name ? " · " + escapeHtml(s.glas_touren.name) : ""}</p>
+        </div>
+        <span class="badge" style="background:#fdeede; color:#b26a08;">Anstehend</span>
+      </div>`;
+
+  const rowErledigt = (s) => {
+    const manuell = !s.unterschrift && s.manuell_erledigt_am;
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${isDone ? "#2e9e4f" : "var(--blue)"};"></span>
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:#2e9e4f;"></span>
         <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
-          <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(s.glas_touren.datum, s.glas_touren.datum_bis)}${s.glas_touren.name ? " · " + escapeHtml(s.glas_touren.name) : ""}${erledigtInfo}</p>
+          <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ als unterschrieben markiert" : s.name ? " · ✓ " + escapeHtml(s.name) : ""}${s.glas_touren?.name ? " · " + escapeHtml(s.glas_touren.name) : ""}</p>
         </div>
-        <span class="badge ${isDone ? "badge-signed" : "badge-open"}">${isDone ? "Erledigt" : "Geplant"}</span>
+        <span class="badge badge-signed">Erledigt</span>
       </div>`;
   };
 
   return `
-    ${kommend.length ? `<p class="glas-section-title">Anstehend (${kommend.length})</p><div class="card" style="padding:4px 18px;">${kommend.map(row).join("")}</div>` : ""}
-    ${vergangen.length ? `<p class="glas-section-title">Vergangen (${vergangen.length})</p><div class="card" style="padding:4px 18px;">${vergangen.map(row).join("")}</div>` : ""}
+    ${anstehend.length ? `<p class="glas-section-title">Anstehend (${anstehend.length})</p><div class="card" style="padding:4px 18px;">${anstehend.map(rowAnstehend).join("")}</div>` : ""}
+    ${erledigt.length ? `<p class="glas-section-title">Erledigt (${erledigt.length})</p><div class="card" style="padding:4px 18px;">${erledigt.map(rowErledigt).join("")}</div>` : ""}
   `;
 }
 
@@ -2469,7 +2488,7 @@ async function saveGlasAdminSignature(stopId) {
   if (stop) Object.assign(stop, payload);
 
   showToast("Unterschrieben");
-  glasKundeTermineCache = {};
+  glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
   const signTourName = glasTouren.find((x) => x.id === glasTourDetailId)?.name || "Tour";
   glasPushSend("glas", "push_unterschrift", `✍️ Unterschrift: ${signTourName}`, `${stop?.objekt || "Stopp"} – unterschrieben von ${name}${zusatz ? " · Zusatz: " + zusatz : ""}`, "/glas-admin.html#/tab/touren");
   glasAdminSignOpenStopId = null;
@@ -2538,7 +2557,7 @@ async function deleteGlasSignatur(stopId) {
 
     glasBusy = false; glasProgressText = "";
     showToast(manuell ? "Markierung zurückgenommen – Stopp ist wieder offen" : "Unterschrift gelöscht – Stopp ist wieder offen");
-    glasKundeTermineCache = {};
+    glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
     await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
     renderGlasAdmin();
   } catch (err) {
@@ -2572,7 +2591,7 @@ async function markGlasStopErledigt(stopId) {
   } catch (e) {}
 
   showToast("Als unterschrieben markiert");
-  glasKundeTermineCache = {};
+  glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
   await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
   renderGlasAdmin();
 }
@@ -4833,6 +4852,140 @@ function glasOffeneZuTourHinzufuegen() {
 }
 
 /* ========================================================================
+   Abnahmescheine-Reiter: alle unterschriebenen/abgehakten Scheine, gruppiert nach
+   Tag / Woche / Monat, durchsuchbar. Schnellzugriff zum Wiederfinden + PDF.
+   ======================================================================== */
+
+let glasScheineDaten = null;      // alle erledigten Stopps (ohne Unterschriftsbild) - einmal geladen
+let glasScheineGran = "tag";      // "tag" | "woche" | "monat"
+let glasScheineSearch = "";
+
+let glasScheineLaden = false;
+async function loadGlasScheine() {
+  if (glasScheineLaden) return;
+  glasScheineLaden = true;
+  // Unterschriftsbild NICHT mitladen (spart Speicher bei vielen Scheinen) - wird beim
+  // PDF-Download gezielt für den einen Schein nachgeladen.
+  const { data, error } = await sb
+    .from("glas_stopps")
+    .select("id, objekt_id, objekt, adresse, kdnr, kunde_id, kunde_kdnr, kunde_adresse, positionen, zusatz, name, datum, signed_at, manuell_erledigt_am, unterschrift, tour_id, glas_touren(name, datum, template, archiviert_am, frei)")
+    .eq("status", "erledigt");
+  glasScheineDaten = error ? [] : (data || [])
+    .filter((s) => s.glas_touren && !s.glas_touren.archiviert_am && glasSignaturDatum(s))
+    .map((s) => ({ ...s, __hatBild: !!s.unterschrift, unterschrift: undefined })); // Bild-Flag merken, Bild droppen
+  glasScheineLaden = false;
+  renderGlasAdmin();
+}
+
+const GLAS_WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+const GLAS_MONATE_LANG = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+// Montag (ISO) der Woche, in der 'iso' liegt
+function glasMontagVon(iso) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return glasIsoFromDate(d);
+}
+
+// Perioden-Schlüssel + Kopfzeile für einen Schein-Tag je nach Granularität
+function glasScheinPeriode(iso, gran) {
+  if (gran === "monat") {
+    const [y, m] = iso.split("-");
+    return { key: `${y}-${m}`, label: `${GLAS_MONATE_LANG[Number(m) - 1]} ${y}` };
+  }
+  if (gran === "woche") {
+    const mo = glasMontagVon(iso);
+    const so = glasAddDaysIso(mo, 6);
+    return { key: mo, label: `KW ${glasIsoWeek(iso)} · ${formatGlasDate(mo)} – ${formatGlasDate(so)}` };
+  }
+  // Tag
+  const heute = glasTodayIso();
+  const d = new Date(iso + "T00:00:00");
+  let prefix = "";
+  if (iso === heute) prefix = "Heute · ";
+  else if (iso === glasAddDaysIso(heute, -1)) prefix = "Gestern · ";
+  return { key: iso, label: `${prefix}${GLAS_WOCHENTAGE[d.getDay()]}, ${formatGlasDate(iso)}` };
+}
+
+function glasScheinKunde(s) {
+  if (s.kunde_id) { const k = glasKunden.find((x) => x.id === s.kunde_id); if (k) return k.name; }
+  const o = s.objekt_id ? glasObjekte.find((x) => x.id === s.objekt_id) : null;
+  if (o && o.kunde_name) return o.kunde_name;
+  return (s.kunde_adresse || "").split("\n")[0] || "";
+}
+
+function renderScheineTab() {
+  if (glasScheineDaten === null) {
+    loadGlasScheine();
+    return `<p class="muted" style="margin-top:16px;"><span class="spinner"></span> Abnahmescheine werden geladen...</p>`;
+  }
+  const seg = (val, label) => `<button class="glas-seg-btn ${glasScheineGran === val ? "on" : ""}" onclick="glasScheineGran='${val}'; glasUpdateTabContent();">${label}</button>`;
+  return `
+    <div style="margin:14px 0 10px;">
+      <input type="text" id="scheine_search" placeholder="🔍 Objekt, Kunde, Unterzeichner, Kd.-Nr. ..." value="${escapeHtml(glasScheineSearch)}" autocomplete="off" />
+    </div>
+    <div class="glas-seg" style="margin-bottom:10px;">
+      ${seg("tag", "Nach Tag")}${seg("woche", "Nach Woche")}${seg("monat", "Nach Monat")}
+    </div>
+    <div id="scheineListe">${renderScheineListe()}</div>`;
+}
+
+// Nur die gefilterte, gruppierte Liste (in #scheineListe) - so bleibt beim Tippen im
+// Suchfeld der Fokus erhalten (nur dieser Container wird neu gebaut).
+function renderScheineListe() {
+  const q = glasScheineSearch.trim().toLowerCase();
+  const gefiltert = (glasScheineDaten || []).filter((s) => !q || glasSearchMatch(`${s.objekt || ""} ${glasScheinKunde(s)} ${s.name || ""} ${s.glas_touren?.name || ""} ${s.kdnr || ""} ${s.kunde_kdnr || ""}`, q));
+
+  const gruppen = new Map();
+  gefiltert.forEach((s) => {
+    const per = glasScheinPeriode(glasSignaturDatum(s), glasScheineGran);
+    let g = gruppen.get(per.key);
+    if (!g) { g = { label: per.label, sortKey: per.key, items: [] }; gruppen.set(per.key, g); }
+    g.items.push(s);
+  });
+  const liste = [...gruppen.values()].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  liste.forEach((g) => g.items.sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || "")));
+  const gesamt = gefiltert.length;
+
+  const zeile = (s) => {
+    const manuell = !s.name && s.manuell_erledigt_am;
+    const qm = glasStopQm(s);
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
+        <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
+          <p style="margin:0; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(glasScheinKunde(s))}${qm ? ` · ${qm} qm` : ""} · ${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ markiert" : s.name ? " · ✓ " + escapeHtml(s.name) : ""}</p>
+        </div>
+        <button class="btn btn-sm" style="flex-shrink:0;" onclick="downloadGlasScheinPdf('${s.id}')">📄 PDF</button>
+      </div>`;
+  };
+
+  return `
+    <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${gesamt} unterschriebene${gesamt === 1 ? "r" : ""} Abnahmeschein${gesamt === 1 ? "" : "e"}${q ? " (gefiltert)" : ""}</p>
+    ${liste.length
+      ? liste.map((g) => `
+        <p class="glas-section-title">${escapeHtml(g.label)} <span class="muted" style="font-weight:400;">· ${g.items.length}</span></p>
+        <div class="card" style="padding:4px 18px;">${g.items.map(zeile).join("")}</div>`).join("")
+      : `<div class="card"><p class="muted" style="padding:8px 0;">${(glasScheineDaten || []).length ? "Keine Treffer." : "Noch keine unterschriebenen Abnahmescheine."}</p></div>`}`;
+}
+
+async function downloadGlasScheinPdf(stopId) {
+  const s = (glasScheineDaten || []).find((x) => x.id === stopId);
+  if (!s) return;
+  let unterschrift = null;
+  if (s.__hatBild) {
+    const { data } = await sb.from("glas_stopps").select("unterschrift").eq("id", stopId).maybeSingle();
+    unterschrift = data?.unterschrift || null;
+  }
+  const tmpl = s.glas_touren?.template || "geko";
+  const full = { ...s, unterschrift };
+  try {
+    const doc = generateGlasPdf(full, tmpl, s.glas_touren?.datum);
+    doc.save(glasScheinFilename(full, tmpl));
+  } catch (e) { showToast("PDF-Erstellung fehlgeschlagen: " + e.message); }
+}
+
+/* ========================================================================
    Statistiken: alles aus den unterschriebenen Stopps (Schnappschüsse) berechnet.
    Eigene Seite unter #/statistik, erreichbar über "Weitere Einstellungen".
    ======================================================================== */
@@ -4840,6 +4993,14 @@ function glasOffeneZuTourHinzufuegen() {
 let glasStatistikDaten = null;   // alle erledigten Stopps (einmal geladen, dann gecacht)
 let glasStatZeitraum = "12m";    // "12m" | "jahr" | "vorjahr" | "alles"
 let glasStatMetrik = "qm";       // "qm" | "scheine"
+let glasStatGran = "monat";      // "tag" | "woche" | "monat" - Granularität des Verlaufs
+
+// Perioden-Schlüssel + kompaktes Label für den Statistik-Verlauf je nach Granularität
+function glasStatPeriode(datum, gran) {
+  if (gran === "tag") return { key: datum, label: `${datum.slice(8, 10)}.${datum.slice(5, 7)}.` };
+  if (gran === "woche") { const mo = glasMontagVon(datum); return { key: mo, label: `KW ${glasIsoWeek(datum)}` }; }
+  const ym = datum.slice(0, 7); return { key: ym, label: glasStatMonatLabel(ym) };
+}
 
 function glasOpenStatistik() {
   glasContentAnimPending = true;
@@ -4847,12 +5008,16 @@ function glasOpenStatistik() {
   glasNavigate({ type: "statistik" });
 }
 
+let glasStatistikLaden = false;
 async function loadGlasStatistik() {
+  if (glasStatistikLaden) return;
+  glasStatistikLaden = true;
   const { data, error } = await sb
     .from("glas_stopps")
     .select("objekt_id, objekt, kunde_adresse, positionen, zusatz, datum, status")
     .eq("status", "erledigt");
   glasStatistikDaten = error ? [] : (data || []).filter((x) => x.datum);
+  glasStatistikLaden = false;
   renderGlasAdmin();
 }
 
@@ -4894,6 +5059,7 @@ function glasStatMonatLabel(ym) {
 
 function renderStatistikPage() {
   if (glasStatistikDaten === null) {
+    loadGlasStatistik();
     return `
       <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück</button>
       <p class="muted"><span class="spinner"></span> Statistiken werden berechnet...</p>`;
@@ -4915,23 +5081,28 @@ function renderStatistikPage() {
   const metrikVon = (x) => (glasStatMetrik === "qm" ? glasStatQmVon(x) : 1);
   const metrikText = (wert) => (glasStatMetrik === "qm" ? `${glasStatQmText(wert)} qm` : `${wert} Schein${wert === 1 ? "" : "e"}`);
 
-  // Gruppierungen: Monat, Tag, Objekt
-  const proMonat = new Map();
+  // Gruppierungen: Verlauf (je nach Granularität), Tag (für "bester Tag"), Objekt
+  const proPeriode = new Map(); // key -> { label, wert }
   const proTag = new Map();
   const proObjekt = new Map();
   rows.forEach((x) => {
-    const m = x.datum.slice(0, 7);
-    proMonat.set(m, (proMonat.get(m) || 0) + metrikVon(x));
+    const per = glasStatPeriode(x.datum, glasStatGran);
+    const cur = proPeriode.get(per.key) || { label: per.label, wert: 0 };
+    cur.wert += metrikVon(x);
+    proPeriode.set(per.key, cur);
     proTag.set(x.datum, (proTag.get(x.datum) || 0) + metrikVon(x));
     const key = x.objekt || "?";
     proObjekt.set(key, (proObjekt.get(key) || 0) + metrikVon(x));
   });
 
-  const monate = [...proMonat.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const maxMonat = Math.max(1, ...monate.map(([, w]) => w));
+  const perioden = [...proPeriode.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxPeriode = Math.max(1, ...perioden.map(([, v]) => v.wert));
   const besterTag = [...proTag.entries()].sort((a, b) => b[1] - a[1])[0];
-  const besterMonat = [...monate].sort((a, b) => b[1] - a[1])[0];
+  const besterMonatMap = new Map();
+  rows.forEach((x) => { const m = x.datum.slice(0, 7); besterMonatMap.set(m, (besterMonatMap.get(m) || 0) + metrikVon(x)); });
+  const besterMonat = [...besterMonatMap.entries()].sort((a, b) => b[1] - a[1])[0];
   const topObjekte = [...proObjekt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const granLabel = glasStatGran === "tag" ? "Tag" : glasStatGran === "woche" ? "Woche" : "Monat";
 
   const kpi = (wert, beschriftung) => `
     <div class="card" style="text-align:center; margin-bottom:0;">
@@ -4953,6 +5124,11 @@ function renderStatistikPage() {
         <option value="qm" ${glasStatMetrik === "qm" ? "selected" : ""}>nach qm</option>
         <option value="scheine" ${glasStatMetrik === "scheine" ? "selected" : ""}>nach Scheinen</option>
       </select>
+      <select style="width:auto; font-size:13px;" onchange="glasStatGran = this.value; renderGlasAdmin();">
+        <option value="tag" ${glasStatGran === "tag" ? "selected" : ""}>pro Tag</option>
+        <option value="woche" ${glasStatGran === "woche" ? "selected" : ""}>pro Woche</option>
+        <option value="monat" ${glasStatGran === "monat" ? "selected" : ""}>pro Monat</option>
+      </select>
     </div>
     <p class="muted" style="margin:0 0 10px;">${label} · nur unterschriebene Abnahmen zählen</p>
 
@@ -4964,14 +5140,16 @@ function renderStatistikPage() {
     </div>
 
     <div class="card">
-      <h2>Verlauf pro Monat</h2>
-      ${monate.length ? monate.map(([ym, wert]) => `
+      <h2>Verlauf pro ${granLabel}</h2>
+      <div style="max-height:${glasStatGran === "tag" ? "340px" : "none"}; overflow-y:auto;">
+      ${perioden.length ? perioden.map(([, v]) => `
         <div style="display:flex; align-items:center; gap:10px; padding:3px 0;">
-          <span class="muted" style="flex:0 0 52px; font-size:12px;">${glasStatMonatLabel(ym)}</span>
+          <span class="muted" style="flex:0 0 56px; font-size:12px;">${escapeHtml(v.label)}</span>
           <div style="flex:1; background:var(--bg); border-radius:5px; overflow:hidden;">
-            <div style="width:${Math.max(2, Math.round((wert / maxMonat) * 100))}%; background:var(--blue); border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(wert * 10) / 10)}</div>
+            <div style="width:${Math.max(2, Math.round((v.wert / maxPeriode) * 100))}%; background:var(--blue); border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(v.wert * 10) / 10)}</div>
           </div>
         </div>`).join("") : `<p class="muted">Noch keine unterschriebenen Abnahmen in diesem Zeitraum.</p>`}
+      </div>
     </div>
 
     ${rows.length ? `
