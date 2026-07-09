@@ -565,7 +565,7 @@ function renderGlasAdmin() {
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
   view.innerHTML = `
     ${glasNav}
-    ${glasCalApp || (glasPage.type === "tabs" && glasPage.tab === "kalender") ? "" : renderGlobalSearchBar()}
+    ${glasCalApp || (glasPage.type === "tabs" && (glasPage.tab === "kalender" || glasPage.tab === "scheine")) ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
   glasUpdateTabContent();
