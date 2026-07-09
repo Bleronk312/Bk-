@@ -5158,16 +5158,21 @@ function renderScheineTab() {
     <div id="scheineListe">${renderScheineListe()}</div>`;
 }
 
-function glasScheinZeile(s) {
+function glasScheinZeile(s, showDate = true) {
   const manuell = !s.name && s.manuell_erledigt_am;
   const qm = glasStopQm(s);
+  const uhr = glasUhrzeitVonTimestamp(s.signed_at);
+  const sub = `${escapeHtml(glasScheinKunde(s))}${qm ? ` · ${qm} qm` : ""}`
+    + `${showDate ? ` · ${formatGlasDate(glasSignaturDatum(s))}` : ""}`
+    + `${manuell ? " · ✔️ markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}${uhr ? ` ${uhr}` : ""}` : ""}`;
   return `
-      <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border);">
-        <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
-          <p style="margin:0; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(glasScheinKunde(s))}${qm ? ` · ${qm} qm` : ""} · ${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ markiert" : s.name ? " · ✓ " + escapeHtml(s.name) : ""}</p>
+      <div class="glas-schein-card">
+        <div class="glas-schein-ic${manuell ? " manuell" : ""}">📄</div>
+        <div class="glas-schein-grow"${s.objekt_id ? ` style="cursor:pointer;" onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
+          <p class="glas-schein-t">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
+          <p class="glas-schein-s">${sub}</p>
         </div>
-        <button class="btn btn-sm" style="flex-shrink:0;" onclick="downloadGlasScheinPdf('${s.id}')">📄 PDF</button>
+        <button class="glas-schein-dl" title="PDF herunterladen" onclick="downloadGlasScheinPdf('${s.id}')">⬇</button>
       </div>`;
 }
 
@@ -5190,7 +5195,7 @@ function renderScheineListe() {
     return `
       <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${gefiltert.length} Treffer für „${escapeHtml(glasScheineSearch.trim())}"</p>
       ${liste.length
-        ? liste.map((g) => `<p class="glas-section-title">${escapeHtml(g.label)} <span class="muted" style="font-weight:400;">· ${g.items.length}</span></p><div class="card" style="padding:4px 18px;">${g.items.map(glasScheinZeile).join("")}</div>`).join("")
+        ? liste.map((g) => `<p class="glas-section-title">${escapeHtml(g.label)} <span class="muted" style="font-weight:400;">· ${g.items.length}</span></p>${g.items.map((s) => glasScheinZeile(s, true)).join("")}`).join("")
         : `<div class="card"><p class="muted" style="padding:8px 0;">Keine Treffer.</p></div>`}`;
   }
 
@@ -5199,11 +5204,25 @@ function renderScheineListe() {
   const items = (glasScheineDaten || [])
     .filter((s) => { const d = glasSignaturDatum(s); return d >= von && d <= bis; })
     .sort((a, b) => (glasSignaturDatum(b) || "").localeCompare(glasSignaturDatum(a) || ""));
+
+  // Innerhalb von Woche/Monat nach Tagen gruppieren (mit Tages-Überschrift). Bei "Tag"
+  // reicht der Navigator oben als Datum -> keine zusätzliche Überschrift.
+  const wtLang = (iso) => ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"][new Date(iso + "T00:00:00").getDay()];
+  let listeHtml;
+  if (glasScheineGran === "tag") {
+    listeHtml = items.map((s) => glasScheinZeile(s, false)).join("");
+  } else {
+    const byDay = new Map();
+    items.forEach((s) => { const d = glasSignaturDatum(s); if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(s); });
+    listeHtml = [...byDay.keys()].sort((a, b) => b.localeCompare(a))
+      .map((d) => `<div class="glas-schein-day">${wtLang(d)}, ${formatGlasDate(d)}</div>${byDay.get(d).map((s) => glasScheinZeile(s, false)).join("")}`).join("");
+  }
+
   return `
     ${renderPeriodeNavigator(glasScheineAnker, glasScheineGran, "glasScheineSetAnker")}
     <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${items.length} Abnahmeschein${items.length === 1 ? "" : "e"} in diesem Zeitraum</p>
     ${items.length
-      ? `<div class="card" style="padding:4px 18px;">${items.map(glasScheinZeile).join("")}</div>`
+      ? listeHtml
       : `<div class="card"><p class="muted" style="padding:8px 0;">In diesem Zeitraum wurde nichts unterschrieben. Nutze ‹ ›, den Datums-Picker oder die Suche oben.</p></div>`}`;
 }
 
