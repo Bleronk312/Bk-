@@ -67,14 +67,29 @@ let glasTerminViewing = null; // null | {...} - Read-only "Ansehen"-Ansicht eine
 let glasKundeSubTab = "objekte"; // "objekte" | "termine" auf der Kunden-Seite
 
 // Farbpalette für freie Termine (TimeTree-artig, dezent)
+// Farben für eigene Büro-Termine. Standard ist bewusst TÜRKIS, damit sich Termine schon
+// ohne Zutun von den Glas-Touren (blau/orange/grün) unterscheiden. Kann pro Termin geändert
+// werden - die Tour-Farben (blau/orange/grün) sind hier absichtlich NICHT wählbar, damit
+// die Bedeutung im Kalender eindeutig bleibt.
 const GLAS_TERMIN_FARBEN = {
-  blau: { bg: "#dbe9f8", fg: "#1f5d92", dot: "#2d7dc4" },
-  gruen: { bg: "#d9f2dd", fg: "#1e7a34", dot: "#2e9e4f" },
+  tuerkis: { bg: "#d2eff1", fg: "#0b6870", dot: "#0f9aa6" },
+  lila: { bg: "#eadff5", fg: "#5e3d8f", dot: "#8f6cc9" },
+  pink: { bg: "#fbe0ec", fg: "#9b2d5e", dot: "#d6538a" },
   gelb: { bg: "#fdf3d7", fg: "#8a5a07", dot: "#e8b931" },
   rot: { bg: "#fbe0dc", fg: "#a33224", dot: "#e05c4a" },
-  lila: { bg: "#eadff5", fg: "#5e3d8f", dot: "#8f6cc9" },
   grau: { bg: "#e8eaee", fg: "#4b5563", dot: "#9aa2af" },
+  blau: { bg: "#dbe9f8", fg: "#1f5d92", dot: "#2d7dc4" },
+  gruen: { bg: "#d9f2dd", fg: "#1e7a34", dot: "#2e9e4f" },
 };
+
+// Farbe einer Tour im Kalender: fertig = grün, in der Zukunft geplant = orange,
+// heute/laufend = blau. Einheitlich für Monatsraster und Tages-Panel.
+const GLAS_TOUR_FARBE = { fertig: "#2e9e4f", geplant: "#e8833a", laufend: "#3b82c4" };
+function glasTourKalenderFarbe(t) {
+  if (glasTourAllDone(t)) return GLAS_TOUR_FARBE.fertig;
+  if (t.datum && t.datum > glasTodayIso()) return GLAS_TOUR_FARBE.geplant;
+  return GLAS_TOUR_FARBE.laufend;
+}
 
 /* ========================================================================
    Hilfsfunktionen
@@ -633,7 +648,7 @@ function renderGlasHome() {
     const done = stops.filter((s) => s.status === "erledigt").length;
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourAllDone(t) ? "#2e9e4f" : "var(--blue)"};"></span>
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourKalenderFarbe(t)};"></span>
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600;">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
@@ -673,7 +688,7 @@ function renderGlasHome() {
         </h2>
         ${!glasHomeOffen.heute ? "" : (heuteTouren.length || heuteTermine.length
           ? heuteTouren.map(tourZeile).join("") + heuteTermine.map((t) => {
-              const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
+              const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
               return `<div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
                 <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
                 <div style="flex:1;"><p style="margin:0; font-weight:600;">${escapeHtml(t.titel)}</p></div>
@@ -3809,7 +3824,7 @@ async function deleteGlasMa(id) {
 function openGlasTermin(id, presetDatum) {
   glasTerminMenuOpen = false;
   if (id === null) {
-    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "blau", erinnerung: "", notiz: "", adresse: "", wiederholung: glasWiederholungToObj(""), anhaenge: [] };
+    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "tuerkis", erinnerung: "", notiz: "", adresse: "", wiederholung: glasWiederholungToObj(""), anhaenge: [] };
     glasTerminViewing = null;
   } else {
     const t = { ...glasTermine.find((x) => x.id === id) };
@@ -4109,7 +4124,7 @@ function glasWiederholungLabel(raw) {
 
 function renderTerminView() {
   const t = glasTerminViewing;
-  const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
+  const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
   const erinnerungLabel = { same_day: "Am selben Tag", "1d": "1 Tag vorher", "2d": "2 Tage vorher", "7d": "1 Woche vorher" }[t.erinnerung] || "Keine";
   const mehrtaegig = t.datum_bis && t.datum_bis !== t.datum;
   return `
@@ -4183,7 +4198,7 @@ async function saveGlasTermin() {
     titel: t.titel.trim(),
     datum: t.datum,
     datum_bis: t.datum_bis || null,
-    farbe: t.farbe || "blau",
+    farbe: t.farbe || "tuerkis",
     erinnerung: t.erinnerung || "",
     notiz: t.notiz || "",
     adresse: (t.adresse || "").trim(),
@@ -4345,7 +4360,7 @@ function renderKalenderSuchErgebnisse() {
       <span style="color:var(--text-secondary);">›</span>
     </div>`;
   return `<div style="margin-top:6px;">
-    ${termine.map((t) => { const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau; return row(`openGlasTermin('${t.id}')`, c.dot, `📌 ${escapeHtml(t.titel)}`, formatGlasDateRange(t.datum, t.datum_bis)); }).join("")}
+    ${termine.map((t) => { const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis; return row(`openGlasTermin('${t.id}')`, c.dot, `📌 ${escapeHtml(t.titel)}`, formatGlasDateRange(t.datum, t.datum_bis)); }).join("")}
     ${touren.map((t) => row(`glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}')`, "#3b82c4", `🚐 ${escapeHtml(t.name || "Tour")}`, formatGlasDateRange(t.datum, t.datum_bis))).join("")}
     ${objekte.map((o) => row(`goGlasObjekt('${o.id}')`, "#8b9bb0", `🏢 ${escapeHtml(o.name)}`, escapeHtml(o.kunde_name || ""))).join("")}
   </div>`;
@@ -4378,18 +4393,16 @@ function renderKalenderMonat() {
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
-    // 🚐 Glas-Touren (für die Mitarbeiter) - immer sichtbar
-    ...activeTouren.map((t) => {
-      const allDone = glasTourAllDone(t);
-      return {
-        datum: t.datum, datum_bis: t.datum_bis,
-        bg: allDone ? "#34a853" : "#3b82c4", fg: "#fff",
-        label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
-      };
-    }),
+    // 🚐 Glas-Touren (für die Mitarbeiter) - immer sichtbar. Farbe: grün fertig,
+    // orange = in der Zukunft geplant, blau = heute/laufend.
+    ...activeTouren.map((t) => ({
+      datum: t.datum, datum_bis: t.datum_bis,
+      bg: glasTourKalenderFarbe(t), fg: "#fff",
+      label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
+    })),
     // 📌 Eigene Büro-Termine - über den Schalter ausblendbar
     ...(glasKalTermineEinblenden ? glasTermine.filter((t) => t.datum).flatMap((t) => {
-      const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
+      const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
       // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
       return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
         datum: occ.datum, datum_bis: occ.datum_bis,
@@ -4455,7 +4468,13 @@ function renderKalenderMonat() {
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
       <div class="glas-cal-grid with-kw${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
-      <p class="muted" style="margin:8px 8px 0; font-size:11.5px;">🚐 Glasreinigung (Mitarbeiter) · 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</p>
+      <div class="muted" style="margin:8px 8px 0; font-size:11.5px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center;">
+        <span>🚐 Tour:</span>
+        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.laufend}; vertical-align:middle;"></span> heute</span>
+        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.geplant}; vertical-align:middle;"></span> geplant</span>
+        <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.fertig}; vertical-align:middle;"></span> fertig</span>
+        <span style="margin-left:6px;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TERMIN_FARBEN.tuerkis.dot}; vertical-align:middle;"></span> 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
+      </div>
       <button class="btn btn-sm" style="margin:8px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
@@ -4477,7 +4496,7 @@ function renderKalenderTagPanel(iso) {
     const done = stops.filter((s) => s.status === "erledigt").length;
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourAllDone(t) ? "#2e9e4f" : "var(--blue)"};"></span>
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourKalenderFarbe(t)};"></span>
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600;">🚐 ${t.name ? escapeHtml(t.name) : (t.frei ? "Blanko" : "Tour")}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
@@ -4487,7 +4506,7 @@ function renderKalenderTagPanel(iso) {
   }).join("");
 
   const terminRows = termine.map((t) => {
-    const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.blau;
+    const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
     return `
       <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="openGlasTermin('${t.id}')">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
