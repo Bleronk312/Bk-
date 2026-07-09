@@ -415,7 +415,7 @@ function glasGetObjektPositionen(objektId) {
   const o = glasObjekte.find((x) => x.id === objektId);
   if (!o) return [];
   return glasParsePositionen(o).map((p, i) => ({
-    id: null, objekt_id: objektId, nr: p.nr, art: p.art, qm: p.qm,
+    id: null, objekt_id: objektId, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "",
     intervall_typ: "", intervall_wochen: null, feste_monate: "", letzte_reinigung: null,
     faelligkeit_override: null, reihenfolge: i, _legacy: true,
   }));
@@ -1369,7 +1369,7 @@ function editGlasObjekt(id, opts) {
     const o = glasObjekte.find((x) => x.id === id);
     glasObjektEditing = {
       ...o,
-      positionen: glasGetObjektPositionen(id).map((p) => ({ ...p, template: p.template || "geko", custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art) })),
+      positionen: glasGetObjektPositionen(id).map((p) => ({ ...p, template: p.template || "geko", pos_text: p.pos_text || "", custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art) })),
     };
   }
   glasObjektFormReturn = opts.returnTo || (glasObjektEditing.kunde_id ? { type: "kunde", id: glasObjektEditing.kunde_id } : { type: "tabs", tab: "kunden" });
@@ -1378,7 +1378,7 @@ function editGlasObjekt(id, opts) {
 
 function glasLeerePosition() {
   return {
-    id: null, nr: "", art: "", qm: "", template: "geko",
+    id: null, nr: "", art: "", qm: "", template: "geko", pos_text: "",
     intervall_typ: "", intervall_wochen: null, feste_monate: "", letzte_reinigung: null, faelligkeit_override: null,
     custom: false,
   };
@@ -1526,6 +1526,10 @@ function renderPositionenRows(positionen) {
             <input type="text" id="pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
           </div>
         </div>` : (pos.art && pos.nr ? `<p class="muted" style="margin:-2px 0 8px; font-size:11.5px;">Pos.-Nr. ${escapeHtml(pos.nr)}</p>` : "")}
+        <div class="field" style="margin-bottom:8px;">
+          <label class="muted">Positionstext (optional)</label>
+          <textarea id="pos_text_${i}" rows="2" placeholder="Zusätzlicher Text zu dieser Position – erscheint im PDF direkt unter Pos. ${escapeHtml(pos.nr || "…")}">${escapeHtml(pos.pos_text || "")}</textarea>
+        </div>
         <div class="row" style="align-items:flex-end;">
           <div class="field" style="flex:1.3; margin-bottom:0;">
             <label class="muted">Intervall</label>
@@ -1594,6 +1598,7 @@ function syncPositionenFromDom() {
   glasObjektEditing.positionen = glasObjektEditing.positionen.map((pos, i) => ({
     ...pos,
     template: document.getElementById(`pos_firma_${i}`)?.value ?? pos.template,
+    pos_text: document.getElementById(`pos_text_${i}`) ? document.getElementById(`pos_text_${i}`).value : pos.pos_text,
     nr: pos.custom ? (document.getElementById(`pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
     art: pos.custom ? (document.getElementById(`pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
     qm: document.getElementById(`pos_qm_${i}`)?.value.trim() ?? pos.qm,
@@ -1714,6 +1719,7 @@ async function saveGlasObjekt() {
     id: p.id || genCode(),
     objekt_id: objektId,
     template: p.template || "geko",
+    pos_text: p.pos_text || "",
     nr: p.nr || "",
     art: p.art || "",
     qm: p.qm || "",
@@ -1923,7 +1929,7 @@ function downloadBlankGlasSchein(objektId) {
   const o = glasObjekte.find((x) => x.id === objektId);
   if (!o) return;
   const template = document.getElementById(`objekt_schein_template_${objektId}`)?.value || "geko";
-  const positionen = glasGetObjektPositionen(objektId).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm }));
+  const positionen = glasGetObjektPositionen(objektId).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" }));
   const s = {
     kunde_adresse: o.kunde_adresse,
     objekt: o.name,
@@ -2344,7 +2350,7 @@ function renderStopPositionenVorschau(s) {
       <span class="glas-stop-pos-nr">${escapeHtml(p.nr || "–")}</span>
       <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
       ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
-    </div>`).join("")}</div>`;
+    </div>${p.pos_text && p.pos_text.trim() ? `<div class="muted" style="margin:-2px 0 4px 30px; font-size:12px; white-space:pre-line;">${escapeHtml(p.pos_text.trim())}</div>` : ""}`).join("")}</div>`;
 }
 
 function renderTourDetailView() {
@@ -3265,7 +3271,7 @@ async function createGlasTour() {
         telefon: o.telefon || "",
         hinweise: o.hinweise || "",
         notiz: (() => { const n = glasTourNotizen.get(o.id); return n && n.use ? (n.text || "").trim() : ""; })(),
-        positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm })), ...glasCleanExtras(o.id)]),
+        positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" })), ...glasCleanExtras(o.id)]),
         lat: o.lat,
         lng: o.lng,
         status: "offen",
@@ -5010,7 +5016,7 @@ async function glasVerschiebeSchonGereinigt() {
   const jetzt = new Date().toISOString();
   const positionen = glasGetObjektPositionen(objektId)
     .filter((p) => positionIds.includes(p.id) || positionIds.includes(p.nr))
-    .map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }));
+    .map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" }));
 
   glasBusy = true; renderGlasAdmin();
   try {

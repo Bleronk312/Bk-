@@ -191,6 +191,16 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
       if (!isNaN(num)) gesamtQm += num;
     }
     by += L.bulletLineGap;
+    // Freier Positionstext direkt unter der Position (der Position zugeordnet), etwas
+    // kleiner. Max. 6 Zeilen, damit das Layout nicht in Unterschrift/Hinweis rutscht.
+    const posText = (pos.pos_text || "").trim();
+    if (posText) {
+      doc.setFontSize(9.5);
+      const wrapped = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize(posText, 108) : [posText];
+      wrapped.slice(0, 6).forEach((ln) => { doc.text(ln, descX, by); by += L.bulletLineGap - 0.7; });
+      doc.setFontSize(10.5);
+      by += 1;
+    }
   });
 
   // Zusatzleistungen, die der Mitarbeiter vor Ort eingetragen hat (z.B. Extra-Stunden)

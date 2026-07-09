@@ -4,3 +4,6 @@
 -- ausgeführt werden. Bestehende Einträge gelten als 'geko'.
 alter table glas_positionen add column if not exists template text default 'geko';
 alter table glas_objekt_positionen add column if not exists template text default 'geko';
+
+-- Freier Zusatztext pro Objekt-Position (erscheint im PDF direkt unter der Position).
+alter table glas_objekt_positionen add column if not exists pos_text text default '';
