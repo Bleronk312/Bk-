@@ -869,8 +869,9 @@ function renderKundenTab() {
           <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${k.id}')` : `goGlasKunde('${k.id}')`}">
             ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(k.id) ? "on" : ""}"></span>` : ""}
             <div style="flex:1; min-width:0;">
-              <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}</p>
-              <p class="muted" style="margin:3px 0 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}${k.kdnr ? ` <span class="muted" style="font-weight:500; font-size:12.5px;">· Kd.-Nr. ${escapeHtml(k.kdnr)}</span>` : ""}</p>
+              ${k.adresse ? `<p class="muted" style="margin:2px 0 0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((k.adresse || "").split("\n").join(", "))}</p>` : ""}
+              <p class="muted" style="margin:4px 0 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                 <span>${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}</span>
                 ${z.ueberfaellig ? `<span class="badge ${glasStatusBadgeClass("ueberfaellig")}">${z.ueberfaellig} überfällig</span>` : ""}
                 ${z.faellig ? `<span class="badge ${glasStatusBadgeClass("faellig")}">${z.faellig} fällig</span>` : ""}
@@ -1756,15 +1757,21 @@ function renderObjektDetailPage(id) {
           ? `<p class="muted">Noch nie unterschrieben.</p>`
           : shown.map((s) => {
               const pos = glasStopPositionen(s);
+              const istManuellGereinigt = s.manuell_erledigt_am && s.glas_touren?.name === GLAS_MANUELL_CLEAN_NAME;
+              const kopf = istManuellGereinigt
+                ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als gereinigt vermerkt`
+                : (!s.unterschrift && s.manuell_erledigt_am)
+                  ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als unterschrieben markiert`
+                  : `${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}`;
               return `
             <div style="padding:10px 0; border-top:1px solid var(--border);">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                <span style="font-size:13.5px; font-weight:600;">${(!s.unterschrift && s.manuell_erledigt_am)
-                  ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als unterschrieben markiert`
-                  : `${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}`}</span>
-                <button class="btn btn-sm" style="padding:4px 8px; flex-shrink:0;" onclick="downloadGlasPdfHistory('${id}','${s.id}')">📄 PDF</button>
+                <span style="font-size:13.5px; font-weight:600;">${kopf}</span>
+                ${istManuellGereinigt
+                  ? `<button class="btn btn-sm" style="padding:4px 8px; flex-shrink:0; color:var(--danger);" onclick="glasUndoManuellGereinigt('${id}','${s.id}')">↩️ rückgängig</button>`
+                  : `<button class="btn btn-sm" style="padding:4px 8px; flex-shrink:0;" onclick="downloadGlasPdfHistory('${id}','${s.id}')">📄 PDF</button>`}
               </div>
-              ${s.glas_touren?.name ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🚐 ${escapeHtml(s.glas_touren.name)}</p>` : ""}
+              ${(s.glas_touren?.name && !istManuellGereinigt) ? `<p class="muted" style="margin:2px 0 0; font-size:12px;">🚐 ${escapeHtml(s.glas_touren.name)}</p>` : ""}
               ${pos.length ? `<div style="margin-top:5px; display:flex; flex-direction:column; gap:2px;">${pos.map((p) => `<span class="muted" style="font-size:12px;">• ${escapeHtml(p.art || "")}${p.qm ? ` (${escapeHtml(String(p.qm))} ${glasPosEinheit(p)})` : ""}</span>`).join("")}</div>` : ""}
               ${s.zusatz ? `<p class="muted" style="margin:4px 0 0; font-size:12px;">➕ ${escapeHtml(s.zusatz)}</p>` : ""}
             </div>`; }).join("") + (signed.length > 5 && !glasObjektDetailShowAllHistory
@@ -4799,18 +4806,100 @@ function glasVerschiebeAufDatum() {
   glasSpeichereVerschiebung(val);
 }
 
-// "Schon gereinigt": letzte Reinigung = heute, manuelles Verschieben wird gelöscht -
-// dadurch berechnet sich die nächste Fälligkeit ganz normal aus dem Intervall.
+// Name der versteckten "Als gereinigt vermerkt"-Blanko-Touren, an denen die manuellen
+// Reinigungs-Vermerke hängen (damit sie im Verlauf/Scheinen auftauchen und umkehrbar sind).
+const GLAS_MANUELL_CLEAN_NAME = "Manuell als gereinigt vermerkt";
+
+// "Schon gereinigt": legt einen echten Verlaufs-Eintrag an (versteckter Blanko-Schein,
+// manuell als gereinigt markiert) UND rückt die Fälligkeit auf den nächsten Termin.
+// So erscheint es im Verlauf des Objekts, in den Scheinen und beim Kunden - und ist
+// über "↩️ rückgängig" jederzeit umkehrbar.
 async function glasVerschiebeSchonGereinigt() {
-  if (!glasVerschiebeTarget) return;
-  const { positionIds } = glasVerschiebeTarget;
+  if (glasBusy || !glasVerschiebeTarget) return;
+  const { objektId, positionIds } = glasVerschiebeTarget;
   if (!positionIds.length) { showToast("Bitte mindestens eine Position anhaken"); return; }
-  const { error } = await sb.from("glas_objekt_positionen").update({ letzte_reinigung: glasTodayIso(), faelligkeit_override: null }).in("id", positionIds);
-  if (error) { showToast("Fehler: " + error.message); return; }
-  showToast("Als gereinigt vermerkt – Fälligkeit springt auf den nächsten Termin");
-  glasVerschiebeTarget = null;
-  await loadGlasObjektPositionen();
-  renderGlasAdmin();
+  const o = glasObjekte.find((x) => x.id === objektId);
+  if (!o) return;
+  const kunde = glasKunden.find((k) => k.id === o.kunde_id);
+  const heute = glasTodayIso();
+  const jetzt = new Date().toISOString();
+  const positionen = glasGetObjektPositionen(objektId)
+    .filter((p) => positionIds.includes(p.id) || positionIds.includes(p.nr))
+    .map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm }));
+
+  glasBusy = true; renderGlasAdmin();
+  try {
+    // 1) Verlaufs-Eintrag als versteckte Blanko-Tour + erledigter Stopp (manuell markiert)
+    const tourId = genCode();
+    const tourFelder = { id: tourId, name: GLAS_MANUELL_CLEAN_NAME, datum: heute, template: o.template === "sub" ? "sub" : "geko", frei: true, ma_versteckt: true };
+    let { error: te } = await sb.from("glas_touren").upsert(tourFelder);
+    if (te && /ma_versteckt/.test(te.message || "")) { const { ma_versteckt, ...ohne } = tourFelder; ({ error: te } = await sb.from("glas_touren").upsert(ohne)); }
+    if (te) throw te;
+
+    const stopFelder = {
+      id: genCode(), tour_id: tourId, reihenfolge: 0, status: "erledigt",
+      objekt_id: objektId, kunde_id: o.kunde_id || "",
+      objekt: o.name, adresse: o.adresse, kdnr: o.kdnr,
+      kunde_kdnr: kunde?.kdnr || "", kunde_adresse: [kunde?.name, kunde?.adresse].filter(Boolean).join("\n"),
+      positionen: JSON.stringify(positionen), datum: heute, signed_at: jetzt, manuell_erledigt_am: jetzt,
+      lat: o.lat, lng: o.lng,
+    };
+    let { error: se } = await sb.from("glas_stopps").insert(stopFelder);
+    if (se && /(kunde_id|manuell_erledigt_am)/.test(se.message || "")) {
+      const { kunde_id, manuell_erledigt_am, ...ohne } = stopFelder;
+      ({ error: se } = await sb.from("glas_stopps").insert(ohne));
+    }
+    if (se) throw se;
+
+    // 2) Fälligkeit weiterrücken (letzte Reinigung = heute, evtl. Verschiebung aufheben)
+    await sb.from("glas_objekt_positionen").update({ letzte_reinigung: heute, faelligkeit_override: null }).in("id", positionIds);
+
+    glasBusy = false; glasVerschiebeTarget = null;
+    glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
+    delete glasObjektDetailHistory[objektId];
+    showToast("Als gereinigt vermerkt – steht im Verlauf, Fälligkeit rückt weiter");
+    await Promise.all([loadGlasObjektPositionen(), loadGlasTouren(), loadGlasEingeplantePositionen()]);
+    renderGlasAdmin();
+  } catch (err) {
+    glasBusy = false; showToast("Fehler: " + err.message); renderGlasAdmin();
+  }
+}
+
+// Setzt "zuletzt gereinigt" der Positionen aus dem übrigen GÜLTIGEN Verlauf neu (nach dem
+// Entfernen eines Eintrags): gültig = nicht archiviert und mit Unterschrift ODER manueller
+// Markierung. Ohne Nachweis -> leer.
+async function glasSetzeLetzteReinigungAusVerlauf(ids, excludeStopId) {
+  const { data } = await sb.from("glas_stopps").select("id, datum, signed_at, positionen, name, manuell_erledigt_am, glas_touren(archiviert_am)").eq("status", "erledigt");
+  const gueltig = (data || []).filter((x) => x.id !== excludeStopId && !(x.glas_touren && x.glas_touren.archiviert_am) && ((x.name || "").trim() !== "" || x.manuell_erledigt_am));
+  for (const pid of ids) {
+    let letzte = null;
+    gueltig.forEach((x) => { try { if (JSON.parse(x.positionen || "[]").some((p) => p && p.id === pid)) { const dtx = glasSignaturDatum(x); if (dtx && (!letzte || dtx > letzte)) letzte = dtx; } } catch (e) {} });
+    await sb.from("glas_objekt_positionen").update({ letzte_reinigung: letzte }).eq("id", pid);
+  }
+}
+
+// "Als gereinigt vermerkt" rückgängig machen: den Blanko-Schein (Stopp + versteckte Tour)
+// löschen und die Fälligkeit aus dem übrigen Verlauf neu berechnen.
+async function glasUndoManuellGereinigt(objektId, stopId) {
+  if (glasBusy) return;
+  if (!confirm("Diesen „als gereinigt\" vermerkten Eintrag rückgängig machen? Er verschwindet aus dem Verlauf und die Fälligkeit wird neu berechnet.")) return;
+  glasBusy = true; renderGlasAdmin();
+  try {
+    const stop = (glasObjektDetailHistory[objektId] || []).find((x) => x.id === stopId);
+    const ids = stop ? glasStopPositionen(stop).map((p) => p.id).filter(Boolean) : [];
+    const tourId = stop?.tour_id;
+    await sb.from("glas_stopps").delete().eq("id", stopId);
+    if (tourId) await sb.from("glas_touren").delete().eq("id", tourId);
+    if (ids.length) await glasSetzeLetzteReinigungAusVerlauf(ids, stopId);
+    glasBusy = false;
+    glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
+    delete glasObjektDetailHistory[objektId];
+    showToast("Rückgängig gemacht");
+    await Promise.all([loadGlasObjektPositionen(), loadGlasTouren(), loadGlasEingeplantePositionen()]);
+    renderGlasAdmin();
+  } catch (err) {
+    glasBusy = false; showToast("Fehler: " + err.message); renderGlasAdmin();
+  }
 }
 
 async function glasSpeichereVerschiebung(neuesDatum) {

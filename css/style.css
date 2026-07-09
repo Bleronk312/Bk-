@@ -251,7 +251,11 @@ label {
 /* Die App baut Formulare (Touren-/Objekt-Planung) bei jedem Tastendruck/Klick komplett neu
    auf - die normale .card-Eintrittsanimation würde dort bei jeder Kleinigkeit erneut abspielen
    und wirkt dann eher störend als schön. Innerhalb der Glasreinigung-Seiten daher abgeschaltet. */
-.glas-static .card { animation: none !important; }
+.glas-static .card,
+.glas-static .glas-welcome-logo,
+.glas-static .glas-welcome-title,
+.glas-static .glas-welcome-sub,
+.glas-static .glas-welcome-btn { animation: none !important; }
 
 .glas-reorder-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); background: var(--card); }
 .glas-reorder-row.dragging { opacity: 0.5; }

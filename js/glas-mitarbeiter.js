@@ -206,8 +206,20 @@ function glasSingleMapLinks(stop) {
   };
 }
 
+let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen Doppel-Animation)
+
 function renderGlasMa() {
   const view = document.getElementById("view");
+
+  // Nur bei echtem Screen-Wechsel animieren. Hintergrund-Refreshes (Touren nachgeladen,
+  // Offline-Sync, Intervall) bauen denselben Screen neu auf - dann NICHT erneut animieren,
+  // sonst flackert/„ruckelt" die Ansicht (Animation lief scheinbar zweimal).
+  let screenKey;
+  if (glasMaScreen === "home") screenKey = "home";
+  else if (glasOpenTourId && glasTouren.find((x) => x.id === glasOpenTourId)) screenKey = "tour:" + glasOpenTourId;
+  else screenKey = "touren";
+  view.classList.toggle("glas-static", screenKey === glasMaRenderedScreen);
+  glasMaRenderedScreen = screenKey;
 
   if (glasMaScreen === "home") {
     const heute = glasTouren.filter((t) => t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum)).length;
