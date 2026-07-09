@@ -120,6 +120,10 @@ const GLAS_TERMIN_FARBEN = {
 
 // Farbe einer Tour im Kalender: eingeplant/offen = orange, fertig = grün.
 // (Kein eigenes "heute"-Blau mehr - das war dem Termin-Türkis zu ähnlich.)
+// Firma einer Position/Tour: 'geko' = GEKO Clean, 'sub' = Dietrich (Namensgebung wie beim
+// Tour-Template). glasFirmaLabel liefert die Anzeige.
+function glasFirmaLabel(tpl) { return tpl === "sub" ? "Dietrich" : "GEKO Clean"; }
+
 const GLAS_TOUR_FARBE = { fertig: "#2e9e4f", geplant: "#e8833a" };
 function glasTourKalenderFarbe(t) {
   return glasTourAllDone(t) ? GLAS_TOUR_FARBE.fertig : GLAS_TOUR_FARBE.geplant;
@@ -396,8 +400,9 @@ function glasParsePositionen(o) {
       if (Array.isArray(arr) && arr.length) return arr;
     } catch (e) {}
   }
-  if (o.position || o.qm) return [{ nr: o.position || "10", art: "Glas- und Rahmenreinigung", qm: o.qm || "" }];
-  return [{ nr: glasPositionen[0]?.nr || "10", art: glasPositionen[0]?.name || "", qm: "" }];
+  if (o.position || o.qm) return [{ nr: o.position || "10", art: "Glas- und Rahmenreinigung", qm: o.qm || "", template: "geko" }];
+  const ersteGeko = glasPositionen.find((p) => (p.template || "geko") === "geko");
+  return [{ nr: ersteGeko?.nr || "10", art: ersteGeko?.name || "", qm: "", template: "geko" }];
 }
 
 // Einheitlicher Zugriff auf die Positionen eines Objekts: bevorzugt die neue Tabelle
@@ -1364,7 +1369,7 @@ function editGlasObjekt(id, opts) {
     const o = glasObjekte.find((x) => x.id === id);
     glasObjektEditing = {
       ...o,
-      positionen: glasGetObjektPositionen(id).map((p) => ({ ...p, custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art) })),
+      positionen: glasGetObjektPositionen(id).map((p) => ({ ...p, template: p.template || "geko", custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art) })),
     };
   }
   glasObjektFormReturn = opts.returnTo || (glasObjektEditing.kunde_id ? { type: "kunde", id: glasObjektEditing.kunde_id } : { type: "tabs", tab: "kunden" });
@@ -1373,7 +1378,7 @@ function editGlasObjekt(id, opts) {
 
 function glasLeerePosition() {
   return {
-    id: null, nr: "", art: "", qm: "",
+    id: null, nr: "", art: "", qm: "", template: "geko",
     intervall_typ: "", intervall_wochen: null, feste_monate: "", letzte_reinigung: null, faelligkeit_override: null,
     custom: false,
   };
@@ -1473,7 +1478,10 @@ const GLAS_CUSTOM_POS = "__custom__";
 // damit man überall entweder eine vorgespeicherte Position wählt oder manuell eine einträgt.
 function glasPositionSelectOptions(pos) {
   const placeholder = !pos.art && !pos.custom ? `<option value="" selected disabled>Position wählen...</option>` : "";
-  const gespeichert = glasPositionen
+  // Im Objekt-Formular ist pos.template gesetzt (geko/sub) -> nur die Positionen dieser
+  // Firma anbieten. Beim Einzelschein (ohne template) werden alle gezeigt.
+  const liste = pos.template ? glasPositionen.filter((p) => (p.template || "geko") === pos.template) : glasPositionen;
+  const gespeichert = liste
     .map((p) => `<option value="${escapeHtml(p.name)}" data-nr="${escapeHtml(p.nr || "")}" ${!pos.custom && p.name === pos.art ? "selected" : ""}>${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.name)}</option>`)
     .join("");
   const custom = `<option value="${GLAS_CUSTOM_POS}" ${pos.custom ? "selected" : ""}>✏️ Eigene Position eintragen</option>`;
@@ -1489,6 +1497,14 @@ function renderPositionenRows(positionen) {
       return `
       <div class="card glas-pos-row" style="padding:14px 40px 14px 14px; margin-bottom:10px; background:var(--bg);">
         ${positionen.length > 1 ? `<button type="button" class="glas-pos-remove" title="Position entfernen" onclick="removePositionRow(${i})">✕</button>` : ""}
+        ${pos.template ? `
+        <div class="field" style="margin-bottom:8px;">
+          <label class="muted">Firma</label>
+          <select id="pos_firma_${i}" onchange="onGlasPositionFirmaChange(${i})">
+            <option value="geko" ${(pos.template || "geko") === "geko" ? "selected" : ""}>GEKO Clean</option>
+            <option value="sub" ${pos.template === "sub" ? "selected" : ""}>Dietrich</option>
+          </select>
+        </div>` : ""}
         <div class="row" style="align-items:flex-end; margin-bottom:8px;">
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Position</label>
@@ -1557,6 +1573,16 @@ function onGlasPositionArtChange(i) {
   renderGlasAdmin();
 }
 
+// Firma der Position umgestellt (GEKO <-> Dietrich): die zuvor gewählte Position gehört zur
+// anderen Firma und wird zurückgesetzt, damit man aus der gefilterten Liste neu wählt.
+function onGlasPositionFirmaChange(i) {
+  syncObjektFormFromDom();
+  const pos = glasObjektEditing.positionen[i];
+  pos.template = document.getElementById(`pos_firma_${i}`).value;
+  if (!pos.custom) { pos.art = ""; pos.nr = ""; }
+  renderGlasAdmin();
+}
+
 function onGlasIntervallTypChange(i) {
   syncObjektFormFromDom();
   glasObjektEditing.positionen[i].intervall_typ = document.getElementById(`pos_ivtyp_${i}`).value;
@@ -1567,6 +1593,7 @@ function syncPositionenFromDom() {
   if (!glasObjektEditing) return;
   glasObjektEditing.positionen = glasObjektEditing.positionen.map((pos, i) => ({
     ...pos,
+    template: document.getElementById(`pos_firma_${i}`)?.value ?? pos.template,
     nr: pos.custom ? (document.getElementById(`pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
     art: pos.custom ? (document.getElementById(`pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
     qm: document.getElementById(`pos_qm_${i}`)?.value.trim() ?? pos.qm,
@@ -1686,6 +1713,7 @@ async function saveGlasObjekt() {
   const posPayload = positionen.map((p, i) => ({
     id: p.id || genCode(),
     objekt_id: objektId,
+    template: p.template || "geko",
     nr: p.nr || "",
     art: p.art || "",
     qm: p.qm || "",
@@ -2089,41 +2117,53 @@ async function glasSavePushSchalter(schalter, wert) {
 let glasPositionEditingId = null; // null = keine Bearbeitung, "" = neu, sonst id
 
 function renderPositionenTab() {
-  const list = glasPositionen.length
-    ? glasPositionen
-        .map(
-          (p) => `
-        <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-          ${glasPositionEditingId === p.id ? `
-            <div style="display:flex; gap:8px; flex:1; margin-right:10px;">
-              <input type="text" id="pos_edit_nr_${p.id}" value="${escapeHtml(p.nr || "")}" placeholder="Nr. (optional)" style="flex:0 0 60px;" />
-              <input type="text" id="pos_edit_${p.id}" value="${escapeHtml(p.name)}" />
-            </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-sm btn-primary" onclick="saveGlasPosition('${p.id}')">Speichern</button>
-              <button class="btn btn-sm" onclick="glasPositionEditingId = null; renderGlasAdmin();">Abbrechen</button>
-            </div>
-          ` : `
-            <p style="margin:0; font-weight:500;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.name)}</p>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-sm" onclick="glasPositionEditingId = '${p.id}'; renderGlasAdmin();">Bearbeiten</button>
-              <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasPosition('${p.id}')">Löschen</button>
-            </div>
-          `}
-        </div>`
-        )
-        .join("")
-    : `<p class="muted">Noch keine Positionen angelegt.</p>`;
+  const posCard = (p) => `
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      ${glasPositionEditingId === p.id ? `
+        <div style="display:flex; gap:8px; flex:1; margin-right:10px; flex-wrap:wrap;">
+          <input type="text" id="pos_edit_nr_${p.id}" value="${escapeHtml(p.nr || "")}" placeholder="Nr." style="flex:0 0 55px;" />
+          <input type="text" id="pos_edit_${p.id}" value="${escapeHtml(p.name)}" style="flex:1; min-width:120px;" />
+          <select id="pos_edit_template_${p.id}" style="flex:0 0 auto;">
+            <option value="geko" ${(p.template || "geko") === "geko" ? "selected" : ""}>GEKO Clean</option>
+            <option value="sub" ${p.template === "sub" ? "selected" : ""}>Dietrich</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sm btn-primary" onclick="saveGlasPosition('${p.id}')">Speichern</button>
+          <button class="btn btn-sm" onclick="glasPositionEditingId = null; renderGlasAdmin();">Abbrechen</button>
+        </div>
+      ` : `
+        <p style="margin:0; font-weight:500;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.name)}</p>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sm" onclick="glasPositionEditingId = '${p.id}'; renderGlasAdmin();">Bearbeiten</button>
+          <button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasPosition('${p.id}')">Löschen</button>
+        </div>
+      `}
+    </div>`;
+
+  const gruppe = (tpl) => {
+    const items = glasPositionen.filter((p) => (p.template || "geko") === tpl);
+    return `
+      <p class="glas-section-title" style="margin-top:18px;">${glasFirmaLabel(tpl)} <span class="muted" style="font-weight:400;">· ${items.length}</span></p>
+      ${items.length ? items.map(posCard).join("") : `<p class="muted" style="margin:0 0 4px;">Noch keine ${glasFirmaLabel(tpl)}-Positionen.</p>`}`;
+  };
 
   return `
     <p class="muted" style="margin:0 0 10px; font-weight:600;">Neue Position</p>
-    <p class="muted" style="margin:0 0 10px;">Leistungsarten mit fester Standard-Positionsnummer (z.B. Pos. 10 Glas- und Rahmenreinigung, Pos. 15 Hubsteigereinsatz). Wird beim Objekt einfach ausgewählt.</p>
-    <div style="display:flex; gap:8px; margin-bottom:14px;">
+    <p class="muted" style="margin:0 0 10px;">Leistungsarten mit fester Standard-Positionsnummer (z.B. Pos. 10 Glas- und Rahmenreinigung). Jede Position gehört zu <b>GEKO Clean</b> oder <b>Dietrich</b> – beim Objekt wählt man erst die Firma, dann die Position.</p>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
       <input type="text" id="pos_new_nr" placeholder="Nr." style="flex:0 0 60px;" value="" />
       <input type="text" id="pos_new_name" placeholder="z.B. Grundreinigung" />
-      <button class="btn btn-primary" onclick="addGlasPosition()">+ Hinzufügen</button>
     </div>
-    ${list}
+    <div style="display:flex; gap:8px; margin-bottom:14px; align-items:center;">
+      <select id="pos_new_template" style="flex:1;">
+        <option value="geko">GEKO Clean</option>
+        <option value="sub">Dietrich</option>
+      </select>
+      <button class="btn btn-primary" style="flex:0 0 auto;" onclick="addGlasPosition()">+ Hinzufügen</button>
+    </div>
+    ${gruppe("geko")}
+    ${gruppe("sub")}
   `;
 }
 
@@ -2132,9 +2172,10 @@ async function addGlasPosition() {
   const nrInput = document.getElementById("pos_new_nr");
   const name = nameInput.value.trim();
   const nr = nrInput.value.trim();
+  const template = document.getElementById("pos_new_template")?.value || "geko";
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
-  const { error } = await sb.from("glas_positionen").insert({ id: genCode(), name, nr });
-  if (error) { showToast("Fehler: " + error.message); return; }
+  const { error } = await sb.from("glas_positionen").insert({ id: genCode(), name, nr, template });
+  if (error) { showToast("Fehler: " + error.message + " (SQL supabase_add_positionen_firma.sql schon ausgeführt?)"); return; }
   nameInput.value = "";
   nrInput.value = "";
   await loadGlasPositionen();
@@ -2144,8 +2185,9 @@ async function addGlasPosition() {
 async function saveGlasPosition(id) {
   const name = document.getElementById(`pos_edit_${id}`).value.trim();
   const nr = document.getElementById(`pos_edit_nr_${id}`).value.trim();
+  const template = document.getElementById(`pos_edit_template_${id}`)?.value || "geko";
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
-  const { error } = await sb.from("glas_positionen").update({ name, nr }).eq("id", id);
+  const { error } = await sb.from("glas_positionen").update({ name, nr, template }).eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
   glasPositionEditingId = null;
   await loadGlasPositionen();
