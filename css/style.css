@@ -414,6 +414,9 @@ label {
 body.glas-cal-pur .glas-bottomnav { display: none; }
 
 @media (max-width: 759px) {
+  /* Handy: nur die feste Leiste im body-Host (#glasNavHost) zeigen - die Kopie im
+     Content-Fluss ist für den Desktop */
+  .glas-nav-inflow { display: none; }
   /* Platz unten, damit die fixe Leiste nichts verdeckt */
   body:not(.glas-cal-pur) .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 70px) !important; }
   body:not(.glas-cal-pur) .glas-fab { bottom: calc(env(safe-area-inset-bottom, 0px) + 82px); }
@@ -421,8 +424,9 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
   .glas-menu-dd { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 60px); z-index: 51; margin: 0; }
 }
 
-/* Desktop: Reiter wieder oben wie gewohnt (Icon neben Label) */
+/* Desktop: Reiter wieder oben wie gewohnt (Icon neben Label); der body-Host ist dann aus */
 @media (min-width: 760px) {
+  #glasNavHost { display: none; }
   .glas-bottomnav { position: static; background: transparent; border-top: none; box-shadow: none; padding-bottom: 0; }
   .glas-bottomnav .tabs { border-bottom: 1px solid var(--border); margin-bottom: 18px; gap: 4px; padding: 0; }
   .glas-bottomnav .tab-btn { flex: 0 0 auto; flex-direction: row; gap: 6px; padding: 8px 14px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; }

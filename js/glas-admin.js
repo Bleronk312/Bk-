@@ -573,8 +573,22 @@ function renderGlasAdmin() {
       ${tb(["faellig", "einstellungen"].includes(tab) || glasMenuOpen, "☰", "Mehr", "glasToggleMenu()")}
     </div></div>
     ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
+
+  // Handy: die feste untere Leiste lebt als DIREKTES body-Kind (#glasNavHost) - so wird
+  // sie bei Tab-Wechseln nicht mit dem Content zerstört/neu aufgebaut (kein Springen) und
+  // hängt nie in animierten/transformierten Vorfahren. Desktop nutzt die Kopie im Fluss
+  // oben (CSS blendet je nach Breite die richtige ein).
+  if (!glasCalApp) {
+    let navHost = document.getElementById("glasNavHost");
+    if (!navHost) { navHost = document.createElement("div"); navHost.id = "glasNavHost"; document.body.appendChild(navHost); }
+    if (navHost.__html !== glasNav) { navHost.innerHTML = glasNav; navHost.__html = glasNav; }
+  } else {
+    const navHost = document.getElementById("glasNavHost");
+    if (navHost) { navHost.innerHTML = ""; navHost.__html = ""; }
+  }
+
   view.innerHTML = `
-    ${glasNav}
+    ${glasCalApp ? glasNav : `<div class="glas-nav-inflow">${glasNav}</div>`}
     ${glasCalApp || (glasPage.type === "tabs" && (glasPage.tab === "kalender" || glasPage.tab === "scheine")) ? "" : renderGlobalSearchBar()}
     <div id="glasTabContent"></div>
   `;
@@ -2254,13 +2268,21 @@ function renderTourenCard(t) {
     ? `<span class="glas-pick ${glasAuswahl.ids.has(t.id) ? "on" : ""}"></span>`
     : total ? glasMiniRing(done, total)
     : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">${t.frei ? "📄" : "🚐"}</div>`;
+  // Sichtbarkeit in der Mitarbeiter-Ansicht: manuell versteckt (ma_versteckt) ODER
+  // automatisch ausgeblendet, weil die Tour fertig ist und ihr Datum vorbei ist
+  // (die MA-App blendet alte fertige Touren am Folgetag aus).
+  const alteFertig = allDone && (t.datum_bis || t.datum) && (t.datum_bis || t.datum) < glasTodayIso();
+  const maSichtbar = !t.ma_versteckt && !alteFertig;
+  const maLabel = maSichtbar
+    ? `<span style="color:var(--text-secondary);">👁️ bei MA</span>`
+    : `<span style="color:var(--text-secondary);">🙈 nicht bei MA</span>`;
   return `
     <div class="glas-tour-card" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
       <div class="gtc-row">
         ${leading}
         <div class="gtc-grow">
-          <p class="gtc-name">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}${t.ma_versteckt ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary); font-size:10px;">🙈</span>` : ""}</p>
-          <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}${t.frei ? " · Einzelschein" : ""}</p>
+          <p class="gtc-name">${t.name ? escapeHtml(t.name) : formatGlasDateRange(t.datum, t.datum_bis)}</p>
+          <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}${z.nichtGeschafft ? ` · ${z.nichtGeschafft} nicht geschafft` : ""}${t.frei ? " · Einzelschein" : ""} · ${maLabel}</p>
         </div>
         ${pill}
       </div>
@@ -4613,18 +4635,20 @@ function renderKalenderMonat() {
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
     // 🚐 Glas-Touren (für die Mitarbeiter). Farbe: orange = geplant, grün = fertig.
+    // In den kleinen Monats-Chips bewusst OHNE Emoji-Präfix - die Farbe sagt schon, was
+    // es ist (Legende unten), und jedes Emoji kostet 2-3 Zeichen Text pro Chip.
     ...(glasKalTourenEinblenden ? activeTouren.map((t) => ({
       datum: t.datum, datum_bis: t.datum_bis,
       col: glasTourKalenderFarbe(t),
-      label: `🚐 ${t.name ? t.name : (t.frei ? "Blanko" : "Tour")}`,
+      label: t.name ? t.name : (t.frei ? "Blanko" : "Tour"),
     })) : []),
-    // 📌 Eigene Büro-Termine - über den Schalter ausblendbar
+    // Eigene Büro-Termine (📌-Schalter)
     ...(glasKalTermineEinblenden ? glasTermine.filter((t) => t.datum).flatMap((t) => {
       const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
       // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
       return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
         datum: occ.datum, datum_bis: occ.datum_bis,
-        col: c.dot, label: `📌 ${t.titel || "Termin"}`,
+        col: c.dot, label: t.titel || "Termin",
       }));
     }) : []),
     // Urlaube (einblendbar über 🏖️): bewusst dezenter/transparenter gestylt als Touren/
@@ -4632,7 +4656,7 @@ function renderKalenderMonat() {
     ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => ({
       datum: u.von, datum_bis: u.bis || u.von,
       col: glasMaFarbe(u.mitarbeiter_id), urlaub: true,
-      label: `🏖️ ${glasMaName(u.mitarbeiter_id)}`,
+      label: glasMaName(u.mitarbeiter_id),
     })) : []),
   ];
 
@@ -4647,9 +4671,19 @@ function renderKalenderMonat() {
   // Einzeltermin den Mehrtages-Balken an einem Tag nach unten -> Balken bricht (der Bug).
   // Greedy-Packing: nach Startdatum sortiert (längere zuerst -> bekommen niedrige Lanes),
   // jeder Termin in die erste freie Lane, die sich in seinem Zeitraum nicht überschneidet.
-  const laneEnds = []; // laneEnds[l] = Enddatum des letzten Termins in Lane l
+  // Mehrtägige Balken reservieren ihre Lane inkl. 1 Tag Rand links/rechts - sonst dockt
+  // direkt daneben ein (womöglich gleichfarbiger) Einzeltermin in derselben Zeile an und
+  // wirkt wie ein abgerissenes Stück des Balkens.
+  const laneEnds = []; // laneEnds[l] = belegt-bis-Datum der Lane l
   events
-    .map((e, i) => ({ e, i, s: e.datum, en: e.datum_bis || e.datum }))
+    .map((e, i) => {
+      const mehrtaegig = e.datum_bis && e.datum_bis !== e.datum;
+      return {
+        e, i,
+        s: mehrtaegig ? glasAddDaysIso(e.datum, -1) : e.datum,
+        en: mehrtaegig ? glasAddDaysIso(e.datum_bis, 1) : (e.datum_bis || e.datum),
+      };
+    })
     .sort((a, b) => a.s.localeCompare(b.s) || b.en.localeCompare(a.en) || a.i - b.i)
     .forEach((it) => {
       let lane = 0;
