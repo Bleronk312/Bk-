@@ -397,7 +397,12 @@ label {
   background: var(--card); border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 0 -4px 20px rgba(20, 30, 50, 0.06);
+  /* eigene Compositing-Ebene: verhindert das Mitwandern/Nachziehen beim Scrollen (iOS) */
+  transform: translateZ(0);
 }
+/* iOS-Gummiband (Overscroll-Bounce) aus: der Bounce zog die fixe Leiste optisch mit
+   hoch. Pull-to-Refresh ist davon unabhängig (eigener Indikator über Touch-Events). */
+html, body { overscroll-behavior-y: none; }
 .glas-bottomnav .tabs {
   margin: 0; border-bottom: none; gap: 0; overflow: visible;
   padding: 3px 2px; touch-action: auto;
@@ -420,8 +425,6 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
   /* Platz unten, damit die fixe Leiste nichts verdeckt */
   body:not(.glas-cal-pur) .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 70px) !important; }
   body:not(.glas-cal-pur) .glas-fab { bottom: calc(env(safe-area-inset-bottom, 0px) + 82px); }
-  /* "Mehr"-Menü öffnet sich ÜBER der unteren Leiste statt darunter */
-  .glas-menu-dd { position: fixed; left: 8px; right: 8px; bottom: calc(env(safe-area-inset-bottom, 0px) + 60px); z-index: 51; margin: 0; }
 }
 
 /* Desktop: Reiter wieder oben wie gewohnt (Icon neben Label); der body-Host ist dann aus */

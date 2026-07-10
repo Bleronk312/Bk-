@@ -479,6 +479,7 @@ let glasCalAnimDir = null;
 
 function goGlasHome() {
   glasContentAnimPending = true;
+  window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   // In der reinen Kalender-App gibt es keine Verwaltungs-Startseite - das Logo/Zuhause
   // führt zurück in den Kalender (aktueller Monat), nicht in die Glas-Verwaltung.
   if (glasCalApp) {
@@ -514,6 +515,7 @@ function goGlasKunde(id) {
 }
 function goGlasTab(tab) {
   glasContentAnimPending = true;
+  window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   glasAuswahl = { modus: null, ids: new Set() };
   glasUrlaubEditing = null;
   glasMaEditing = null;
@@ -685,16 +687,25 @@ let glasMenuOpen = false;
 function glasToggleMenu() { glasMenuOpen = !glasMenuOpen; renderGlasAdmin(); }
 
 // Aufklapp-Menü hinter "☰ Mehr": alles, was nicht in die oberste Reiterzeile passt.
+// "Mehr" öffnet als eigenes Fenster (Bottom-Sheet mit Abdunkelung): Tipp daneben oder
+// auf ✕ schließt es zuverlässig - kein hängenbleibendes Dropdown mehr.
 function renderGlasMehrMenu(tab) {
   const item = (aktiv, icon, label, onclick) => `
     <button class="glas-menu-item ${aktiv ? "on" : ""}" onclick="${onclick}">
       <span>${icon} ${label}</span>${aktiv ? '<span style="color:var(--blue);">●</span>' : '<span style="color:var(--text-secondary);">›</span>'}
     </button>`;
   return `
-    <div class="glas-menu-dd">
-      ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
-      ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
-      ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
+    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasMenuOpen=false; renderGlasAdmin();}">
+      <div class="glas-day-sheet" style="max-height:65vh;">
+        <div class="glas-sheet-grip"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <p style="margin:0; font-weight:700; font-size:16px;">Mehr</p>
+          <button class="btn btn-sm" onclick="glasMenuOpen=false; renderGlasAdmin();">✕</button>
+        </div>
+        ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
+        ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
+        ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
+      </div>
     </div>`;
 }
 
