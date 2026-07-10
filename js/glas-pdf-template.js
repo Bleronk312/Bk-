@@ -184,19 +184,33 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
     doc.setFont(FONT, "bold");
     if (pos.nr) doc.text(`Pos.: ${pos.nr}`, posX, by);
     doc.setFont(FONT, "normal");
-    doc.text(pos.art || "", descX, by);
-    if (qmText) doc.text(`${qmText} ${istStd ? "Std." : "qm"}`, L.qmX, by);
+    // Lange Bezeichnungen umbrechen, damit sie nicht in die qm-Spalte laufen. Die
+    // qm-Angabe steht auf der ersten Zeile; Folgezeilen laufen darunter weiter.
+    const artBreite = L.qmX - descX - 4; // endet sicher vor der qm-Spalte
+    const artLines = typeof doc.splitTextToSize === "function"
+      ? doc.splitTextToSize(pos.art || "", artBreite)
+      : [pos.art || ""];
+    artLines.slice(0, 5).forEach((ln, li) => {
+      doc.text(ln, descX, by);
+      if (li === 0 && qmText) doc.text(`${qmText} ${istStd ? "Std." : "qm"}`, L.qmX, by);
+      by += L.bulletLineGap;
+    });
+    if (!artLines.length) by += L.bulletLineGap;
     if (!istStd) {
       const num = parseFloat(String(pos.qm).replace(",", "."));
       if (!isNaN(num)) gesamtQm += num;
     }
-    by += L.bulletLineGap;
     // Freier Positionstext direkt unter der Position (der Position zugeordnet), etwas
-    // kleiner. Max. 6 Zeilen, damit das Layout nicht in Unterschrift/Hinweis rutscht.
-    const posText = (pos.pos_text || "").trim();
+    // kleiner. Fällt bei ÄLTEREN Stopps (Momentaufnahme ohne pos_text) auf den aktuell
+    // am Objekt hinterlegten Text zurück. Max. 6 Zeilen zum Schutz des Layouts.
+    let posText = (pos.pos_text || "").trim();
+    if (!posText && pos.id && typeof glasObjektPositionen !== "undefined") {
+      const aktuell = (glasObjektPositionen || []).find((x) => x.id === pos.id);
+      if (aktuell && aktuell.pos_text) posText = String(aktuell.pos_text).trim();
+    }
     if (posText) {
       doc.setFontSize(9.5);
-      const wrapped = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize(posText, 108) : [posText];
+      const wrapped = typeof doc.splitTextToSize === "function" ? doc.splitTextToSize(posText, artBreite) : [posText];
       wrapped.slice(0, 6).forEach((ln) => { doc.text(ln, descX, by); by += L.bulletLineGap - 0.7; });
       doc.setFontSize(10.5);
       by += 1;
