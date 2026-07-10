@@ -953,13 +953,17 @@ function selectGlasKundeForObjekt(kundeId) {
 // Sortierung der Kundenliste: alphabetisch oder nach Dringlichkeit (in beide Richtungen)
 let glasKundenSort = "az"; // "az" | "dringend" | "ok"
 
+// Firma-Filter der Kundenliste: "alle" | "geko" | "sub" (Dietrich)
+let glasKundenFirmaFilter = "alle";
+
 function renderKundenTab() {
   if (glasKundeEditing !== null) return renderKundeForm();
 
   // Eigenes Suchfeld hier bewusst entfernt - die globale Suche oben (Kunde, Objekt, Kd.-Nr.)
   // deckt das bereits vollständig ab, ein zweites Feld war redundant.
   const statusRang = { ueberfaellig: 0, faellig: 1 };
-  const mitStatus = glasKunden.map((k) => ({ k, status: glasKundeStatus(k.id) }));
+  const gefiltert = glasKunden.filter((k) => glasKundenFirmaFilter === "alle" || (k.firma || "geko") === glasKundenFirmaFilter);
+  const mitStatus = gefiltert.map((k) => ({ k, status: glasKundeStatus(k.id) }));
   const sortiert = [...mitStatus].sort((a, b) => {
     if (glasKundenSort === "az") return a.k.name.localeCompare(b.k.name, "de");
     const ra = a.status in statusRang ? statusRang[a.status] : 3;
@@ -973,11 +977,14 @@ function renderKundenTab() {
     ? sortiert.map(({ k, status }) => {
         const objekte = glasObjekte.filter((o) => o.kunde_id === k.id);
         const z = glasKundeStatusZaehler(k.id);
+        // Kd.-Nr.: fällt auf die Kd.-Nr. der Objekte zurück, wenn am Kunden selbst keine
+        // hinterlegt ist (bei etlichen Dietrich-Kunden steckt sie nur am Objekt).
+        const kdnrAnzeige = (k.kdnr || "").trim() || (objekte.find((o) => (o.kdnr || "").trim())?.kdnr || "").trim();
         return `
           <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center; ${glasStatusTint(status)}" onclick="${auswahl ? `glasAuswahlToggle('${k.id}')` : `goGlasKunde('${k.id}')`}">
             ${auswahl ? `<span class="glas-pick ${glasAuswahl.ids.has(k.id) ? "on" : ""}"></span>` : ""}
             <div style="flex:1; min-width:0;">
-              <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}${k.kdnr ? ` <span class="muted" style="font-weight:500; font-size:12.5px;">· Kd.-Nr. ${escapeHtml(k.kdnr)}</span>` : ""}</p>
+              <p style="margin:0; font-weight:600;">${escapeHtml(k.name)}${kdnrAnzeige ? ` <span class="muted" style="font-weight:500; font-size:12.5px;">· Kd.-Nr. ${escapeHtml(kdnrAnzeige)}</span>` : ""}${(k.firma || "geko") === "sub" ? ` <span class="badge" style="background:var(--border); color:var(--text-secondary); font-size:10px;">Dietrich</span>` : ""}</p>
               ${k.adresse ? `<p class="muted" style="margin:2px 0 0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((k.adresse || "").split("\n").join(", "))}</p>` : ""}
               <p class="muted" style="margin:4px 0 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                 <span>${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}</span>
@@ -990,12 +997,13 @@ function renderKundenTab() {
       }).join("")
     : `<p class="muted">Keine Kunden gefunden.</p>`;
 
-  // Kennzahlen über der Kundenliste
-  const objGesamt = glasObjekte.length;
-  const objUeberf = glasObjekte.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
-  const objFaellig = glasObjekte.filter((o) => glasObjektStatus(o.id) === "faellig").length;
-  const kennzahlen = glasKunden.length ? glasStatTiles([
-    { num: glasKunden.length, label: "Kunden", tone: "accent" },
+  // Kennzahlen über der Kundenliste - beziehen sich auf die gerade gewählte Firma
+  const objekteGefiltert = glasObjekte.filter((o) => gefiltert.some((k) => k.id === o.kunde_id));
+  const objGesamt = objekteGefiltert.length;
+  const objUeberf = objekteGefiltert.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
+  const objFaellig = objekteGefiltert.filter((o) => glasObjektStatus(o.id) === "faellig").length;
+  const kennzahlen = gefiltert.length ? glasStatTiles([
+    { num: gefiltert.length, label: "Kunden", tone: "accent" },
     { num: objGesamt, label: "Objekte" },
     { num: objUeberf, label: "Objekte überfällig", tone: objUeberf ? "crit" : null },
     { num: objFaellig, label: "fällig", tone: objFaellig ? "warn" : null },
@@ -1007,6 +1015,11 @@ function renderKundenTab() {
       <button class="btn btn-primary" onclick="editGlasKunde(null)">+ Neuer Kunde</button>
       <button class="btn btn-sm" onclick="editGlasObjekt(null)">+ Neues Objekt</button>
       ${sortiert.length && !auswahl ? `<button class="btn btn-sm" style="margin-left:auto;" title="Mehrere auswählen" onclick="glasAuswahlStart('kunden')">☑️ Auswählen</button>` : ""}
+    </div>
+    <div class="glas-seg" style="margin-bottom:8px;">
+      <button class="glas-seg-btn ${glasKundenFirmaFilter === "alle" ? "on" : ""}" onclick="glasKundenFirmaFilter='alle'; glasUpdateTabContent();">Alle</button>
+      <button class="glas-seg-btn ${glasKundenFirmaFilter === "geko" ? "on" : ""}" onclick="glasKundenFirmaFilter='geko'; glasUpdateTabContent();">GEKO</button>
+      <button class="glas-seg-btn ${glasKundenFirmaFilter === "sub" ? "on" : ""}" onclick="glasKundenFirmaFilter='sub'; glasUpdateTabContent();">Dietrich</button>
     </div>
     <div class="glas-seg" style="margin-bottom:14px;">
       <button class="glas-seg-btn ${glasKundenSort === "az" ? "on" : ""}" onclick="glasKundenSort='az'; glasUpdateTabContent();">A–Z</button>
@@ -1083,11 +1096,12 @@ function syncKundeFormFromDom() {
   if (get("k_adresse") !== undefined) glasKundeEditing.adresse = get("k_adresse");
   if (get("k_kdnr") !== undefined) glasKundeEditing.kdnr = get("k_kdnr");
   if (get("k_bereich") !== undefined) glasKundeEditing.bereich = get("k_bereich");
+  if (get("k_firma") !== undefined) glasKundeEditing.firma = get("k_firma");
 }
 
 function editGlasKunde(id) {
   if (id === null) {
-    glasKundeEditing = { id: null, name: "", adresse: "", kdnr: "", bereich: "glas" };
+    glasKundeEditing = { id: null, name: "", adresse: "", kdnr: "", bereich: "glas", firma: "geko" };
   } else {
     glasKundeEditing = { ...glasKunden.find((k) => k.id === id) };
   }
@@ -1108,6 +1122,13 @@ function renderKundeForm() {
       <div class="field"><label class="muted">Adresse</label><textarea id="k_adresse" rows="3" placeholder="Im Gildehof 8
 45127 Essen">${escapeHtml(k.adresse)}</textarea></div>
       <div class="field"><label class="muted">Haupt-Kd.-Nr. (erscheint auf den Abnahmescheinen)</label><input type="text" id="k_kdnr" value="${escapeHtml(k.kdnr)}" /></div>
+      <div class="field">
+        <label class="muted">Firma (wessen Kunde ist das?)</label>
+        <select id="k_firma" style="width:auto;">
+          <option value="geko" ${(k.firma || "geko") === "geko" ? "selected" : ""}>GEKO Clean (eigener Kunde)</option>
+          <option value="sub" ${k.firma === "sub" ? "selected" : ""}>Dietrich (Generalauftraggeber)</option>
+        </select>
+      </div>
       <div class="field">
         <label class="muted">Bereich (wo dieser Kunde auftaucht)</label>
         <select id="k_bereich" style="width:auto;">
@@ -1131,7 +1152,7 @@ async function saveGlasKunde() {
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   glasBusy = true;
   renderGlasAdmin();
-  const payload = { id: glasKundeEditing.id || genCode(), name, adresse: (glasKundeEditing.adresse || "").trim(), kdnr: (glasKundeEditing.kdnr || "").trim(), bereich: glasKundeEditing.bereich || "glas" };
+  const payload = { id: glasKundeEditing.id || genCode(), name, adresse: (glasKundeEditing.adresse || "").trim(), kdnr: (glasKundeEditing.kdnr || "").trim(), bereich: glasKundeEditing.bereich || "glas", firma: glasKundeEditing.firma === "sub" ? "sub" : "geko" };
   const { error } = await sb.from("kunden").upsert(payload);
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
