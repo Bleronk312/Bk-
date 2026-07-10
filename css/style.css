@@ -945,6 +945,48 @@ html.dark { --prog-track: #26313f; }
 .glas-stop-row.next .glas-stop-num { background: var(--blue); border-color: var(--blue); color: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 20%, transparent); }
 .glas-next-tag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--blue); margin-bottom: 3px; }
 
+/* ---- Kunden-Widgets: wischbares Karussell ---- */
+.glas-caro-wrap { margin: 4px 0 14px; }
+.glas-caro { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.glas-caro::-webkit-scrollbar { display: none; }
+.glas-cpage { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+.glas-caro-dots { display: flex; justify-content: center; gap: 6px; padding: 9px 0 0; }
+.glas-caro-dots .cd { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: all 0.2s; }
+.glas-caro-dots .cd.on { background: var(--blue); width: 16px; border-radius: 4px; }
+.glas-caro-hint { text-align: center; font-size: 11px; color: var(--text-secondary); padding-top: 3px; }
+.glas-home-tile.t-neu { background: #eef1f5; color: #5b6676; }
+html.dark .glas-home-tile.t-neu { background: #202a38; color: #9aa6b6; }
+
+/* Ranglisten (Top 5 Kunden, Top-Objekte, Länger nicht gereinigt) */
+.glas-rankcard { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 11px 12px; box-shadow: 0 1px 3px rgba(20,30,50,.05); }
+.glas-rankcard .rt { font-size: 12.5px; font-weight: 700; margin: 0 0 4px; }
+.glas-rankrow { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); }
+.glas-rankrow:first-of-type { border-top: none; }
+.glas-rankrow .rp { flex: 0 0 18px; font-size: 11px; font-weight: 800; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.glas-rankrow .rn { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glas-rankrow .rb { flex: 0 0 70px; height: 6px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.glas-rankrow .rb i { display: block; height: 100%; border-radius: 4px; background: var(--blue); }
+.glas-rankrow .rv { flex: 0 0 auto; font-size: 11px; color: var(--text-secondary); font-weight: 700; font-variant-numeric: tabular-nums; }
+.glas-rankrow .rv.warnv { color: #bd6413; }
+html.dark .glas-rankrow .rv.warnv { color: #e8a05f; }
+
+/* ---- Statistik: KPI-Kacheln + vertikales Balken-Chart ---- */
+.glas-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+.glas-kpi .n { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.glas-kpi .l { font-size: 11.5px; color: var(--text-secondary); font-weight: 600; margin-top: 3px; }
+.glas-kpi .d { font-size: 11px; font-weight: 700; margin-top: 5px; display: inline-block; padding: 2px 7px; border-radius: 999px; }
+.glas-kpi .d.up { background: #e2f3e8; color: #1c7f3e; }
+.glas-kpi .d.dn { background: #fbe9e6; color: #c33623; }
+html.dark .glas-kpi .d.up { background: #16301f; color: #6fd08c; }
+html.dark .glas-kpi .d.dn { background: #37201c; color: #f0917f; }
+.glas-vchart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding: 2px 0; }
+.glas-vbar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; cursor: pointer; min-width: 0; }
+.glas-vbar .vfill { width: 100%; max-width: 22px; border-radius: 4px 4px 0 0; background: #b9d4ec; min-height: 2px; transition: height 0.5s cubic-bezier(0.32, 0.72, 0, 1), background 0.15s; }
+html.dark .glas-vbar .vfill { background: #2a4258; }
+.glas-vbar.sel .vfill { background: var(--blue); }
+.glas-vbar .vxl { font-size: 8.5px; color: var(--text-secondary); font-weight: 600; margin-top: 3px; height: 11px; overflow: hidden; }
+.glas-vbar.sel .vxl { color: var(--blue); font-weight: 800; }
+
 /* ---- Scheine: Karten mit Tages-Gruppierung ---- */
 .glas-schein-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-top: 9px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(20,30,50,.05); transition: transform .12s ease; }
 .glas-schein-card:active { transform: scale(.99); }

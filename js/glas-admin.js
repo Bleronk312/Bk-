@@ -974,6 +974,107 @@ let glasKundenSort = "az"; // "az" | "dringend" | "ok"
 // Firma-Filter der Kundenliste: "alle" | "geko" | "sub" (Dietrich)
 let glasKundenFirmaFilter = "alle";
 
+// qm-Wert einer Position als Zahl ("144,50" -> 144.5); Stunden-Positionen zählen nicht
+function glasQmZahl(v) { return parseFloat(String(v || "").replace(",", ".")) || 0; }
+function glasObjektQm(o) {
+  let sum = 0;
+  glasGetObjektPositionen(o.id).forEach((p) => { if (!glasIstStundenPos(p)) sum += glasQmZahl(p.qm); });
+  return sum;
+}
+
+// Monate seit einem ISO-Datum (für "am längsten nicht gereinigt")
+function glasMonateSeit(iso) {
+  const d = new Date(iso + "T00:00:00"), n = new Date();
+  return (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth());
+}
+
+// Punkte-Anzeige des Widget-Karussells beim Wischen aktualisieren
+function glasKarusselDots(el) {
+  const i = Math.round(el.scrollLeft / el.clientWidth);
+  el.parentElement.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
+}
+
+// Wischbares Widget-Karussell über der Kundenliste (4 Seiten)
+function renderKundenWidgets(kunden, objekte) {
+  const objUeberf = objekte.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
+  const objFaellig = objekte.filter((o) => glasObjektStatus(o.id) === "faellig").length;
+
+  // Flächen: Gesamt-QM, Ø pro Objekt, bester Kunde, Objekte ohne Intervall
+  const kundeQm = new Map();
+  let gesamtQm = 0;
+  kunden.forEach((k) => {
+    let s = 0;
+    objekte.forEach((o) => { if (o.kunde_id === k.id) s += glasObjektQm(o); });
+    kundeQm.set(k.id, s);
+    gesamtQm += s;
+  });
+  const avgQm = objekte.length ? gesamtQm / objekte.length : 0;
+  const top5 = [...kunden].sort((a, b) => (kundeQm.get(b.id) || 0) - (kundeQm.get(a.id) || 0)).slice(0, 5).filter((k) => (kundeQm.get(k.id) || 0) > 0);
+  const bester = top5[0] || null;
+  const ohneIntervall = objekte.filter((o) => glasGetObjektPositionen(o.id).every((p) => !p.intervall_typ)).length;
+  const topMax = bester ? kundeQm.get(bester.id) : 1;
+
+  // Am längsten nicht gereinigt: pro Kunde die JÜNGSTE letzte_reinigung über alle
+  // Positionen; ohne jede Reinigung = "noch nie" (steht ganz oben)
+  const alt = kunden.map((k) => {
+    let letzte = null;
+    objekte.forEach((o) => {
+      if (o.kunde_id !== k.id) return;
+      glasGetObjektPositionen(o.id).forEach((p) => { if (p.letzte_reinigung && (!letzte || p.letzte_reinigung > letzte)) letzte = p.letzte_reinigung; });
+    });
+    return { k, letzte };
+  }).filter((x) => objekte.some((o) => o.kunde_id === x.k.id))
+    .sort((a, b) => (a.letzte || "0000").localeCompare(b.letzte || "0000"))
+    .slice(0, 5);
+  const altLabel = (x) => !x.letzte ? "noch nie"
+    : (() => { const m = glasMonateSeit(x.letzte); return m <= 0 ? "diesen Monat" : `vor ${m} Mon.`; })();
+
+  const tile = (cls, n, l) => `<div class="glas-home-tile ${cls}" style="cursor:default;"><span class="ght-num">${n}</span><span class="ght-lbl">${l}</span></div>`;
+  const rank = (pos, name, barPct, wert, onclick, warnv) => `
+    <div class="glas-rankrow" ${onclick ? `style="cursor:pointer;" onclick="${onclick}"` : ""}>
+      <span class="rp">${pos}.</span>
+      <span class="rn">${escapeHtml(name)}</span>
+      ${barPct !== null ? `<span class="rb"><i style="width:${barPct}%"></i></span>` : ""}
+      <span class="rv${warnv ? " warnv" : ""}">${wert}</span>
+    </div>`;
+
+  return `
+    <div class="glas-caro-wrap">
+      <div class="glas-caro" onscroll="glasKarusselDots(this)">
+        <div class="glas-cpage">
+          <div class="glas-home-tiles" style="margin-bottom:0;">
+            ${tile("t-info", kunden.length, "Kunden")}
+            ${tile("t-neu", objekte.length, "Objekte")}
+            ${tile("t-crit", objUeberf, "Überfällig")}
+            ${tile("t-warn", objFaellig, "Fällig")}
+          </div>
+        </div>
+        <div class="glas-cpage">
+          <div class="glas-home-tiles" style="margin-bottom:0;">
+            ${tile("t-info", glasStatQmText(gesamtQm) + " m²", "Gesamt-QM")}
+            ${tile("t-neu", glasStatQmText(avgQm) + " m²", "Ø QM pro Objekt")}
+            ${tile("t-ok", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²" : "Bester Kunde")}
+            ${tile("t-warn", ohneIntervall, "Objekte ohne Intervall")}
+          </div>
+        </div>
+        <div class="glas-cpage">
+          <div class="glas-rankcard">
+            <p class="rt">🏆 Top 5 Kunden nach QM</p>
+            ${top5.length ? top5.map((k, i) => rank(i + 1, k.name, Math.max(4, Math.round((kundeQm.get(k.id) / topMax) * 100)), glasStatQmText(kundeQm.get(k.id)) + " qm", `goGlasKunde('${k.id}')`)).join("") : `<p class="muted" style="margin:6px 0 2px;">Noch keine QM hinterlegt.</p>`}
+          </div>
+        </div>
+        <div class="glas-cpage">
+          <div class="glas-rankcard">
+            <p class="rt">⏳ Am längsten nicht gereinigt</p>
+            ${alt.length ? alt.map((x, i) => rank(i + 1, x.k.name, null, altLabel(x), `goGlasKunde('${x.k.id}')`, true)).join("") : `<p class="muted" style="margin:6px 0 2px;">Keine Kunden mit Objekten.</p>`}
+          </div>
+        </div>
+      </div>
+      <div class="glas-caro-dots"><span class="cd on"></span><span class="cd"></span><span class="cd"></span><span class="cd"></span></div>
+      <div class="glas-caro-hint">← Wischen für weitere Infos →</div>
+    </div>`;
+}
+
 function renderKundenTab() {
   if (glasKundeEditing !== null) return renderKundeForm();
 
@@ -1015,17 +1116,10 @@ function renderKundenTab() {
       }).join("")
     : `<p class="muted">Keine Kunden gefunden.</p>`;
 
-  // Kennzahlen über der Kundenliste - beziehen sich auf die gerade gewählte Firma
+  // Widgets über der Kundenliste: wischbares Karussell (Status · Flächen · Top 5 ·
+  // Länger nicht gereinigt), rechnet immer für die gerade gewählte Firma
   const objekteGefiltert = glasObjekte.filter((o) => gefiltert.some((k) => k.id === o.kunde_id));
-  const objGesamt = objekteGefiltert.length;
-  const objUeberf = objekteGefiltert.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
-  const objFaellig = objekteGefiltert.filter((o) => glasObjektStatus(o.id) === "faellig").length;
-  const kennzahlen = gefiltert.length ? glasStatTiles([
-    { num: gefiltert.length, label: "Kunden", tone: "accent" },
-    { num: objGesamt, label: "Objekte" },
-    { num: objUeberf, label: "Objekte überfällig", tone: objUeberf ? "crit" : null },
-    { num: objFaellig, label: "fällig", tone: objFaellig ? "warn" : null },
-  ]) : "";
+  const kennzahlen = gefiltert.length ? renderKundenWidgets(gefiltert, objekteGefiltert) : "";
 
   return `
     ${kennzahlen}
@@ -5271,6 +5365,10 @@ function glasScheinKunde(s) {
 // Grenzen (von/bis ISO) + Label des Zeitraums, in dem der Anker-Tag liegt - je nach
 // Granularität ein einzelner Tag, eine Woche (Mo–So) oder ein ganzer Monat.
 function glasPeriodeGrenzen(anker, gran) {
+  if (gran === "jahr") {
+    const y = anker.slice(0, 4);
+    return { von: `${y}-01-01`, bis: `${y}-12-31`, label: y };
+  }
   if (gran === "woche") {
     const mo = glasMontagVon(anker);
     const so = glasAddDaysIso(mo, 6);
@@ -5288,6 +5386,7 @@ function glasPeriodeGrenzen(anker, gran) {
 
 // Anker um eine Periode vor/zurück (Tag ±1, Woche ±7 Tage, Monat ±1 Monat)
 function glasAnkerStep(anker, gran, dir) {
+  if (gran === "jahr") return `${Number(anker.slice(0, 4)) + dir}${anker.slice(4)}`;
   if (gran === "woche") return glasAddDaysIso(anker, 7 * dir);
   if (gran === "monat") return glasAddMonthsIso(`${anker.slice(0, 7)}-01`, dir);
   return glasAddDaysIso(anker, dir);
@@ -5481,17 +5580,40 @@ async function downloadGlasScheinPdf(stopId) {
    ======================================================================== */
 
 let glasStatistikDaten = null;   // alle erledigten Stopps (einmal geladen, dann gecacht)
-let glasStatZeitraum = "12m";    // "12m" | "jahr" | "vorjahr" | "alles"
-let glasStatMetrik = "qm";       // "qm" | "scheine"
-let glasStatGran = "monat";      // "tag" | "woche" | "monat" - Granularität des Verlaufs
-let glasStatSelKey = null;       // angeklickte Verlaufs-Periode -> Detailansicht dieses Tags/Woche/Monats
-function glasStatSetSel(key) { glasStatSelKey = glasStatSelKey === key ? null : key; renderGlasAdmin(); }
+let glasStatFirma = "alle";      // "alle" | "geko" | "sub" (Dietrich)
+let glasStatGran = "jahr";       // "woche" | "monat" | "jahr" - gewählter Zeitraum
+let glasStatAnker = "";          // ISO-Tag im gewählten Zeitraum (leer = heute)
+let glasStatSelKey = null;       // angetippter Balken (Unter-Zeitraum), null = automatisch
 
-// Perioden-Schlüssel + kompaktes Label für den Statistik-Verlauf je nach Granularität
-function glasStatPeriode(datum, gran) {
-  if (gran === "tag") return { key: datum, label: `${datum.slice(8, 10)}.${datum.slice(5, 7)}.` };
-  if (gran === "woche") { const mo = glasMontagVon(datum); return { key: mo, label: `KW ${glasIsoWeek(datum)}` }; }
-  const ym = datum.slice(0, 7); return { key: ym, label: glasStatMonatLabel(ym) };
+function glasStatSetSel(key) { glasStatSelKey = glasStatSelKey === key ? null : key; renderGlasAdmin(); }
+function glasStatSetAnker(iso) { if (iso) { glasStatAnker = iso; glasStatSelKey = null; renderGlasAdmin(); } }
+function glasStatSetGran(g) { glasStatGran = g; glasStatSelKey = null; renderGlasAdmin(); }
+function glasStatSetFirma(f) { glasStatFirma = f; renderGlasAdmin(); }
+
+// Firma eines Statistik-Stopps: über Objekt -> Kunde. Unbekannt zählt als GEKO.
+function glasStatFirmaVon(stop) {
+  const o = glasObjekte.find((x) => x.id === stop.objekt_id);
+  const k = o ? glasKunden.find((x) => x.id === o.kunde_id) : null;
+  return k && k.firma === "sub" ? "sub" : "geko";
+}
+
+// Balken (Unter-Zeiträume) des gewählten Zeitraums: Jahr -> 12 Monate, Monat/Woche -> Tage
+function glasStatBalken(von, bis, gran) {
+  const list = [];
+  if (gran === "jahr") {
+    const y = von.slice(0, 4);
+    for (let m = 1; m <= 12; m++) {
+      const mm = String(m).padStart(2, "0");
+      list.push({ key: `${y}-${mm}`, label: GLAS_STAT_MONATE[m - 1] });
+    }
+  } else {
+    let d = von, i = 0;
+    while (d <= bis && i < 40) {
+      list.push({ key: d, label: gran === "woche" ? ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][i] || "" : String(Number(d.slice(8, 10))) });
+      d = glasAddDaysIso(d, 1); i++;
+    }
+  }
+  return list;
 }
 
 function glasOpenStatistik() {
@@ -5531,167 +5653,113 @@ function glasStatQmText(qm) {
   return String(Math.round(qm * 10) / 10).replace(".", ",");
 }
 
-function glasStatZeitraumGrenzen() {
-  const heute = glasTodayIso();
-  const jahr = heute.slice(0, 4);
-  if (glasStatZeitraum === "jahr") return { von: `${jahr}-01-01`, bis: heute, label: `Jahr ${jahr}` };
-  if (glasStatZeitraum === "vorjahr") {
-    const vj = String(Number(jahr) - 1);
-    return { von: `${vj}-01-01`, bis: `${vj}-12-31`, label: `Jahr ${vj}` };
-  }
-  if (glasStatZeitraum === "alles") return { von: "0000-01-01", bis: "9999-12-31", label: "Gesamter Zeitraum" };
-  return { von: glasAddMonthsIso(heute, -12), bis: heute, label: "Letzte 12 Monate" };
-}
-
 const GLAS_STAT_MONATE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 function glasStatMonatLabel(ym) {
   return `${GLAS_STAT_MONATE[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
 }
 
-// Detail des angeklickten Verlaufs-Zeitraums (ein Tag / eine Woche / ein Monat)
-function renderStatEinzelPeriode(rows) {
-  const sel = rows.filter((x) => glasStatPeriode(x.datum, glasStatGran).key === glasStatSelKey);
-  const label = sel.length ? glasStatPeriode(sel[0].datum, glasStatGran).label : glasStatSelKey;
-  let qm = 0; const objekte = new Set(); const kunden = new Set();
-  sel.forEach((x) => { qm += glasStatQmVon(x); objekte.add(x.objekt_id || x.objekt); kunden.add(glasStatKundeVon(x)); });
-  const liste = [...sel].sort((a, b) => (b.datum || "").localeCompare(a.datum || ""));
-  return `
-    <div class="card" style="border-color:var(--info-border); background:var(--info-bg);">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
-        <p style="margin:0; font-weight:700;">📅 ${escapeHtml(label)}</p>
-        <button class="btn btn-sm" onclick="glasStatSelKey=null; renderGlasAdmin();">✕ zurück</button>
-      </div>
-      <p class="muted" style="margin:0 0 6px; font-size:13px;">${glasStatQmText(qm)} qm · ${sel.length} Schein${sel.length === 1 ? "" : "e"} · ${objekte.size} Objekt${objekte.size === 1 ? "" : "e"} · ${kunden.size} Kunde${kunden.size === 1 ? "" : "n"}</p>
-      ${liste.map((x) => `
-        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
-          <div style="flex:1; min-width:0;">
-            <p style="margin:0; font-weight:500; font-size:13.5px;">${escapeHtml(x.objekt || "Schein")}</p>
-            <p class="muted" style="margin:1px 0 0; font-size:12px;">${escapeHtml(glasStatKundeVon(x))} · ${formatGlasDate(x.datum)}${glasStatQmVon(x) ? " · " + glasStatQmText(glasStatQmVon(x)) + " qm" : ""}</p>
-          </div>
-        </div>`).join("")}
-    </div>`;
-}
-
+// ---- Neue Statistik-Seite: Firma-Filter, Woche/Monat/Jahr, tappbares Balken-Chart ----
 function renderStatistikPage() {
   if (glasStatistikDaten === null) {
     loadGlasStatistik();
     return `
-      <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück</button>
+      <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zur\u00fcck</button>
       <p class="muted"><span class="spinner"></span> Statistiken werden berechnet...</p>`;
   }
+  if (!glasStatAnker) glasStatAnker = glasTodayIso();
 
-  const { von, bis, label } = glasStatZeitraumGrenzen();
-  const rows = glasStatistikDaten.filter((x) => x.datum >= von && x.datum <= bis);
+  const { von, bis, label } = glasPeriodeGrenzen(glasStatAnker, glasStatGran);
+  const rows = glasStatistikDaten.filter((x) => x.datum >= von && x.datum <= bis
+    && (glasStatFirma === "alle" || glasStatFirmaVon(x) === glasStatFirma));
 
-  // KPIs
+  // KPIs \u00fcber den ganzen Zeitraum
   let qmGesamt = 0;
-  const objekte = new Set();
-  const kunden = new Set();
+  rows.forEach((x) => { qmGesamt += glasStatQmVon(x); });
+  const avg = rows.length ? Math.round(qmGesamt / rows.length) : 0;
+
+  // Balken + Werte je Unter-Zeitraum (Jahr: Monate, Monat/Woche: Tage)
+  const balken = glasStatBalken(von, bis, glasStatGran);
+  const keyVon = (x) => (glasStatGran === "jahr" ? x.datum.slice(0, 7) : x.datum);
+  const proKey = new Map();
   rows.forEach((x) => {
-    qmGesamt += glasStatQmVon(x);
-    objekte.add(x.objekt_id || x.objekt);
-    kunden.add(glasStatKundeVon(x));
+    const k = keyVon(x);
+    const cur = proKey.get(k) || { qm: 0, n: 0 };
+    cur.qm += glasStatQmVon(x); cur.n++;
+    proKey.set(k, cur);
   });
+  balken.forEach((b) => { const c = proKey.get(b.key); b.qm = c ? c.qm : 0; b.n = c ? c.n : 0; });
+  const maxQm = Math.max(1, ...balken.map((b) => b.qm));
 
-  const metrikVon = (x) => (glasStatMetrik === "qm" ? glasStatQmVon(x) : 1);
-  const metrikText = (wert) => (glasStatMetrik === "qm" ? `${glasStatQmText(wert)} qm` : `${wert} Schein${wert === 1 ? "" : "e"}`);
+  // Auswahl: angetippter Balken, sonst automatisch der letzte mit Daten
+  let selKey = glasStatSelKey;
+  if (!selKey || !balken.some((b) => b.key === selKey)) {
+    const mitWert = balken.filter((b) => b.n > 0);
+    selKey = mitWert.length ? mitWert[mitWert.length - 1].key : null;
+  }
+  const sel = balken.find((b) => b.key === selKey) || null;
+  const selIdx = sel ? balken.indexOf(sel) : -1;
+  const prev = selIdx > 0 ? balken[selIdx - 1] : null;
+  const delta = sel && prev && prev.qm > 0 ? Math.round(((sel.qm - prev.qm) / prev.qm) * 100) : null;
 
-  // Gruppierungen: Verlauf (je nach Granularität), Tag (für "bester Tag"), Objekt
-  const proPeriode = new Map(); // key -> { label, wert }
-  const proTag = new Map();
+  // Top-Objekte im ausgew\u00e4hlten Balken
+  const selRows = sel ? rows.filter((x) => keyVon(x) === sel.key) : [];
   const proObjekt = new Map();
-  rows.forEach((x) => {
-    const per = glasStatPeriode(x.datum, glasStatGran);
-    const cur = proPeriode.get(per.key) || { label: per.label, wert: 0 };
-    cur.wert += metrikVon(x);
-    proPeriode.set(per.key, cur);
-    proTag.set(x.datum, (proTag.get(x.datum) || 0) + metrikVon(x));
-    const key = x.objekt || "?";
-    proObjekt.set(key, (proObjekt.get(key) || 0) + metrikVon(x));
-  });
-
-  const perioden = [...proPeriode.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const maxPeriode = Math.max(1, ...perioden.map(([, v]) => v.wert));
-  const besterTag = [...proTag.entries()].sort((a, b) => b[1] - a[1])[0];
-  const besterMonatMap = new Map();
-  rows.forEach((x) => { const m = x.datum.slice(0, 7); besterMonatMap.set(m, (besterMonatMap.get(m) || 0) + metrikVon(x)); });
-  const besterMonat = [...besterMonatMap.entries()].sort((a, b) => b[1] - a[1])[0];
+  selRows.forEach((x) => { const k = x.objekt || "?"; proObjekt.set(k, (proObjekt.get(k) || 0) + glasStatQmVon(x)); });
   const topObjekte = [...proObjekt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const granLabel = glasStatGran === "tag" ? "Tag" : glasStatGran === "woche" ? "Woche" : "Monat";
+  const topMax = Math.max(1, ...topObjekte.map((t) => t[1]));
 
-  const kpi = (wert, beschriftung) => `
-    <div class="card" style="text-align:center; margin-bottom:0;">
-      <p style="margin:0; font-size:21px; font-weight:800; color:var(--blue);">${wert}</p>
-      <p class="muted" style="margin:3px 0 0;">${beschriftung}</p>
-    </div>`;
+  // Bei 31 Tages-Balken nur jedes 5. Label zeigen, sonst wird es unleserlich
+  const zeigeLabel = (b) => glasStatGran !== "monat" || b.label === "1" || Number(b.label) % 5 === 0;
+  const granBtn = (g, lb) => `<button class="glas-seg-btn ${glasStatGran === g ? "on" : ""}" onclick="glasStatSetGran('${g}')">${lb}</button>`;
+  const firmaBtn = (f, lb) => `<button class="glas-seg-btn ${glasStatFirma === f ? "on" : ""}" onclick="glasStatSetFirma('${f}')">${lb}</button>`;
+  const kpi = (wert, lb, extra) => `
+    <div class="glas-kpi"><div class="n">${wert}</div><div class="l">${lb}</div>${extra || ""}</div>`;
+  const selLabel = sel ? (glasStatGran === "jahr" ? GLAS_MONATE_LANG[Number(sel.key.slice(5, 7)) - 1] : formatGlasDate(sel.key)) : "";
 
   return `
-    <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zurück zu den Einstellungen</button>
-    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
-      <h1 style="margin:0;">📊 Statistiken</h1>
-      <select style="width:auto; margin-left:auto; font-size:13px;" onchange="glasStatZeitraum = this.value; glasStatSelKey = null; renderGlasAdmin();">
-        <option value="12m" ${glasStatZeitraum === "12m" ? "selected" : ""}>Letzte 12 Monate</option>
-        <option value="jahr" ${glasStatZeitraum === "jahr" ? "selected" : ""}>Dieses Jahr</option>
-        <option value="vorjahr" ${glasStatZeitraum === "vorjahr" ? "selected" : ""}>Letztes Jahr</option>
-        <option value="alles" ${glasStatZeitraum === "alles" ? "selected" : ""}>Alles</option>
-      </select>
-      <select style="width:auto; font-size:13px;" onchange="glasStatMetrik = this.value; renderGlasAdmin();">
-        <option value="qm" ${glasStatMetrik === "qm" ? "selected" : ""}>nach qm</option>
-        <option value="scheine" ${glasStatMetrik === "scheine" ? "selected" : ""}>nach Scheinen</option>
-      </select>
-      <select style="width:auto; font-size:13px;" onchange="glasStatGran = this.value; glasStatSelKey = null; renderGlasAdmin();">
-        <option value="tag" ${glasStatGran === "tag" ? "selected" : ""}>pro Tag</option>
-        <option value="woche" ${glasStatGran === "woche" ? "selected" : ""}>pro Woche</option>
-        <option value="monat" ${glasStatGran === "monat" ? "selected" : ""}>pro Monat</option>
-      </select>
+    <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('einstellungen')">&larr; Zur\u00fcck zu den Einstellungen</button>
+    <h1 style="margin:0 0 10px;">\ud83d\udcca Statistiken</h1>
+    <div class="glas-seg" style="margin-bottom:8px;">
+      ${firmaBtn("alle", "Alle")}${firmaBtn("geko", "GEKO")}${firmaBtn("sub", "Dietrich")}
     </div>
-    <p class="muted" style="margin:0 0 10px;">${label} · nur unterschriebene Abnahmen zählen</p>
+    <div class="glas-seg" style="margin-bottom:8px;">
+      ${granBtn("woche", "Woche")}${granBtn("monat", "Monat")}${granBtn("jahr", "Jahr")}
+    </div>
+    ${renderPeriodeNavigator(glasStatAnker, glasStatGran, "glasStatSetAnker")}
+    <p class="muted" style="margin:-4px 0 10px; font-size:12px;">${escapeHtml(label)} \u00b7 nur unterschriebene Abnahmen z\u00e4hlen</p>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
-      ${kpi(glasStatQmText(qmGesamt) + " qm", "gereinigte Fläche")}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:12px;">
+      ${kpi(glasStatQmText(qmGesamt), "qm gereinigt")}
       ${kpi(String(rows.length), "Abnahmescheine")}
-      ${kpi(String(objekte.size), "verschiedene Objekte")}
-      ${kpi(String(kunden.size), "verschiedene Kunden")}
+      ${kpi(String(avg), "\u00d8 qm pro Schein")}
+      ${sel ? kpi(glasStatQmText(sel.qm) + " qm", escapeHtml(selLabel),
+        delta !== null ? `<span class="d ${delta >= 0 ? "up" : "dn"}">${delta >= 0 ? "\u25b2" : "\u25bc"} ${Math.abs(delta)}% vs. Vorperiode</span>` : "") : kpi("\u2013", "Auswahl")}
     </div>
 
     <div class="card">
-      <h2>Verlauf pro ${granLabel}</h2>
-      <p class="muted" style="margin:-4px 0 8px; font-size:12px;">Auf einen Balken tippen zeigt genau diesen ${granLabel} im Detail.</p>
-      <div style="max-height:${glasStatGran === "tag" ? "340px" : "none"}; overflow-y:auto;">
-      ${perioden.length ? perioden.map(([key, v]) => `
-        <div style="display:flex; align-items:center; gap:10px; padding:3px 0; cursor:pointer; border-radius:6px; ${glasStatSelKey === key ? "background:var(--info-bg);" : ""}" onclick="glasStatSetSel('${key}')">
-          <span class="muted" style="flex:0 0 56px; font-size:12px;">${escapeHtml(v.label)}</span>
-          <div style="flex:1; background:var(--bg); border-radius:5px; overflow:hidden;">
-            <div style="width:${Math.max(2, Math.round((v.wert / maxPeriode) * 100))}%; background:${glasStatSelKey === key ? "#1e7a34" : "var(--blue)"}; border-radius:5px; padding:3px 6px; color:white; font-size:11px; font-weight:600; white-space:nowrap;">${metrikText(Math.round(v.wert * 10) / 10)}</div>
-          </div>
-        </div>`).join("") : `<p class="muted">Noch keine unterschriebenen Abnahmen in diesem Zeitraum.</p>`}
+      <h2 style="margin:0 0 2px;">Gereinigte qm pro ${glasStatGran === "jahr" ? "Monat" : "Tag"}</h2>
+      <p class="muted" style="margin:0 0 10px; font-size:12px;">Balken antippen \u2192 Details darunter</p>
+      <div class="glas-vchart">
+        ${balken.map((b) => `
+          <div class="glas-vbar${sel && b.key === sel.key ? " sel" : ""}" onclick="glasStatSetSel('${b.key}')" title="${glasStatQmText(b.qm)} qm \u00b7 ${b.n} Schein${b.n === 1 ? "" : "e"}">
+            <div class="vfill" style="height:${Math.max(2, Math.round((b.qm / maxQm) * 100))}%"></div>
+            <div class="vxl">${zeigeLabel(b) ? escapeHtml(b.label) : ""}</div>
+          </div>`).join("")}
       </div>
     </div>
 
-    ${glasStatSelKey ? renderStatEinzelPeriode(rows) : ""}
-
-    ${rows.length ? `
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
-      <div class="card" style="margin-bottom:0;">
-        <p class="muted" style="margin:0 0 4px;">🏆 Bester Tag</p>
-        <p style="margin:0; font-weight:700;">${besterTag ? formatGlasDate(besterTag[0]) : "–"}</p>
-        <p class="muted" style="margin:2px 0 0;">${besterTag ? metrikText(Math.round(besterTag[1] * 10) / 10) : ""}</p>
-      </div>
-      <div class="card" style="margin-bottom:0;">
-        <p class="muted" style="margin:0 0 4px;">🏆 Bester Monat</p>
-        <p style="margin:0; font-weight:700;">${besterMonat ? glasStatMonatLabel(besterMonat[0]) : "–"}</p>
-        <p class="muted" style="margin:2px 0 0;">${besterMonat ? metrikText(Math.round(besterMonat[1] * 10) / 10) : ""}</p>
-      </div>
-    </div>
-
+    ${sel ? `
     <div class="card">
-      <h2>Top-Objekte</h2>
-      ${topObjekte.map(([nameObj, wert], i) => `
-        <div style="display:flex; justify-content:space-between; gap:10px; padding:8px 0; ${i ? "border-top:1px solid var(--border);" : ""}">
-          <span style="font-size:13.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${i + 1}. ${escapeHtml(nameObj)}</span>
-          <span style="font-weight:700; font-size:13px; white-space:nowrap;">${metrikText(Math.round(wert * 10) / 10)}</span>
-        </div>`).join("")}
+      <h2 style="margin:0 0 2px;">Top-Objekte \u00b7 ${escapeHtml(selLabel)}</h2>
+      <p class="muted" style="margin:0 0 8px; font-size:12px;">${glasStatQmText(sel.qm)} qm \u00b7 ${sel.n} Schein${sel.n === 1 ? "" : "e"}${glasStatFirma !== "alle" ? " \u00b7 " + glasFirmaLabel(glasStatFirma === "sub" ? "sub" : "geko") : ""}</p>
+      ${topObjekte.length ? topObjekte.map(([nameObj, wert], i) => `
+        <div class="glas-rankrow">
+          <span class="rp">${i + 1}.</span>
+          <span class="rn">${escapeHtml(nameObj)}</span>
+          <span class="rb"><i style="width:${Math.max(4, Math.round((wert / topMax) * 100))}%"></i></span>
+          <span class="rv">${glasStatQmText(wert)} qm</span>
+        </div>`).join("") : `<p class="muted" style="margin:6px 0 2px;">Keine Abnahmen in diesem Zeitraum.</p>`}
     </div>` : ""}
   `;
 }
