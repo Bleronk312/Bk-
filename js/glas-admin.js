@@ -726,6 +726,10 @@ function renderGlasHome() {
     .sort((a, b) => a.datum.localeCompare(b.datum))
     .slice(0, 3);
   const heuteTermine = glasTermine.filter((t) => t.datum && today >= t.datum && today <= (t.datum_bis || t.datum));
+  const naechsteTermine = glasTermine
+    .filter((t) => t.datum && t.datum > today)
+    .sort((a, b) => a.datum.localeCompare(b.datum))
+    .slice(0, 3);
 
   // Farbige Status-Kachel (Zahl zählt beim Öffnen hoch -> data-count)
   const tile = (cls, icon, num, label, onclick) => `
@@ -761,18 +765,32 @@ function renderGlasHome() {
 
   const terminCard = (t) => {
     const c = GLAS_TERMIN_FARBEN[t.farbe] || GLAS_TERMIN_FARBEN.tuerkis;
+    // Datum zeigen, sobald der Termin nicht (nur) heute ist - bei "Als Nächstes" wichtig
+    const meta = t.datum_bis && t.datum_bis !== t.datum
+      ? formatGlasDateRange(t.datum, t.datum_bis)
+      : (t.datum !== today ? formatGlasDate(t.datum) : "");
     return `
       <div class="glas-tour-card" onclick="goGlasTab('kalender'); openGlasTermin('${t.id}');">
         <div class="gtc-row">
           <div class="gtc-ic" style="background:${c.dot}22; color:${c.dot};">📌</div>
           <div class="gtc-grow">
             <p class="gtc-name">${escapeHtml(t.titel)}</p>
-            ${t.datum_bis && t.datum_bis !== t.datum ? `<p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}</p>` : ""}
+            ${meta ? `<p class="gtc-meta">${meta}</p>` : ""}
           </div>
           <span class="gtc-pill p-plan">Termin</span>
         </div>
       </div>`;
   };
+
+  // Einklappbarer Startseiten-Bereich mit Zähler im Titel
+  const sektion = (key, titel, count, inhalt, leerText) => `
+    <div class="glas-home-sec">
+      <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('${key}')">
+        <span>${titel} <span class="muted" style="font-weight:600;">(${count})</span></span>
+        <span class="chev">${glasHomeOffen[key] ? "▲" : "▼"}</span>
+      </div>
+      ${glasHomeOffen[key] ? (count ? inhalt : `<p class="glas-home-empty">${leerText}</p>`) : ""}
+    </div>`;
 
   return `
     <div class="glas-dash">
@@ -795,22 +813,10 @@ function renderGlasHome() {
         <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
 
-      <div class="glas-home-sec">
-        <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('heute')">
-          <span>Heute</span><span class="chev">${glasHomeOffen.heute ? "▲" : "▼"}</span>
-        </div>
-        ${!glasHomeOffen.heute ? "" : (heuteTouren.length || heuteTermine.length
-          ? heuteTouren.map(tourCard).join("") + heuteTermine.map(terminCard).join("")
-          : `<p class="glas-home-empty">Heute ist nichts geplant. 🎉</p>`)}
-      </div>
-
-      ${naechsteTouren.length ? `
-      <div class="glas-home-sec">
-        <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('naechste')">
-          <span>Als Nächstes</span><span class="chev">${glasHomeOffen.naechste ? "▲" : "▼"}</span>
-        </div>
-        ${glasHomeOffen.naechste ? naechsteTouren.map(tourCard).join("") : ""}
-      </div>` : ""}
+      ${sektion("heuteTouren", "🚐 Heute · Touren", heuteTouren.length, heuteTouren.map(tourCard).join(""), "Heute keine Touren.")}
+      ${sektion("heuteTermine", "📌 Heute · Termine", heuteTermine.length, heuteTermine.map(terminCard).join(""), "Heute keine Termine.")}
+      ${sektion("naechsteTouren", "🚐 Als Nächstes · Touren", naechsteTouren.length, naechsteTouren.map(tourCard).join(""), "Keine kommenden Touren geplant.")}
+      ${sektion("naechsteTermine", "📌 Als Nächstes · Termine", naechsteTermine.length, naechsteTermine.map(terminCard).join(""), "Keine kommenden Termine.")}
     </div>`;
 }
 
@@ -862,7 +868,7 @@ function glasAnimateProgress() {
   });
 }
 
-let glasHomeOffen = { heute: true, naechste: true };
+let glasHomeOffen = { heuteTouren: true, heuteTermine: true, naechsteTouren: true, naechsteTermine: true };
 function glasToggleHomeSektion(key) { glasHomeOffen[key] = !glasHomeOffen[key]; glasUpdateTabContent(); }
 
 // "Donnerstag, 2. Juli 2026"
