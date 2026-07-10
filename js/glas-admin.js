@@ -868,8 +868,8 @@ function glasAnimateProgress() {
   });
 }
 
-// Standardmäßig ist nur "Heute · Termine" aufgeklappt - der Rest lässt sich bei Bedarf öffnen
-let glasHomeOffen = { heuteTouren: false, heuteTermine: true, naechsteTouren: false, naechsteTermine: false };
+// Standardmäßig sind die beiden Heute-Bereiche aufgeklappt, "Als Nächstes" eingeklappt
+let glasHomeOffen = { heuteTouren: true, heuteTermine: true, naechsteTouren: false, naechsteTermine: false };
 function glasToggleHomeSektion(key) { glasHomeOffen[key] = !glasHomeOffen[key]; glasUpdateTabContent(); }
 
 // "Donnerstag, 2. Juli 2026"
