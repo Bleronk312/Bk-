@@ -477,8 +477,17 @@ function glasHashFor(page) {
 let glasContentAnimPending = false;
 let glasCalAnimDir = null;
 
+// Slide-Richtung aus der Reiter-Reihenfolge ableiten (alter -> neuer Tab)
+function glasSetTabAnimDir(neuerKey) {
+  const alterKey = glasPage && glasPage.type === "tabs" ? glasPage.tab : "";
+  const a = GLAS_TAB_ORDNUNG[alterKey] ?? 0;
+  const b = GLAS_TAB_ORDNUNG[neuerKey] ?? 0;
+  glasTabAnimDir = b === a ? 0 : (b > a ? 1 : -1);
+}
+
 function goGlasHome() {
   glasContentAnimPending = true;
+  glasSetTabAnimDir("");
   window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   // In der reinen Kalender-App gibt es keine Verwaltungs-Startseite - das Logo/Zuhause
   // führt zurück in den Kalender (aktueller Monat), nicht in die Glas-Verwaltung.
@@ -504,8 +513,10 @@ function glasNavigate(page) {
   else renderGlasAdmin();
 }
 
-function goGlasObjekt(id) { glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
+function goGlasObjekt(id) { glasContentAnimPending = true; window.scrollTo(0, 0); glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
 function goGlasKunde(id) {
+  glasContentAnimPending = true;
+  window.scrollTo(0, 0);
   glasAuswahl = { modus: null, ids: new Set() };
   glasKundeObjFilter = "alle";
   glasKundeErlMonat = { year: new Date().getFullYear(), month: new Date().getMonth() };
@@ -515,6 +526,7 @@ function goGlasKunde(id) {
 }
 function goGlasTab(tab) {
   glasContentAnimPending = true;
+  glasSetTabAnimDir(tab);
   window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   glasAuswahl = { modus: null, ids: new Set() };
   glasUrlaubEditing = null;
@@ -534,6 +546,24 @@ function goGlasTab(tab) {
    Root-Render
    ======================================================================== */
 
+// Einmaliger, weicher Eintritt für Detailseiten (Kunde/Objekt/Statistik/Formular) beim
+// ECHTEN Navigieren. Interaktionen auf der Seite rendern ohne Animation (kein Flackern).
+function glasViewEintritt(view) {
+  if (!glasContentAnimPending) return;
+  glasContentAnimPending = false;
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  view.style.transition = "none";
+  view.style.transform = "translateY(12px)";
+  view.style.opacity = "0";
+  void view.offsetHeight; // Style-Flush: Startwerte festschreiben, sonst springt die Transition
+  requestAnimationFrame(() => {
+    view.style.transition = "opacity 0.22s ease, transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)";
+    view.style.transform = "";
+    view.style.opacity = "1";
+    setTimeout(() => { view.style.transition = "none"; }, 330);
+  });
+}
+
 function renderGlasAdmin() {
   // Offene Formulare vor jedem Neuaufbau aus dem DOM sichern - sonst würden Re-Renders
   // (z.B. durch einen Klick anderswo) bereits eingetippte Werte verwerfen.
@@ -547,10 +577,10 @@ function renderGlasAdmin() {
   document.body.classList.toggle("glas-fullwidth", glasPage.type === "tabs" && glasPage.tab === "kalender");
   document.body.classList.toggle("glas-cal-pur", glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender");
 
-  if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); return; }
-  if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); return; }
-  if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); return; }
-  if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); return; }
+  if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); glasViewEintritt(view); return; }
+  if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); glasViewEintritt(view); return; }
+  if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); glasViewEintritt(view); return; }
+  if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); glasViewEintritt(view); glasAnimateProgress(); return; }
 
   // Startseite (Dashboard) und alle Reiter teilen sich dieselbe Reiter-Leiste, damit die
   // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
@@ -589,32 +619,60 @@ function renderGlasAdmin() {
     if (navHost) { navHost.innerHTML = ""; navHost.__html = ""; }
   }
 
-  view.innerHTML = `
-    ${glasCalApp ? glasNav : `<div class="glas-nav-inflow">${glasNav}</div>`}
-    ${glasCalApp || (glasPage.type === "tabs" && (glasPage.tab === "kalender" || glasPage.tab === "scheine")) ? "" : renderGlobalSearchBar()}
-    <div id="glasTabContent"></div>
-  `;
-  glasUpdateTabContent();
+  // Die Shell (Reiter-Kopie im Fluss, Such-Slot, Content-Container) wird nur EINMAL
+  // gebaut und danach wiederverwendet: So bleibt beim Tab-Wechsel der ALTE Inhalt für
+  // die Hinaus-Animation stehen, und das Suchfeld verliert nie Fokus/Tastatur.
+  const suchHtml = glasCalApp || (glasPage.type === "tabs" && (glasPage.tab === "kalender" || glasPage.tab === "scheine")) ? "" : renderGlobalSearchBar();
+  const bindGlobalSearch = () => {
+    const gsEl = document.getElementById("global_search");
+    if (gsEl) gsEl.oninput = (e) => { glasGlobalSearch = e.target.value; glasUpdateTabContent(); };
+  };
 
-  // Die globale Suche liegt AUSSERHALB des Content-Bereichs: Beim Tippen wird nur der
-  // Inhalt darunter neu gebaut, das Suchfeld selbst bleibt unangetastet - so bleiben
-  // Fokus und Tastatur stabil (kein focusSearch-Hack mehr nötig).
-  const gsEl = document.getElementById("global_search");
-  if (gsEl) gsEl.oninput = (e) => { glasGlobalSearch = e.target.value; glasUpdateTabContent(); };
+  if (glasCalApp || !document.getElementById("glasTabContent") || !view.querySelector(".glas-nav-inflow")) {
+    view.innerHTML = `
+      ${glasCalApp ? glasNav : `<div class="glas-nav-inflow">${glasNav}</div>`}
+      <div id="glasSearchSlot">${suchHtml}</div>
+      <div id="glasTabContent"></div>
+    `;
+    view.__suchHtml = suchHtml;
+    bindGlobalSearch();
+  } else {
+    const inflow = view.querySelector(".glas-nav-inflow");
+    if (inflow.__html !== glasNav) { inflow.innerHTML = glasNav; inflow.__html = glasNav; }
+    if (view.__suchHtml !== suchHtml) {
+      const slot = document.getElementById("glasSearchSlot");
+      if (slot) slot.innerHTML = suchHtml;
+      view.__suchHtml = suchHtml;
+      bindGlobalSearch();
+    }
+  }
+  glasUpdateTabContent();
 }
 
+// Richtung des Tab-Wechsels (für den Slide): Reihenfolge der Reiter in der Leiste.
+// dir < 0 = neuer Tab liegt links (Inhalt kommt von links), dir > 0 = rechts.
+const GLAS_TAB_ORDNUNG = { "": 0, touren: 1, kunden: 2, kalender: 3, scheine: 4, faellig: 5, einstellungen: 5 };
+let glasTabAnimDir = 0;
+let glasTabAnimBusy = false;
+
 // Baut NUR den Tab-Inhalt (#glasTabContent) neu auf - Reiterleiste und globales Suchfeld
-// bleiben stehen. Kern der flüssigeren Bedienung: Tipp-Interaktionen ersetzen nicht mehr
-// die komplette Seite.
+// bleiben stehen. Bei einem echten Reiter-Wechsel (glasContentAnimPending) gleitet der
+// alte Inhalt kurz hinaus und der neue aus der Wechsel-Richtung herein - GPU-freundlich
+// nur über transform/opacity. Interaktionen INNERHALB eines Tabs aktualisieren ohne
+// Animation an Ort und Stelle (kein Flackern).
 function glasUpdateTabContent() {
   const content = document.getElementById("glasTabContent");
   if (!content) { renderGlasAdmin(); return; }
-  content.classList.toggle("glas-content-in", glasContentAnimPending);
+  const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const hatAlt = content.innerHTML.trim() !== ""; // alter Inhalt vorhanden -> Hinaus-Phase möglich
+  const animieren = glasContentAnimPending && !reduceMotion && !glasTabAnimBusy;
+  const dir = glasTabAnimDir;
   glasContentAnimPending = false;
+  glasTabAnimDir = 0;
+
   const isHome = glasPage.type === "home";
   const tab = isHome ? "" : glasPage.tab;
-
-  content.innerHTML = glasGlobalSearch.trim() ? renderGlobalSearchResults()
+  const html = glasGlobalSearch.trim() ? renderGlobalSearchResults()
     : isHome ? renderGlasHome()
     : tab === "kunden" ? renderKundenTab()
     : tab === "faellig" ? renderFaelligTab()
@@ -623,8 +681,48 @@ function glasUpdateTabContent() {
     : tab === "einstellungen" ? renderEinstellungenTab()
     : renderTourenTab();
 
-  if (isHome && !glasGlobalSearch.trim()) glasAnimateHome();
-  glasAnimateProgress();
+  const anwenden = () => {
+    content.innerHTML = html;
+    if (isHome && !glasGlobalSearch.trim()) glasAnimateHome();
+    glasAnimateProgress();
+    glasAttachTabHandlers(tab);
+  };
+
+  if (!animieren) {
+    content.style.transition = "none";
+    content.style.transform = "";
+    content.style.opacity = "";
+    anwenden();
+    return;
+  }
+
+  // Phase 2 (Herein): neuer Inhalt kommt aus der Wechsel-Richtung
+  const herein = () => {
+    anwenden();
+    content.style.transition = "none";
+    content.style.transform = dir ? `translateX(${dir * 18}px)` : "translateY(10px)";
+    content.style.opacity = "0";
+    void content.offsetHeight; // Style-Flush: Startwerte festschreiben, sonst springt die Transition
+    requestAnimationFrame(() => {
+      content.style.transition = "opacity 0.22s ease, transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)";
+      content.style.transform = "";
+      content.style.opacity = "1";
+      setTimeout(() => { glasTabAnimBusy = false; content.style.transition = "none"; }, 320);
+    });
+  };
+
+  glasTabAnimBusy = true;
+  if (!hatAlt) { herein(); return; }
+
+  // Phase 1 (Hinaus): alter Inhalt gleitet kurz weg, dann Phase 2
+  content.style.transition = "opacity 0.12s ease, transform 0.12s ease";
+  content.style.transform = dir ? `translateX(${dir * -16}px)` : "scale(0.988)";
+  content.style.opacity = "0";
+  setTimeout(herein, 120);
+}
+
+// Suchfeld-/Interaktions-Handler des frisch gerenderten Tab-Inhalts anhängen
+function glasAttachTabHandlers(tab) {
 
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
@@ -687,6 +785,23 @@ let glasMenuOpen = false;
 function glasToggleMenu() { glasMenuOpen = !glasMenuOpen; renderGlasAdmin(); }
 
 // Aufklapp-Menü hinter "☰ Mehr": alles, was nicht in die oberste Reiterzeile passt.
+// Bottom-Sheet ANIMIERT schließen (nach unten gleiten + Abdunkelung ausblenden),
+// danach den eigentlichen Schließen-Code ausführen. el = beliebiges Element im Sheet.
+function glasSheetZu(el, danach) {
+  const ov = el.closest ? el.closest(".glas-day-sheet-ov") : null;
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!ov || reduce) { danach(); return; }
+  const sheet = ov.querySelector(".glas-day-sheet");
+  ov.style.transition = "opacity 0.22s ease";
+  ov.style.opacity = "0";
+  ov.style.pointerEvents = "none";
+  if (sheet) {
+    sheet.style.transition = "transform 0.26s cubic-bezier(0.32, 0.72, 0, 1)";
+    sheet.style.transform = "translateY(105%)";
+  }
+  setTimeout(danach, 240);
+}
+
 // "Mehr" öffnet als eigenes Fenster (Bottom-Sheet mit Abdunkelung): Tipp daneben oder
 // auf ✕ schließt es zuverlässig - kein hängenbleibendes Dropdown mehr.
 function renderGlasMehrMenu(tab) {
@@ -695,12 +810,12 @@ function renderGlasMehrMenu(tab) {
       <span>${icon} ${label}</span>${aktiv ? '<span style="color:var(--blue);">●</span>' : '<span style="color:var(--text-secondary);">›</span>'}
     </button>`;
   return `
-    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasMenuOpen=false; renderGlasAdmin();}">
+    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasSheetZu(this, () => { glasMenuOpen=false; renderGlasAdmin(); });}">
       <div class="glas-day-sheet" style="max-height:65vh;">
         <div class="glas-sheet-grip"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <p style="margin:0; font-weight:700; font-size:16px;">Mehr</p>
-          <button class="btn btn-sm" onclick="glasMenuOpen=false; renderGlasAdmin();">✕</button>
+          <button class="btn btn-sm" onclick="glasSheetZu(this, () => { glasMenuOpen=false; renderGlasAdmin(); });">✕</button>
         </div>
         ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
         ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
@@ -4949,14 +5064,14 @@ function renderKalenderTagPanel(iso) {
   }).join("");
 
   return `
-    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasKalenderSelectedDay=null; renderGlasAdmin();}">
+    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasSheetZu(this, () => { glasKalenderSelectedDay=null; renderGlasAdmin(); });}">
       <div class="glas-day-sheet">
         <div class="glas-sheet-grip"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <p style="margin:0; font-weight:700; font-size:16px;">${wt}, ${formatGlasDate(iso)}</p>
           <div style="display:flex; gap:6px; flex-shrink:0;">
             <button class="btn btn-sm" onclick="openGlasTermin(null, '${iso}')">+ Termin</button>
-            <button class="btn btn-sm" onclick="glasKalenderSelectedDay=null; renderGlasAdmin();">✕</button>
+            <button class="btn btn-sm" onclick="glasSheetZu(this, () => { glasKalenderSelectedDay=null; renderGlasAdmin(); });">✕</button>
           </div>
         </div>
         ${tourRows}${terminRows}${urlaubRows}

@@ -693,6 +693,26 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 #offeneListeErgebnisse .card,
 #tourSearchResults .card,
 #glasTabContent .card { animation: none; }
+/* Glas-App: Eintritts-Animationen laufen NICHT bei jedem Re-Render neu - der ganze
+   #view und seine Karten würden sonst bei jeder Interaktion auf Detailseiten
+   (Kunde/Objekt/Statistik) kurz flackern. Echte Seitenwechsel animiert das JS gezielt. */
+body.glas-logo-left #view { animation: none; }
+body.glas-logo-left #view .card { animation: none; }
+body.glas-logo-left #view .scheine-item { animation: none; }
+
+/* ---- Natives App-Gefühl (iOS): kein grauer Tap-Blitz, kein Text-Markieren /
+   Lupen-Callout beim Halten auf Bedienelementen. Eingabefelder bleiben normal. ---- */
+* { -webkit-tap-highlight-color: transparent; }
+button, .btn, .tab-btn, .card, .chip, .badge, .glas-home-tile, .glas-tour-card,
+.glas-schein-card, .glas-cal-cell, .glas-cal-kw, .glas-seg-btn, .glas-menu-item,
+.glas-bottomnav, .glas-stat-tile, .glas-kpi, .glas-vbar, .glas-rankrow,
+.glas-home-sec-head, .glas-stop-row, .glas-pick, .hub-card, .glas-fab,
+.glas-caro-dots, .glas-sheet-grip {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, select { -webkit-user-select: auto; user-select: auto; }
 
 /* Beim Wechseln des Tabs/Inhalts gleitet der neue Inhalt einmal weich herein (auch beim
    Öffnen des Kalenders) - spürbar sanfter durch Spring-Easing. */
@@ -1432,8 +1452,10 @@ input, textarea, select {
   animation: scaleIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Bewusst KEIN "transition: all" mehr - das animierte unbeabsichtigt Layout-
+   Eigenschaften bei jedem Re-Render und erzeugte Mikro-Ruckler. */
 .app-header, .logo-badge, .sheet, .app-sheet {
-  transition: all 0.3s ease;
+  transition: box-shadow 0.3s ease;
 }
 
 .photo-thumb, .photo-add-btn {
