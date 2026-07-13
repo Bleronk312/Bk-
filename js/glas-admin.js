@@ -313,7 +313,52 @@ const glasCalApp = window.__gekoKalender === true
   || /(^|\/)kalender\.html$/i.test(location.pathname)
   || new URLSearchParams(location.search).get("app") === "kalender";
 
+// App-Shell-Höhe hart in ECHTEN Pixeln setzen: iOS berechnet 100vh/100dvh (und teils
+// sogar position:fixed-Höhen) im Standalone-/Safari-Modus falsch, wodurch der Rahmen
+// samt unterer Leiste über dem Bildschirmrand endete. window.innerHeight bzw. der
+// visualViewport liefern dagegen die tatsächlich sichtbare Höhe - die nehmen wir
+// wörtlich und führen sie bei jeder Viewport-Änderung nach.
+function glasShellHoehe() {
+  if (!document.body.classList.contains("glas-shell")) return;
+  if (!window.matchMedia("(max-width: 759px)").matches) { document.body.style.height = ""; return; }
+  const h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
+  if (h > 0) document.body.style.height = h + "px";
+  glasDebugOverlay();
+}
+
+// Mess-Overlay für die Fehlersuche am echten Gerät: nur aktiv mit ?debug=1 in der URL.
+function glasDebugOverlay() {
+  if (!/[?&]debug=1/.test(location.search)) return;
+  let el = document.getElementById("glasDbg");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "glasDbg";
+    el.style.cssText = "position:fixed;top:70px;left:8px;z-index:2147483647;background:rgba(0,0,0,.85);color:#7CFC00;font:11px/1.6 monospace;padding:8px 10px;border-radius:8px;pointer-events:none;white-space:pre;";
+    document.body.appendChild(el);
+  }
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:1px;visibility:hidden;";
+  document.body.appendChild(probe);
+  const nav = document.querySelector("#glasNavHost .glas-bottomnav");
+  const b = document.body.getBoundingClientRect();
+  const n = nav ? nav.getBoundingClientRect() : null;
+  el.textContent =
+    `innerH ${window.innerHeight}  screenH ${screen.height}\n` +
+    `vvH ${window.visualViewport ? Math.round(window.visualViewport.height) : "-"}  vvTop ${window.visualViewport ? Math.round(window.visualViewport.offsetTop) : "-"}\n` +
+    `body ${Math.round(b.top)}..${Math.round(b.bottom)}  h ${Math.round(b.height)}\n` +
+    `nav ${n ? Math.round(n.top) + ".." + Math.round(n.bottom) : "-"}\n` +
+    `safeB ${Math.round(probe.getBoundingClientRect().height)}  standalone ${!!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches))}\n` +
+    `scrollY ${Math.round(window.scrollY)}  bodyH(style) ${document.body.style.height || "-"}`;
+  probe.remove();
+}
+
 async function glasInit() {
+  glasShellHoehe();
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", glasShellHoehe);
+  window.addEventListener("resize", glasShellHoehe);
+  window.addEventListener("orientationchange", () => setTimeout(glasShellHoehe, 250));
+  window.addEventListener("pageshow", glasShellHoehe);
+  setInterval(glasDebugOverlay, 1500); // ohne ?debug=1 ein No-Op
   // Manche Home-Bildschirm-Verknüpfungen verlieren den #-Teil der URL -
   // ?tab=kalender funktioniert deshalb als gleichwertiger Einstieg.
   const qTab = new URLSearchParams(location.search).get("tab");
