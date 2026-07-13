@@ -320,24 +320,21 @@ const glasCalApp = window.__gekoKalender === true
 // wörtlich und führen sie bei jeder Viewport-Änderung nach.
 function glasShellHoehe() {
   if (!document.body.classList.contains("glas-shell")) return;
-  if (!window.matchMedia("(max-width: 759px)").matches) { document.body.style.height = ""; return; }
+  if (!window.matchMedia("(max-width: 759px)").matches) {
+    document.body.style.height = "";
+    document.documentElement.style.background = "";
+    return;
+  }
+  // iOS-Standalone reserviert unterhalb der Seite eine tote Zone (am Gerät per Lineal
+  // nachgemessen: sichtbare Kante = exakt innerHeight; alles darüber hinaus wird nie
+  // angezeigt). innerHeight ist also die Wahrheit - KEINE Korrektur nach unten. Damit
+  // die tote Zone nicht als grauer Fremdkörper wirkt, bekommt der Zeichen-Untergrund
+  // (html) die Leisten-Farbe: Zone und Leiste verschmelzen optisch.
+  document.documentElement.style.background = "var(--card)";
   // Feintuning am Gerät: ?bh=820 erzwingt eine exakte Pixel-Höhe (nur zum Testen)
   const bhParam = parseInt(new URLSearchParams(location.search).get("bh"), 10);
   if (bhParam > 0) { document.body.style.height = bhParam + "px"; glasDebugOverlay(); return; }
-  let h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
-  // iOS-Standalone-Eigenheit (am Gerät nachgemessen): innerHeight meldet 793 bei 852pt
-  // Bildschirm - volle Höhe abzüglich der Home-Balken-Zone (safe-area-inset-bottom)
-  // ist der tatsächlich nutzbare Bereich. screen.height pur war einen Tick zu tief
-  // (Beschriftung verschwand unter dem Home-Balken).
-  const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
-  if (standalone && screen.height > h && screen.height - h < 130) {
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:0;visibility:hidden;";
-    document.body.appendChild(probe);
-    const safeB = probe.getBoundingClientRect().height;
-    probe.remove();
-    h = Math.round(screen.height - safeB);
-  }
+  const h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
   if (h > 0) document.body.style.height = h + "px";
   glasDebugOverlay();
 }
