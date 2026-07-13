@@ -966,14 +966,24 @@ html.dark { --prog-track: #26313f; }
 .glas-next-tag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--blue); margin-bottom: 3px; }
 
 /* ---- Kunden-Widgets: wischbares Karussell ---- */
-.glas-caro-wrap { margin: 4px 0 14px; }
-.glas-caro { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.glas-caro-wrap { margin: 4px 0 14px; position: relative; }
+.glas-caro { display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; transition: height 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
 .glas-caro::-webkit-scrollbar { display: none; }
 .glas-cpage { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
 .glas-caro-dots { display: flex; justify-content: center; gap: 6px; padding: 9px 0 0; }
-.glas-caro-dots .cd { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: all 0.2s; }
+.glas-caro-dots .cd { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background 0.2s, width 0.2s; position: relative; cursor: pointer; }
+.glas-caro-dots .cd::after { content: ""; position: absolute; inset: -9px; }
 .glas-caro-dots .cd.on { background: var(--blue); width: 16px; border-radius: 4px; }
 .glas-caro-hint { text-align: center; font-size: 11px; color: var(--text-secondary); padding-top: 3px; }
+.glas-caro-arrow { display: none; }
+@media (min-width: 760px) {
+  .glas-caro-arrow { display: flex; align-items: center; justify-content: center; position: absolute; z-index: 2; top: 50%; transform: translateY(-70%); width: 30px; height: 30px; padding: 0 0 2px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text-secondary); font-size: 19px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(20, 30, 50, 0.12); transition: opacity 0.2s, box-shadow 0.2s; }
+  .glas-caro-arrow:hover { box-shadow: 0 2px 8px rgba(20, 30, 50, 0.18); }
+  .glas-caro-arrow.left { left: -9px; }
+  .glas-caro-arrow.right { right: -9px; }
+  .glas-caro-arrow.off { opacity: 0; pointer-events: none; }
+  .glas-caro-hint { display: none; }
+}
 .glas-home-tile.t-neu { background: #eef1f5; color: #5b6676; }
 html.dark .glas-home-tile.t-neu { background: #202a38; color: #9aa6b6; }
 

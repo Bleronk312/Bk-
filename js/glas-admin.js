@@ -724,6 +724,10 @@ function glasUpdateTabContent() {
 // Suchfeld-/Interaktions-Handler des frisch gerenderten Tab-Inhalts anhängen
 function glasAttachTabHandlers(tab) {
 
+  // Widget-Karussell (Kunden-Tab): Starthöhe auf die erste Seite setzen
+  const caro = document.querySelector(".glas-caro");
+  if (caro) glasKarusselDots(caro);
+
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
   if (tab === "kalender") {
@@ -1103,10 +1107,30 @@ function glasMonateSeit(iso) {
   return (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth());
 }
 
-// Punkte-Anzeige des Widget-Karussells beim Wischen aktualisieren
+// Punkte-Anzeige des Widget-Karussells beim Wischen aktualisieren; passt außerdem
+// die Container-Höhe an die aktive Seite an (sonst klafft unter kurzen Seiten die
+// Lücke bis zur höchsten Seite) und graut die Desktop-Pfeile an den Enden aus
 function glasKarusselDots(el) {
   const i = Math.round(el.scrollLeft / el.clientWidth);
-  el.parentElement.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
+  const wrap = el.parentElement;
+  wrap.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
+  const seite = el.children[i];
+  if (seite) el.style.height = seite.offsetHeight + "px";
+  const links = wrap.querySelector(".glas-caro-arrow.left"), rechts = wrap.querySelector(".glas-caro-arrow.right");
+  if (links) links.classList.toggle("off", i <= 0);
+  if (rechts) rechts.classList.toggle("off", i >= el.children.length - 1);
+}
+
+// Karussell per Klick steuern (Punkte + Desktop-Pfeile, Maus kann nicht wischen)
+function glasKarusselGo(i) {
+  const el = document.querySelector(".glas-caro");
+  if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
+}
+function glasKarusselStep(d) {
+  const el = document.querySelector(".glas-caro");
+  if (!el) return;
+  const i = Math.round(el.scrollLeft / el.clientWidth) + d;
+  glasKarusselGo(Math.max(0, Math.min(el.children.length - 1, i)));
 }
 
 // Wischbares Widget-Karussell über der Kundenliste (4 Seiten)
@@ -1155,6 +1179,8 @@ function renderKundenWidgets(kunden, objekte) {
 
   return `
     <div class="glas-caro-wrap">
+      <button class="glas-caro-arrow left off" onclick="glasKarusselStep(-1)" aria-label="Vorherige Infos">‹</button>
+      <button class="glas-caro-arrow right" onclick="glasKarusselStep(1)" aria-label="Weitere Infos">›</button>
       <div class="glas-caro" onscroll="glasKarusselDots(this)">
         <div class="glas-cpage">
           <div class="glas-home-tiles" style="margin-bottom:0;">
@@ -1185,7 +1211,7 @@ function renderKundenWidgets(kunden, objekte) {
           </div>
         </div>
       </div>
-      <div class="glas-caro-dots"><span class="cd on"></span><span class="cd"></span><span class="cd"></span><span class="cd"></span></div>
+      <div class="glas-caro-dots">${[0, 1, 2, 3].map((i) => `<span class="cd${i === 0 ? " on" : ""}" onclick="glasKarusselGo(${i})"></span>`).join("")}</div>
       <div class="glas-caro-hint">← Wischen für weitere Infos →</div>
     </div>`;
 }
