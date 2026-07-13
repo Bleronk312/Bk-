@@ -15,7 +15,9 @@
   let dist = 0;
 
   function scrollTopNow() {
-    return window.scrollY || document.documentElement.scrollTop || 0;
+    // Seiten mit App-Shell (z.B. Glas-Admin) scrollen in #glasScroller statt im Fenster
+    const sc = document.getElementById("glasScroller");
+    return Math.max(window.scrollY || document.documentElement.scrollTop || 0, sc ? sc.scrollTop : 0);
   }
 
   window.addEventListener("touchstart", (e) => {

@@ -485,10 +485,18 @@ function glasSetTabAnimDir(neuerKey) {
   glasTabAnimDir = b === a ? 0 : (b > a ? 1 : -1);
 }
 
+// Nach oben scrollen - auf dem Handy scrollt der App-Shell-Container (#glasScroller),
+// auf dem Desktop das Fenster. Beide zurücksetzen deckt beide Fälle ab.
+function glasScrollTop() {
+  window.scrollTo(0, 0);
+  const sc = document.getElementById("glasScroller");
+  if (sc) sc.scrollTop = 0;
+}
+
 function goGlasHome() {
   glasContentAnimPending = true;
   glasSetTabAnimDir("");
-  window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
+  glasScrollTop(); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   // In der reinen Kalender-App gibt es keine Verwaltungs-Startseite - das Logo/Zuhause
   // führt zurück in den Kalender (aktueller Monat), nicht in die Glas-Verwaltung.
   if (glasCalApp) {
@@ -500,7 +508,6 @@ function goGlasHome() {
 }
 
 function glasNavigate(page) {
-  glasMenuOpen = false; // offenes ☰-Menü schließt bei jeder Navigation
   // Beim Öffnen des Kalenders die Ebenen auf Standard: Touren+Termine an, Urlaub aus.
   if (page.type === "tabs" && page.tab === "kalender" && !(glasPage && glasPage.type === "tabs" && glasPage.tab === "kalender")) {
     glasResetKalEbenen();
@@ -513,10 +520,10 @@ function glasNavigate(page) {
   else renderGlasAdmin();
 }
 
-function goGlasObjekt(id) { glasContentAnimPending = true; window.scrollTo(0, 0); glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
+function goGlasObjekt(id) { glasContentAnimPending = true; glasScrollTop(); glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
 function goGlasKunde(id) {
   glasContentAnimPending = true;
-  window.scrollTo(0, 0);
+  glasScrollTop();
   glasAuswahl = { modus: null, ids: new Set() };
   glasKundeObjFilter = "alle";
   glasKundeErlMonat = { year: new Date().getFullYear(), month: new Date().getMonth() };
@@ -527,7 +534,7 @@ function goGlasKunde(id) {
 function goGlasTab(tab) {
   glasContentAnimPending = true;
   glasSetTabAnimDir(tab);
-  window.scrollTo(0, 0); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
+  glasScrollTop(); // neuer Reiter startet oben - verhindert Scroll-Sprünge der fixen Leiste
   glasAuswahl = { modus: null, ids: new Set() };
   glasUrlaubEditing = null;
   glasMaEditing = null;
@@ -602,9 +609,8 @@ function renderGlasAdmin() {
       ${tb(tab === "kunden", "👥", "Kunden", "goGlasTab('kunden')")}
       ${tb(tab === "kalender", "📅", "Kalender", "goGlasTab('kalender')")}
       ${tb(tab === "scheine", "📄", "Scheine", "goGlasTab('scheine')")}
-      ${tb(["faellig", "einstellungen"].includes(tab) || glasMenuOpen, "☰", "Mehr", "glasToggleMenu()")}
-    </div></div>
-    ${glasMenuOpen ? renderGlasMehrMenu(tab) : ""}`;
+      ${tb(["faellig", "einstellungen", "mehr"].includes(tab), "☰", "Mehr", "goGlasTab('mehr')")}
+    </div></div>`;
 
   // Handy: die feste untere Leiste lebt als DIREKTES body-Kind (#glasNavHost) - so wird
   // sie bei Tab-Wechseln nicht mit dem Content zerstört/neu aufgebaut (kein Springen) und
@@ -613,7 +619,15 @@ function renderGlasAdmin() {
   if (!glasCalApp) {
     let navHost = document.getElementById("glasNavHost");
     if (!navHost) { navHost = document.createElement("div"); navHost.id = "glasNavHost"; document.body.appendChild(navHost); }
-    if (navHost.__html !== glasNav) { navHost.innerHTML = glasNav; navHost.__html = glasNav; }
+    // Die fixe Leiste wird nach dem ersten Aufbau NIE ersetzt (innerHTML-Neuaufbau ließ
+    // sie auf iOS beim Tab-Wechsel kurz springen) - nur die Aktiv-Klasse wandert.
+    const hostBtns = navHost.querySelectorAll(".tab-btn");
+    if (hostBtns.length === 6) {
+      const aktivIdx = isHome ? 0 : { touren: 1, kunden: 2, kalender: 3, scheine: 4, mehr: 5, faellig: 5, einstellungen: 5 }[tab] ?? -1;
+      hostBtns.forEach((b, i) => b.classList.toggle("active", i === aktivIdx));
+    } else {
+      navHost.innerHTML = glasNav;
+    }
   } else {
     const navHost = document.getElementById("glasNavHost");
     if (navHost) { navHost.innerHTML = ""; navHost.__html = ""; }
@@ -622,7 +636,7 @@ function renderGlasAdmin() {
   // Die Shell (Reiter-Kopie im Fluss, Such-Slot, Content-Container) wird nur EINMAL
   // gebaut und danach wiederverwendet: So bleibt beim Tab-Wechsel der ALTE Inhalt für
   // die Hinaus-Animation stehen, und das Suchfeld verliert nie Fokus/Tastatur.
-  const suchHtml = glasCalApp || (glasPage.type === "tabs" && (glasPage.tab === "kalender" || glasPage.tab === "scheine")) ? "" : renderGlobalSearchBar();
+  const suchHtml = glasCalApp || (glasPage.type === "tabs" && ["kalender", "scheine", "mehr"].includes(glasPage.tab)) ? "" : renderGlobalSearchBar();
   const bindGlobalSearch = () => {
     const gsEl = document.getElementById("global_search");
     if (gsEl) gsEl.oninput = (e) => { glasGlobalSearch = e.target.value; glasUpdateTabContent(); };
@@ -651,7 +665,7 @@ function renderGlasAdmin() {
 
 // Richtung des Tab-Wechsels (für den Slide): Reihenfolge der Reiter in der Leiste.
 // dir < 0 = neuer Tab liegt links (Inhalt kommt von links), dir > 0 = rechts.
-const GLAS_TAB_ORDNUNG = { "": 0, touren: 1, kunden: 2, kalender: 3, scheine: 4, faellig: 5, einstellungen: 5 };
+const GLAS_TAB_ORDNUNG = { "": 0, touren: 1, kunden: 2, kalender: 3, scheine: 4, mehr: 5, faellig: 5, einstellungen: 5 };
 let glasTabAnimDir = 0;
 let glasTabAnimBusy = false;
 
@@ -679,6 +693,7 @@ function glasUpdateTabContent() {
     : tab === "kalender" ? renderKalenderTab()
     : tab === "scheine" ? renderScheineTab()
     : tab === "einstellungen" ? renderEinstellungenTab()
+    : tab === "mehr" ? renderMehrTab()
     : renderTourenTab();
 
   const anwenden = () => {
@@ -784,11 +799,6 @@ function focusSearch(id) {
    Startseite (Hallo GEKO Clean)
    ======================================================================== */
 
-let glasMenuOpen = false;
-
-function glasToggleMenu() { glasMenuOpen = !glasMenuOpen; renderGlasAdmin(); }
-
-// Aufklapp-Menü hinter "☰ Mehr": alles, was nicht in die oberste Reiterzeile passt.
 // Bottom-Sheet ANIMIERT schließen (nach unten gleiten + Abdunkelung ausblenden),
 // danach den eigentlichen Schließen-Code ausführen. el = beliebiges Element im Sheet.
 function glasSheetZu(el, danach) {
@@ -806,25 +816,27 @@ function glasSheetZu(el, danach) {
   setTimeout(danach, 240);
 }
 
-// "Mehr" öffnet als eigenes Fenster (Bottom-Sheet mit Abdunkelung): Tipp daneben oder
-// auf ✕ schließt es zuverlässig - kein hängenbleibendes Dropdown mehr.
-function renderGlasMehrMenu(tab) {
-  const item = (aktiv, icon, label, onclick) => `
-    <button class="glas-menu-item ${aktiv ? "on" : ""}" onclick="${onclick}">
-      <span>${icon} ${label}</span>${aktiv ? '<span style="color:var(--blue);">●</span>' : '<span style="color:var(--text-secondary);">›</span>'}
+// "Mehr" ist eine EIGENE SEITE wie jeder andere Reiter (kein Bottom-Sheet/Dropdown
+// mehr - die blieben auf dem iPhone teils offen hängen). Öffnet ganz normal mit der
+// Tab-Animation und schließt sich von selbst, sobald man ein Ziel antippt.
+function renderMehrTab() {
+  const item = (icon, label, sub, onclick) => `
+    <button class="glas-menu-item" style="padding:16px;" onclick="${onclick}">
+      <span style="display:flex; align-items:center; gap:13px; min-width:0;">
+        <span style="font-size:22px;">${icon}</span>
+        <span style="min-width:0;">
+          <span style="display:block; font-size:15px; font-weight:600;">${label}</span>
+          <span style="display:block; font-size:12px; color:var(--text-secondary); margin-top:2px;">${sub}</span>
+        </span>
+      </span>
+      <span style="color:var(--text-secondary); font-size:18px; flex-shrink:0;">›</span>
     </button>`;
   return `
-    <div class="modal-overlay glas-day-sheet-ov" onclick="if(event.target===this){glasSheetZu(this, () => { glasMenuOpen=false; renderGlasAdmin(); });}">
-      <div class="glas-day-sheet" style="max-height:65vh;">
-        <div class="glas-sheet-grip"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <p style="margin:0; font-weight:700; font-size:16px;">Mehr</p>
-          <button class="btn btn-sm" onclick="glasSheetZu(this, () => { glasMenuOpen=false; renderGlasAdmin(); });">✕</button>
-        </div>
-        ${item(tab === "faellig", "⏰", "Fällige Objekte", "glasMenuOpen=false; goGlasTab('faellig')")}
-        ${item(false, "📊", "Statistiken", "glasMenuOpen=false; glasOpenStatistik()")}
-        ${item(tab === "einstellungen", "⚙️", "Weitere Einstellungen", "glasMenuOpen=false; goGlasTab('einstellungen')")}
-      </div>
+    <h2 style="margin:2px 0 12px;">Mehr</h2>
+    <div class="card" style="padding:0; overflow:hidden;">
+      ${item("⏰", "Fällige Objekte", "Überfällige und anstehende Reinigungen", "goGlasTab('faellig')")}
+      ${item("📊", "Statistiken", "Reinigungen, Jahres-QM und Kunden-Auswertung", "glasOpenStatistik()")}
+      ${item("⚙️", "Weitere Einstellungen", "Mitarbeiter, Urlaub & Benachrichtigungen", "goGlasTab('einstellungen')")}
     </div>`;
 }
 
@@ -1133,6 +1145,10 @@ function glasMonateSeit(iso) {
 // Lücke bis zur höchsten Seite) und graut die Desktop-Pfeile an den Enden aus
 function glasKarusselDots(el) {
   const i = Math.round(el.scrollLeft / el.clientWidth);
+  // Nur bei ECHTEM Seitenwechsel arbeiten: das onscroll-Event feuert beim Wischen
+  // dutzendfach, und die Höhen-Änderung mitten in der Fingerbewegung ruckelte auf iOS.
+  if (el.__caroIdx === i) return;
+  el.__caroIdx = i;
   const wrap = el.parentElement;
   wrap.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
   const seite = el.children[i];

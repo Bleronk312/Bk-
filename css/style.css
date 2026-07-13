@@ -403,6 +403,19 @@ label {
 /* iOS-Gummiband (Overscroll-Bounce) aus: der Bounce zog die fixe Leiste optisch mit
    hoch. Pull-to-Refresh ist davon unabhängig (eigener Indikator über Touch-Events). */
 html, body { overscroll-behavior-y: none; }
+
+/* App-Shell (nur Handy + Seiten mit #glasScroller): Das Fenster steht fest, der Inhalt
+   scrollt in einem eigenen Container. Fixe Elemente (untere Reiterleiste) können damit
+   von Safari-Leiste, Scroll-Sprüngen oder Gummiband nicht mehr bewegt werden. */
+@media (max-width: 759px) {
+  body.glas-shell { height: 100vh; height: 100dvh; overflow: hidden; }
+  #glasScroller {
+    height: 100vh; height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+}
 .glas-bottomnav .tabs {
   margin: 0; border-bottom: none; gap: 0; overflow: visible;
   padding: 3px 2px; touch-action: auto;
@@ -973,7 +986,9 @@ html.dark { --prog-track: #26313f; }
 .glas-caro-wrap { margin: 4px 0 14px; position: relative; }
 .glas-caro { display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; transition: height 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
 .glas-caro::-webkit-scrollbar { display: none; }
-.glas-cpage { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+/* snap-stop always: ein Wisch = genau EINE Seite weiter, kein Durchrutschen über
+   mehrere Seiten bei schwungvollem Wischen */
+.glas-cpage { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; min-width: 0; }
 .glas-caro-dots { display: flex; justify-content: center; gap: 6px; padding: 9px 0 0; }
 .glas-caro-dots .cd { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background 0.2s, width 0.2s; position: relative; cursor: pointer; }
 .glas-caro-dots .cd::after { content: ""; position: absolute; inset: -9px; }

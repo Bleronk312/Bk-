@@ -10,14 +10,14 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Glasreinigung" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Hub - Glasreinigung</title>
-<link rel="stylesheet" href="css/style.css?v=43" />
+<link rel="stylesheet" href="css/style.css?v=44" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
-<body class="glas-logo-left">
+<body class="glas-logo-left glas-shell">
 
   <!-- PIN-Sperre nur für den Glas-Admin-Bereich. Einmal korrekt eingeben, danach merkt
        sich das Gerät die Freischaltung dauerhaft (localStorage). Hinweis: rein clientseitig
@@ -61,16 +61,21 @@
   })();
   </script>
 
-  <div class="app-header">
-    <div class="brand-row"><a href="hub.html" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;"><span class="dot"></span>GEKO Hub</a><a href="hub.html" class="btn btn-sm" style="margin-left:auto; background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.3); color:white;">⌂ Hub</a></div>
-    <div class="greeting">Glasreinigung – Planung &amp; Touren</div>
-  </div>
-  <div class="app-sheet">
-    <img class="logo-watermark" id="watermarkImg" alt="" />
-    <div class="logo-badge" style="cursor:pointer;" title="Zur Startseite" onclick="goGlasHome()"><img id="badgeLogoImg" alt="Logo" /></div>
-    <div class="app-sheet-content glas-static">
-      <div class="wrap" style="padding:0 18px 24px;">
-        <div id="view"><p class="muted"><span class="spinner"></span>Lade...</p></div>
+  <!-- App-Shell: Auf dem Handy scrollt NUR dieser Container, nie das Fenster selbst.
+       Dadurch kann die feste untere Reiterleiste nicht mehr mitrutschen (Safari-Leiste
+       und Gummiband-Effekt zogen sonst fixe Elemente optisch mit). -->
+  <div id="glasScroller">
+    <div class="app-header">
+      <div class="brand-row"><a href="hub.html" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;"><span class="dot"></span>GEKO Hub</a><a href="hub.html" class="btn btn-sm" style="margin-left:auto; background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.3); color:white;">⌂ Hub</a></div>
+      <div class="greeting">Glasreinigung – Planung &amp; Touren</div>
+    </div>
+    <div class="app-sheet">
+      <img class="logo-watermark" id="watermarkImg" alt="" />
+      <div class="logo-badge" style="cursor:pointer;" title="Zur Startseite" onclick="goGlasHome()"><img id="badgeLogoImg" alt="Logo" /></div>
+      <div class="app-sheet-content glas-static">
+        <div class="wrap" style="padding:0 18px 24px;">
+          <div id="view"><p class="muted"><span class="spinner"></span>Lade...</p></div>
+        </div>
       </div>
     </div>
   </div>
@@ -80,17 +85,17 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
-  <script src="js/config.js?v=43"></script>
-  <script src="js/logo-asset.js?v=43"></script>
-  <script src="js/pull-refresh.js?v=43"></script>
-  <script src="js/supabase-client.js?v=43"></script>
-  <script src="js/app-shared.js?v=43"></script>
-  <script src="js/glas-shared.js?v=43"></script>
-  <script defer src="js/pdf-fonts.js?v=43"></script>
-  <script defer src="js/pdf-template.js?v=43"></script>
-  <script defer src="js/glas-logo-sub.js?v=43"></script>
-  <script defer src="js/glas-pdf-template.js?v=43"></script>
-  <script src="js/push.js?v=43"></script>
-  <script src="js/glas-admin.js?v=43"></script>
+  <script src="js/config.js?v=44"></script>
+  <script src="js/logo-asset.js?v=44"></script>
+  <script src="js/pull-refresh.js?v=44"></script>
+  <script src="js/supabase-client.js?v=44"></script>
+  <script src="js/app-shared.js?v=44"></script>
+  <script src="js/glas-shared.js?v=44"></script>
+  <script defer src="js/pdf-fonts.js?v=44"></script>
+  <script defer src="js/pdf-template.js?v=44"></script>
+  <script defer src="js/glas-logo-sub.js?v=44"></script>
+  <script defer src="js/glas-pdf-template.js?v=44"></script>
+  <script src="js/push.js?v=44"></script>
+  <script src="js/glas-admin.js?v=44"></script>
 </body>
 </html>
