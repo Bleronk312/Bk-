@@ -1192,9 +1192,9 @@ function renderKundenWidgets(kunden, objekte) {
         </div>
         <div class="glas-cpage">
           <div class="glas-home-tiles" style="margin-bottom:0;">
-            ${tile("t-info", glasStatQmText(gesamtQm) + " m²", "Gesamt-QM")}
-            ${tile("t-neu", glasStatQmText(avgQm) + " m²", "Ø QM pro Objekt")}
-            ${tile("t-ok", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²" : "Bester Kunde")}
+            ${tile("t-info t-fit", glasStatQmText(gesamtQm) + " m²", "Gesamt-QM")}
+            ${tile("t-neu t-fit", glasStatQmText(avgQm) + " m²", "Ø QM pro Objekt")}
+            ${tile("t-ok t-name", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²" : "Bester Kunde")}
             ${tile("t-warn", ohneIntervall, "Objekte ohne Intervall")}
           </div>
         </div>
@@ -5791,7 +5791,10 @@ function glasStatKundeVon(stop) {
 }
 
 function glasStatQmText(qm) {
-  return String(Math.round(qm * 10) / 10).replace(".", ",");
+  // Große Werte ohne Nachkommastelle, aber mit Tausenderpunkt ("131.640"),
+  // kleine mit maximal einer Nachkommastelle ("756,5")
+  const gerundet = Math.round(qm * 10) / 10;
+  return gerundet.toLocaleString("de-DE", { maximumFractionDigits: gerundet >= 1000 ? 0 : 1 });
 }
 
 const GLAS_STAT_MONATE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];

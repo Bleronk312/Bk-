@@ -888,7 +888,7 @@ input, textarea, select { -webkit-user-select: auto; user-select: auto; }
 .glas-dash-actions { display: flex; gap: 10px; margin-bottom: 16px; }
 
 /* ---- Startseite: farbige Status-Kacheln + Fortschritt (neuer Look) ---- */
-.glas-home-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.glas-home-tiles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 14px; }
 .glas-home-tile {
   border-radius: 16px; padding: 14px; position: relative; overflow: hidden;
   cursor: pointer; box-shadow: 0 1px 3px rgba(20,30,50,.06);
@@ -897,6 +897,10 @@ input, textarea, select { -webkit-user-select: auto; user-select: auto; }
 .glas-home-tile:active { transform: scale(.96); }
 .glas-home-tile .ght-num { display: block; font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .glas-home-tile .ght-lbl { display: block; font-size: 12.5px; font-weight: 600; margin-top: 5px; opacity: .9; }
+/* Kacheln mit langen Werten (QM-Zahlen) bzw. Namen (Bester Kunde): kleinere
+   Schrift, damit nichts aus der Kachel läuft; Namen auf 2 Zeilen begrenzt */
+.glas-home-tile.t-fit .ght-num { font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }
+.glas-home-tile.t-name .ght-num { font-size: 15.5px; font-weight: 700; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .glas-home-tile .ght-ic { position: absolute; right: 10px; top: 10px; font-size: 17px; opacity: .55; }
 .glas-home-tile.t-crit { background: #fbe9e6; color: #c33623; }
 .glas-home-tile.t-warn { background: #fdeede; color: #bd6413; }
@@ -940,7 +944,7 @@ html.dark .gtc-pill.p-plan { background: #26313f; color: #9aa6b6; }
 .glas-mini-ring-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 
 @media (min-width: 760px) {
-  .glas-home-tiles { grid-template-columns: repeat(4, 1fr); }
+  .glas-home-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* ---- Tour-Detail: Fortschritts-Ring + Timeline ---- */
@@ -979,10 +983,12 @@ html.dark { --prog-track: #26313f; }
 @media (min-width: 760px) {
   .glas-caro-arrow { display: flex; align-items: center; justify-content: center; position: absolute; z-index: 2; top: 50%; transform: translateY(-70%); width: 30px; height: 30px; padding: 0 0 2px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text-secondary); font-size: 19px; line-height: 1; cursor: pointer; box-shadow: 0 1px 5px rgba(20, 30, 50, 0.12); transition: opacity 0.2s, box-shadow 0.2s; }
   .glas-caro-arrow:hover { box-shadow: 0 2px 8px rgba(20, 30, 50, 0.18); }
-  .glas-caro-arrow.left { left: -9px; }
-  .glas-caro-arrow.right { right: -9px; }
+  .glas-caro-arrow.left { left: -2px; }
+  .glas-caro-arrow.right { right: -2px; }
   .glas-caro-arrow.off { opacity: 0; pointer-events: none; }
   .glas-caro-hint { display: none; }
+  /* Seitliche Rinne, damit die Pfeile nicht über den Kacheln liegen */
+  .glas-caro .glas-cpage { padding: 0 36px; }
 }
 .glas-home-tile.t-neu { background: #eef1f5; color: #5b6676; }
 html.dark .glas-home-tile.t-neu { background: #202a38; color: #9aa6b6; }
