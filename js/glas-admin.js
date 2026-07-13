@@ -1101,6 +1101,27 @@ function glasObjektQm(o) {
   return sum;
 }
 
+// Reinigungen pro Jahr laut Intervall: rollierend = 52/X Wochen, feste Monate = Anzahl
+// der Monate in der Liste. Ohne Intervall zählt die Position nicht (0 Reinigungen).
+function glasPosReinigungenProJahr(p) {
+  if (p.intervall_typ === "rollierend") {
+    const wochen = parseInt(p.intervall_wochen, 10);
+    return wochen > 0 ? 52 / wochen : 0;
+  }
+  if (p.intervall_typ === "feste_monate") {
+    return String(p.feste_monate || "").split(",").map((m) => parseInt(m.trim(), 10)).filter((m) => m >= 1 && m <= 12).length;
+  }
+  return 0;
+}
+
+// Jahres-QM eines Objekts: Fläche × Reinigungen pro Jahr, über alle Positionen summiert.
+// 500 qm alle 2 Monate (6 feste Monate) = 3.000 qm/Jahr.
+function glasObjektJahresQm(o) {
+  let sum = 0;
+  glasGetObjektPositionen(o.id).forEach((p) => { if (!glasIstStundenPos(p)) sum += glasQmZahl(p.qm) * glasPosReinigungenProJahr(p); });
+  return sum;
+}
+
 // Monate seit einem ISO-Datum (für "am längsten nicht gereinigt")
 function glasMonateSeit(iso) {
   const d = new Date(iso + "T00:00:00"), n = new Date();
@@ -1138,16 +1159,18 @@ function renderKundenWidgets(kunden, objekte) {
   const objUeberf = objekte.filter((o) => glasObjektStatus(o.id) === "ueberfaellig").length;
   const objFaellig = objekte.filter((o) => glasObjektStatus(o.id) === "faellig").length;
 
-  // Flächen: Gesamt-QM, Ø pro Objekt, bester Kunde, Objekte ohne Intervall
+  // Flächen: alles in JAHRES-QM (Fläche × Reinigungen pro Jahr laut Intervall) -
+  // Positionen ohne Intervall zählen nicht, dafür gibt es die eigene Kachel.
   const kundeQm = new Map();
   let gesamtQm = 0;
   kunden.forEach((k) => {
     let s = 0;
-    objekte.forEach((o) => { if (o.kunde_id === k.id) s += glasObjektQm(o); });
+    objekte.forEach((o) => { if (o.kunde_id === k.id) s += glasObjektJahresQm(o); });
     kundeQm.set(k.id, s);
     gesamtQm += s;
   });
-  const avgQm = objekte.length ? gesamtQm / objekte.length : 0;
+  const objMitJahresQm = objekte.filter((o) => glasObjektJahresQm(o) > 0).length;
+  const avgQm = objMitJahresQm ? gesamtQm / objMitJahresQm : 0;
   const top5 = [...kunden].sort((a, b) => (kundeQm.get(b.id) || 0) - (kundeQm.get(a.id) || 0)).slice(0, 5).filter((k) => (kundeQm.get(k.id) || 0) > 0);
   const bester = top5[0] || null;
   const ohneIntervall = objekte.filter((o) => glasGetObjektPositionen(o.id).every((p) => !p.intervall_typ)).length;
@@ -1192,16 +1215,16 @@ function renderKundenWidgets(kunden, objekte) {
         </div>
         <div class="glas-cpage">
           <div class="glas-home-tiles" style="margin-bottom:0;">
-            ${tile("t-info t-fit", glasStatQmText(gesamtQm) + " m²", "Gesamt-QM")}
-            ${tile("t-neu t-fit", glasStatQmText(avgQm) + " m²", "Ø QM pro Objekt")}
-            ${tile("t-ok t-name", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²" : "Bester Kunde")}
+            ${tile("t-info t-fit", glasStatQmText(gesamtQm) + " m²", "Jahres-QM gesamt")}
+            ${tile("t-neu t-fit", glasStatQmText(avgQm) + " m²", "Ø Jahres-QM pro Objekt")}
+            ${tile("t-ok t-name", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²/Jahr" : "Bester Kunde")}
             ${tile("t-warn", ohneIntervall, "Objekte ohne Intervall")}
           </div>
         </div>
         <div class="glas-cpage">
           <div class="glas-rankcard">
-            <p class="rt">🏆 Top 5 Kunden nach QM</p>
-            ${top5.length ? top5.map((k, i) => rank(i + 1, k.name, Math.max(4, Math.round((kundeQm.get(k.id) / topMax) * 100)), glasStatQmText(kundeQm.get(k.id)) + " qm", `goGlasKunde('${k.id}')`)).join("") : `<p class="muted" style="margin:6px 0 2px;">Noch keine QM hinterlegt.</p>`}
+            <p class="rt">🏆 Top 5 Kunden nach Jahres-QM</p>
+            ${top5.length ? top5.map((k, i) => rank(i + 1, k.name, Math.max(4, Math.round((kundeQm.get(k.id) / topMax) * 100)), glasStatQmText(kundeQm.get(k.id)) + " qm", `goGlasKunde('${k.id}')`)).join("") : `<p class="muted" style="margin:6px 0 2px;">Noch keine QM mit Intervall hinterlegt.</p>`}
           </div>
         </div>
         <div class="glas-cpage">
