@@ -321,7 +321,15 @@ const glasCalApp = window.__gekoKalender === true
 function glasShellHoehe() {
   if (!document.body.classList.contains("glas-shell")) return;
   if (!window.matchMedia("(max-width: 759px)").matches) { document.body.style.height = ""; return; }
-  const h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
+  let h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
+  // iOS-Standalone-Bug (am Gerät nachgemessen): innerHeight/visualViewport lassen die
+  // Statusleiste weg (z.B. 793 statt 852), obwohl der Viewport dank viewport-fit=cover
+  // den GANZEN Bildschirm überspannt (safe-area-inset-bottom > 0 beweist das). Folge:
+  // unten blieb ein leerer Streifen in Statusleisten-Höhe. Im Hochformat deshalb die
+  // volle Bildschirmhöhe nehmen; der Guard (<130pt Differenz) lässt Querformat u.ä.
+  // unangetastet.
+  const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  if (standalone && screen.height > h && screen.height - h < 130) h = screen.height;
   if (h > 0) document.body.style.height = h + "px";
   glasDebugOverlay();
 }
