@@ -321,15 +321,23 @@ const glasCalApp = window.__gekoKalender === true
 function glasShellHoehe() {
   if (!document.body.classList.contains("glas-shell")) return;
   if (!window.matchMedia("(max-width: 759px)").matches) { document.body.style.height = ""; return; }
+  // Feintuning am Gerät: ?bh=820 erzwingt eine exakte Pixel-Höhe (nur zum Testen)
+  const bhParam = parseInt(new URLSearchParams(location.search).get("bh"), 10);
+  if (bhParam > 0) { document.body.style.height = bhParam + "px"; glasDebugOverlay(); return; }
   let h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
-  // iOS-Standalone-Bug (am Gerät nachgemessen): innerHeight/visualViewport lassen die
-  // Statusleiste weg (z.B. 793 statt 852), obwohl der Viewport dank viewport-fit=cover
-  // den GANZEN Bildschirm überspannt (safe-area-inset-bottom > 0 beweist das). Folge:
-  // unten blieb ein leerer Streifen in Statusleisten-Höhe. Im Hochformat deshalb die
-  // volle Bildschirmhöhe nehmen; der Guard (<130pt Differenz) lässt Querformat u.ä.
-  // unangetastet.
+  // iOS-Standalone-Eigenheit (am Gerät nachgemessen): innerHeight meldet 793 bei 852pt
+  // Bildschirm - volle Höhe abzüglich der Home-Balken-Zone (safe-area-inset-bottom)
+  // ist der tatsächlich nutzbare Bereich. screen.height pur war einen Tick zu tief
+  // (Beschriftung verschwand unter dem Home-Balken).
   const standalone = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
-  if (standalone && screen.height > h && screen.height - h < 130) h = screen.height;
+  if (standalone && screen.height > h && screen.height - h < 130) {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:0;visibility:hidden;";
+    document.body.appendChild(probe);
+    const safeB = probe.getBoundingClientRect().height;
+    probe.remove();
+    h = Math.round(screen.height - safeB);
+  }
   if (h > 0) document.body.style.height = h + "px";
   glasDebugOverlay();
 }
@@ -358,6 +366,23 @@ function glasDebugOverlay() {
     `safeB ${Math.round(probe.getBoundingClientRect().height)}  standalone ${!!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches))}\n` +
     `scrollY ${Math.round(window.scrollY)}  bodyH(style) ${document.body.style.height || "-"}`;
   probe.remove();
+
+  // Lineal am unteren Body-Rand: 10px-Streifen mit Pixel-Beschriftung. Auf einem
+  // Screenshot lässt sich damit exakt ablesen, welche Body-Koordinate am physischen
+  // Bildschirmrand bzw. am Home-Balken liegt.
+  let lineal = document.getElementById("glasDbgLineal");
+  if (!lineal) {
+    lineal = document.createElement("div");
+    lineal.id = "glasDbgLineal";
+    document.body.appendChild(lineal);
+  }
+  lineal.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:120px;z-index:2147483646;pointer-events:none;";
+  const H = Math.round(document.body.getBoundingClientRect().height);
+  let s = "";
+  for (let k = 0; k < 12; k++) {
+    s += `<div style="position:absolute;left:0;right:0;bottom:${k * 10}px;height:10px;background:${k % 2 ? "rgba(255,0,180,.55)" : "rgba(255,220,0,.65)"};color:#000;font:9px/10px monospace;padding-left:${k % 2 ? 60 : 6}px;">${H - k * 10}</div>`;
+  }
+  lineal.innerHTML = s;
 }
 
 async function glasInit() {
