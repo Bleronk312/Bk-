@@ -1145,17 +1145,24 @@ function glasMonateSeit(iso) {
 // Lücke bis zur höchsten Seite) und graut die Desktop-Pfeile an den Enden aus
 function glasKarusselDots(el) {
   const i = Math.round(el.scrollLeft / el.clientWidth);
+  const erster = el.__caroIdx === undefined; // Erstaufruf direkt nach dem Rendern
   // Nur bei ECHTEM Seitenwechsel arbeiten: das onscroll-Event feuert beim Wischen
   // dutzendfach, und die Höhen-Änderung mitten in der Fingerbewegung ruckelte auf iOS.
-  if (el.__caroIdx === i) return;
+  if (!erster && el.__caroIdx === i) return;
   el.__caroIdx = i;
   const wrap = el.parentElement;
   wrap.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
-  const seite = el.children[i];
-  if (seite) el.style.height = seite.offsetHeight + "px";
-  const links = wrap.querySelector(".glas-caro-arrow.left"), rechts = wrap.querySelector(".glas-caro-arrow.right");
-  if (links) links.classList.toggle("off", i <= 0);
-  if (rechts) rechts.classList.toggle("off", i >= el.children.length - 1);
+  wrap.querySelectorAll(".glas-caro-arrow.left, .glas-caro-step.left").forEach((a) => a.classList.toggle("off", i <= 0));
+  wrap.querySelectorAll(".glas-caro-arrow.right, .glas-caro-step.right").forEach((a) => a.classList.toggle("off", i >= el.children.length - 1));
+  // Höhe erst NACH der Wischgeste anpassen: eine Layout-Änderung mitten in der
+  // laufenden Geste bricht auf iOS das native Scrollen/Einrasten ab.
+  clearTimeout(el.__caroHTimer);
+  const hoeheSetzen = () => {
+    const seite = el.children[Math.round(el.scrollLeft / el.clientWidth)];
+    if (seite) el.style.height = seite.offsetHeight + "px";
+  };
+  if (erster) hoeheSetzen();
+  else el.__caroHTimer = setTimeout(hoeheSetzen, 180);
 }
 
 // Karussell per Klick steuern (Punkte + Desktop-Pfeile, Maus kann nicht wischen)
@@ -1250,8 +1257,12 @@ function renderKundenWidgets(kunden, objekte) {
           </div>
         </div>
       </div>
-      <div class="glas-caro-dots">${[0, 1, 2, 3].map((i) => `<span class="cd${i === 0 ? " on" : ""}" onclick="glasKarusselGo(${i})"></span>`).join("")}</div>
-      <div class="glas-caro-hint">← Wischen für weitere Infos →</div>
+      <div class="glas-caro-dots">
+        <button class="glas-caro-step left off" onclick="glasKarusselStep(-1)" aria-label="Vorherige Infos">‹</button>
+        ${[0, 1, 2, 3].map((i) => `<span class="cd${i === 0 ? " on" : ""}" onclick="glasKarusselGo(${i})"></span>`).join("")}
+        <button class="glas-caro-step right" onclick="glasKarusselStep(1)" aria-label="Weitere Infos">›</button>
+      </div>
+      <div class="glas-caro-hint">Wischen oder ‹ › tippen für weitere Infos</div>
     </div>`;
 }
 

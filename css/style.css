@@ -404,17 +404,27 @@ label {
    hoch. Pull-to-Refresh ist davon unabhängig (eigener Indikator über Touch-Events). */
 html, body { overscroll-behavior-y: none; }
 
-/* App-Shell (nur Handy + Seiten mit #glasScroller): Das Fenster steht fest, der Inhalt
-   scrollt in einem eigenen Container. Fixe Elemente (untere Reiterleiste) können damit
-   von Safari-Leiste, Scroll-Sprüngen oder Gummiband nicht mehr bewegt werden. */
+/* App-Shell (nur Handy + Seiten mit #glasScroller): Der Body ist ein fester Rahmen
+   (Spalten-Flex, nicht scrollbar), der Inhalt scrollt in #glasScroller. Die untere
+   Reiterleiste ist dabei NORMALER Teil des Rahmens statt position:fixed - fixe
+   Elemente wurden auf iOS je nach Zustand versetzt gezeichnet (Leiste hing über dem
+   unteren Rand bzw. rutschte beim Scrollen mit). Im Fluss ist das unmöglich. */
 @media (max-width: 759px) {
-  body.glas-shell { height: 100vh; height: 100dvh; overflow: hidden; }
-  #glasScroller {
+  body.glas-shell {
     height: 100vh; height: 100dvh;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  body.glas-shell #glasScroller {
+    flex: 1 1 auto; min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
   }
+  body.glas-shell #glasNavHost { flex: 0 0 auto; }
+  body.glas-shell #glasNavHost .glas-bottomnav { position: static; transform: none; }
+  /* Leiste ist nicht mehr fix über dem Inhalt -> der große Freihalte-Abstand entfällt */
+  body.glas-shell:not(.glas-cal-pur) .wrap { padding-bottom: 24px !important; }
 }
 .glas-bottomnav .tabs {
   margin: 0; border-bottom: none; gap: 0; overflow: visible;
@@ -989,7 +999,12 @@ html.dark { --prog-track: #26313f; }
 /* snap-stop always: ein Wisch = genau EINE Seite weiter, kein Durchrutschen über
    mehrere Seiten bei schwungvollem Wischen */
 .glas-cpage { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; min-width: 0; }
-.glas-caro-dots { display: flex; justify-content: center; gap: 6px; padding: 9px 0 0; }
+.glas-caro-dots { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 6px 0 0; }
+/* Klick-Alternative zum Wischen (Handy): kleine ‹ ›-Knöpfe neben den Punkten */
+.glas-caro-step { border: 0; background: transparent; color: var(--text-secondary); font-size: 22px; line-height: 1; padding: 2px 14px 4px; cursor: pointer; position: relative; }
+.glas-caro-step::after { content: ""; position: absolute; inset: -8px; }
+.glas-caro-step.off { opacity: 0.25; pointer-events: none; }
+@media (min-width: 760px) { .glas-caro-step { display: none; } }
 .glas-caro-dots .cd { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background 0.2s, width 0.2s; position: relative; cursor: pointer; }
 .glas-caro-dots .cd::after { content: ""; position: absolute; inset: -9px; }
 .glas-caro-dots .cd.on { background: var(--blue); width: 16px; border-radius: 4px; }
