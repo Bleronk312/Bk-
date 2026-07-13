@@ -132,15 +132,34 @@ function generatePdf(s) {
   const line2Y = rowY + L.line2GapAfterRow;
   doc.line(L.left, line2Y, L.right, line2Y);
 
-  // Leistungen (Bulletpoints)
+  // Leistungen (Bulletpoints): lange Zeilen werden auf die Seitenbreite UMGEBROCHEN
+  // (liefen vorher rechts aus der Seite). Reicht der Platz bis zum Bestätigungstext
+  // trotzdem nicht, wird die Schrift stufenweise verkleinert (bis minimal 8pt).
   let by = line2Y + L.bulletGapAfterLine2;
   const leistungen = (s.leistungen || "").split("\n").filter((l) => l.trim());
+  const bulletMaxBreite = L.right - L.bulletTextX;
+  const bulletPlatzEnde = L.disclaimerY - 8; // Sicherheitsabstand zum Bestätigungstext
+  let bulletFs = 10.5;
+  const bulletZeilen = (fs) => {
+    doc.setFontSize(fs);
+    return leistungen.reduce((n, l) => n + doc.splitTextToSize(l.trim(), bulletMaxBreite).length, 0);
+  };
+  while (bulletFs > 8 && by + bulletZeilen(bulletFs) * L.bulletLineGap * (bulletFs / 10.5) > bulletPlatzEnde) {
+    bulletFs -= 0.5;
+  }
+  doc.setFontSize(bulletFs);
+  const bulletZGap = L.bulletLineGap * (bulletFs / 10.5);
   leistungen.forEach((line) => {
+    if (by > bulletPlatzEnde) return; // Notbremse bei extrem viel Text
+    const zeilen = doc.splitTextToSize(line.trim(), bulletMaxBreite);
     doc.setFont(FONT, "bold");
     doc.text("-", L.bulletDashX, by);
     doc.setFont(FONT, "normal");
-    doc.text(line.trim(), L.bulletTextX, by);
-    by += L.bulletLineGap;
+    zeilen.forEach((z) => {
+      if (by > bulletPlatzEnde) return;
+      doc.text(z, L.bulletTextX, by);
+      by += bulletZGap;
+    });
   });
 
   // Hinweistext
