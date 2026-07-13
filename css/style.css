@@ -411,7 +411,10 @@ html, body { overscroll-behavior-y: none; }
    unteren Rand bzw. rutschte beim Scrollen mit). Im Fluss ist das unmöglich. */
 @media (max-width: 759px) {
   body.glas-shell {
-    height: 100vh; height: 100dvh;
+    /* An die ECHTEN Viewport-Kanten geklammert statt height:100vh/100dvh -
+       die Viewport-Einheiten rechnen in iOS-Standalone-Apps teils falsch und
+       ließen den Body (samt Leiste) über dem unteren Bildschirmrand enden. */
+    position: fixed; inset: 0;
     overflow: hidden;
     display: flex; flex-direction: column;
   }
@@ -994,11 +997,12 @@ html.dark { --prog-track: #26313f; }
 
 /* ---- Kunden-Widgets: wischbares Karussell ---- */
 .glas-caro-wrap { margin: 4px 0 14px; position: relative; }
-.glas-caro { display: flex; align-items: flex-start; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; transition: height 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
-.glas-caro::-webkit-scrollbar { display: none; }
-/* snap-stop always: ein Wisch = genau EINE Seite weiter, kein Durchrutschen über
-   mehrere Seiten bei schwungvollem Wischen */
-.glas-cpage { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; min-width: 0; }
+/* Bewusst KEIN Scroll-Container: natives scroll-snap brach auf iOS die Wischgesten
+   immer wieder ab. Die Seiten liegen auf einer Schiene (.glas-caro-track), die per
+   transform verschoben wird - gesteuert über Punkte/Pfeile und eigene Wisch-Erkennung. */
+.glas-caro { overflow: hidden; transition: height 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.glas-caro-track { display: flex; align-items: flex-start; transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+.glas-cpage { flex: 0 0 100%; min-width: 0; }
 .glas-caro-dots { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 6px 0 0; }
 /* Klick-Alternative zum Wischen (Handy): kleine ‹ ›-Knöpfe neben den Punkten */
 .glas-caro-step { border: 0; background: transparent; color: var(--text-secondary); font-size: 22px; line-height: 1; padding: 2px 14px 4px; cursor: pointer; position: relative; }

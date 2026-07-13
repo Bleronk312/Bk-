@@ -739,9 +739,9 @@ function glasUpdateTabContent() {
 // Suchfeld-/Interaktions-Handler des frisch gerenderten Tab-Inhalts anhängen
 function glasAttachTabHandlers(tab) {
 
-  // Widget-Karussell (Kunden-Tab): Starthöhe auf die erste Seite setzen
+  // Widget-Karussell (Kunden-Tab): gemerkte Seite wiederherstellen + Wischerkennung
   const caro = document.querySelector(".glas-caro");
-  if (caro) glasKarusselDots(caro);
+  if (caro) glasKarusselInit(caro);
 
   // Suchfelder INNERHALB des Contents aktualisieren beim Tippen nur ihren jeweiligen
   // Ergebnis-Container - das Eingabefeld selbst wird nie mit ersetzt.
@@ -1140,41 +1140,52 @@ function glasMonateSeit(iso) {
   return (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth());
 }
 
-// Punkte-Anzeige des Widget-Karussells beim Wischen aktualisieren; passt außerdem
-// die Container-Höhe an die aktive Seite an (sonst klafft unter kurzen Seiten die
-// Lücke bis zur höchsten Seite) und graut die Desktop-Pfeile an den Enden aus
-function glasKarusselDots(el) {
-  const i = Math.round(el.scrollLeft / el.clientWidth);
-  const erster = el.__caroIdx === undefined; // Erstaufruf direkt nach dem Rendern
-  // Nur bei ECHTEM Seitenwechsel arbeiten: das onscroll-Event feuert beim Wischen
-  // dutzendfach, und die Höhen-Änderung mitten in der Fingerbewegung ruckelte auf iOS.
-  if (!erster && el.__caroIdx === i) return;
-  el.__caroIdx = i;
-  const wrap = el.parentElement;
-  wrap.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === i));
-  wrap.querySelectorAll(".glas-caro-arrow.left, .glas-caro-step.left").forEach((a) => a.classList.toggle("off", i <= 0));
-  wrap.querySelectorAll(".glas-caro-arrow.right, .glas-caro-step.right").forEach((a) => a.classList.toggle("off", i >= el.children.length - 1));
-  // Höhe erst NACH der Wischgeste anpassen: eine Layout-Änderung mitten in der
-  // laufenden Geste bricht auf iOS das native Scrollen/Einrasten ab.
-  clearTimeout(el.__caroHTimer);
-  const hoeheSetzen = () => {
-    const seite = el.children[Math.round(el.scrollLeft / el.clientWidth)];
-    if (seite) el.style.height = seite.offsetHeight + "px";
-  };
-  if (erster) hoeheSetzen();
-  else el.__caroHTimer = setTimeout(hoeheSetzen, 180);
+// Widget-Karussell (Kunden-Tab): bewusst OHNE nativen Scroll-Container umgesetzt -
+// scroll-snap brach auf iOS die Wischgesten immer wieder ab. Die Seiten liegen auf
+// einer Schiene, die per transform verschoben wird (gleiche Mechanik wie die
+// Tab-Übergänge). Gesteuert über Punkte/Pfeile-Tippen und eigene Wisch-Erkennung.
+let glasCaroIdx = 0; // gemerkte Seite, überlebt Re-Renders des Kunden-Tabs
+
+function glasKarusselGo(i) {
+  const caro = document.querySelector(".glas-caro");
+  const track = caro && caro.querySelector(".glas-caro-track");
+  if (!track) return;
+  const n = track.children.length;
+  glasCaroIdx = Math.max(0, Math.min(n - 1, i));
+  track.style.transform = glasCaroIdx ? `translateX(-${glasCaroIdx * 100}%)` : "";
+  const wrap = caro.parentElement;
+  wrap.querySelectorAll(".glas-caro-dots .cd").forEach((d, j) => d.classList.toggle("on", j === glasCaroIdx));
+  wrap.querySelectorAll(".glas-caro-arrow.left, .glas-caro-step.left").forEach((a) => a.classList.toggle("off", glasCaroIdx <= 0));
+  wrap.querySelectorAll(".glas-caro-arrow.right, .glas-caro-step.right").forEach((a) => a.classList.toggle("off", glasCaroIdx >= n - 1));
+  // Container-Höhe folgt der aktiven Seite (sonst klafft unter kurzen Seiten die
+  // Lücke bis zur höchsten Seite)
+  const seite = track.children[glasCaroIdx];
+  if (seite) caro.style.height = seite.offsetHeight + "px";
 }
 
-// Karussell per Klick steuern (Punkte + Desktop-Pfeile, Maus kann nicht wischen)
-function glasKarusselGo(i) {
-  const el = document.querySelector(".glas-caro");
-  if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
-}
-function glasKarusselStep(d) {
-  const el = document.querySelector(".glas-caro");
-  if (!el) return;
-  const i = Math.round(el.scrollLeft / el.clientWidth) + d;
-  glasKarusselGo(Math.max(0, Math.min(el.children.length - 1, i)));
+function glasKarusselStep(d) { glasKarusselGo(glasCaroIdx + d); }
+
+// Nach jedem (Re-)Aufbau: gemerkte Seite OHNE Animation wiederherstellen und die
+// Wisch-Erkennung anhängen (Fingerbewegung >40px, klar horizontal = eine Seite).
+function glasKarusselInit(caro) {
+  const track = caro.querySelector(".glas-caro-track");
+  if (!track) return;
+  track.style.transition = "none";
+  caro.style.transition = "none";
+  glasKarusselGo(glasCaroIdx);
+  void caro.offsetHeight; // Style-Flush, damit die Wiederherstellung nicht animiert
+  track.style.transition = "";
+  caro.style.transition = "";
+  if (caro.__swipe) return;
+  caro.__swipe = true;
+  let sx = null, sy = null;
+  caro.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  caro.addEventListener("touchend", (e) => {
+    if (sx === null) return;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    sx = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.4) glasKarusselStep(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 // Wischbares Widget-Karussell über der Kundenliste (4 Seiten)
@@ -1227,7 +1238,7 @@ function renderKundenWidgets(kunden, objekte) {
     <div class="glas-caro-wrap">
       <button class="glas-caro-arrow left off" onclick="glasKarusselStep(-1)" aria-label="Vorherige Infos">‹</button>
       <button class="glas-caro-arrow right" onclick="glasKarusselStep(1)" aria-label="Weitere Infos">›</button>
-      <div class="glas-caro" onscroll="glasKarusselDots(this)">
+      <div class="glas-caro"><div class="glas-caro-track">
         <div class="glas-cpage">
           <div class="glas-home-tiles" style="margin-bottom:0;">
             ${tile("t-info", kunden.length, "Kunden")}
@@ -1256,7 +1267,7 @@ function renderKundenWidgets(kunden, objekte) {
             ${alt.length ? alt.map((x, i) => rank(i + 1, x.k.name, null, altLabel(x), `goGlasKunde('${x.k.id}')`, true)).join("") : `<p class="muted" style="margin:6px 0 2px;">Keine Kunden mit Objekten.</p>`}
           </div>
         </div>
-      </div>
+      </div></div>
       <div class="glas-caro-dots">
         <button class="glas-caro-step left off" onclick="glasKarusselStep(-1)" aria-label="Vorherige Infos">‹</button>
         ${[0, 1, 2, 3].map((i) => `<span class="cd${i === 0 ? " on" : ""}" onclick="glasKarusselGo(${i})"></span>`).join("")}
