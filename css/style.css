@@ -425,7 +425,11 @@ html, body { overscroll-behavior-y: none; }
     overscroll-behavior-y: contain;
   }
   body.glas-shell #glasNavHost { flex: 0 0 auto; }
-  body.glas-shell #glasNavHost .glas-bottomnav { position: static; transform: none; }
+  /* padding-bottom: das env(safe-area)-Polster entfällt - die Shell-Höhe endet
+     bereits ÜBER der Home-Balken-Zone (am Gerät per Lineal nachgemessen: iOS zeigt
+     die Seite nur bis screen.height - safe-area an). Mit Polster wäre der Abstand
+     doppelt und die Leiste wirkt hochgeschoben. */
+  body.glas-shell #glasNavHost .glas-bottomnav { position: static; transform: none; padding-bottom: 5px; }
   /* Leiste ist nicht mehr fix über dem Inhalt -> der große Freihalte-Abstand entfällt */
   body.glas-shell:not(.glas-cal-pur) .wrap { padding-bottom: 24px !important; }
 }
