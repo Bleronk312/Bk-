@@ -981,13 +981,18 @@ function renderGlasHome() {
       ? `<span class="gtc-pill p-ok">Fertig</span>`
       : done ? `<span class="gtc-pill p-run">Läuft</span>` : `<span class="gtc-pill p-plan">Geplant</span>`;
     const leading = total ? glasMiniRing(done, total) : `<div class="gtc-ic" style="background:${farbe}22; color:${farbe};">🚐</div>`;
+    // Dietrich-Tour: dezent an der Karte zeigen, ob die LFD-Nr(n). schon dran sind.
+    // ("lfd_nr" in s: vor der SQL-Migration gibt es die Spalte nicht -> nichts zeigen.)
+    const lfdFehlt = t.template === "sub"
+      ? stops.filter((s) => "lfd_nr" in s && !(s.lfd_nr || "").trim()).length
+      : 0;
     return `
       <div class="glas-tour-card" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
         <div class="gtc-row">
           ${leading}
           <div class="gtc-grow">
             <p class="gtc-name">${t.name ? escapeHtml(t.name) : (t.frei ? "Einzelschein" : "Tour")}</p>
-            <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}</p>
+            <p class="gtc-meta">${formatGlasDateRange(t.datum, t.datum_bis)}${total ? ` · ${done}/${total} erledigt` : ""}${lfdFehlt ? ` · <span style="color:var(--warning-text); font-weight:700;">🔢 ${lfdFehlt === total ? "LFD-Nr. fehlt" : lfdFehlt + "× LFD-Nr. fehlt"}</span>` : ""}</p>
           </div>
           ${pill}
         </div>
@@ -1046,14 +1051,6 @@ function renderGlasHome() {
         <button class="btn btn-primary" style="flex:1; justify-content:center;" onclick="glasStartNewTourForm(); glasNavigate({type:'tabs', tab:'touren'});">+ Neue Tour</button>
         <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
-      ${(() => {
-        // Dezenter Hinweis: offene Dietrich-Scheine ohne LFD-Nr. (Antippen -> Touren).
-        // ("lfd_nr" in s: vor der SQL-Migration gibt es die Spalte nicht -> kein Alarm.)
-        const lfdOffen = glasTouren
-          .filter((t) => !t.archiviert_am && t.template === "sub")
-          .reduce((n, t) => n + (t.glas_stopps || []).filter((s) => "lfd_nr" in s && !(s.lfd_nr || "").trim()).length, 0);
-        return lfdOffen ? `<div class="glas-lfd-hint" onclick="goGlasTab('touren')">🔢 ${lfdOffen} Dietrich-Schein${lfdOffen === 1 ? "" : "e"} ohne LFD-Nr. <span style="opacity:.7;">· antippen zum Nachtragen</span></div>` : "";
-      })()}
 
       ${sektion("heuteTouren", "🚐 Heute · Touren", heuteTouren.length, heuteTouren.map(tourCard).join(""), "Heute keine Touren.")}
       ${sektion("heuteTermine", "📌 Heute · Termine", heuteTermine.length, heuteTermine.map(terminCard).join(""), "Heute keine Termine.")}

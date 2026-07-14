@@ -944,9 +944,6 @@ html.dark .glas-home-tile.t-ok   { background: #16301f; color: #6fd08c; }
 .glas-home-sec-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; cursor: pointer; padding: 2px 2px 4px; }
 .glas-home-sec-head .chev { color: var(--text-secondary); font-size: 12px; }
 .glas-home-empty { color: var(--text-secondary); font-size: 13.5px; padding: 10px 2px; }
-/* Dezenter Startseiten-Hinweis auf Dietrich-Scheine ohne LFD-Nr. */
-.glas-lfd-hint { margin: 10px 0 0; padding: 8px 12px; background: var(--warning-bg); color: var(--warning-text); border-radius: 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.glas-lfd-hint:active { transform: scale(.98); }
 /* Bereichsinhalt liegt immer im DOM, nur ein-/ausgeblendet -> Auf-/Zuklappen ohne
    Neuaufbau der Startseite (kein Flackern). */
 .glas-home-sec-body { display: none; }
