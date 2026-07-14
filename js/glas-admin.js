@@ -1003,14 +1003,16 @@ function renderGlasHome() {
       </div>`;
   };
 
-  // Einklappbarer Startseiten-Bereich mit Zähler im Titel
+  // Einklappbarer Startseiten-Bereich mit Zähler im Titel. Der Inhalt liegt IMMER im
+  // DOM und wird nur per CSS-Klasse ein-/ausgeblendet - so klappt das Auf-/Zuklappen
+  // ohne Neuaufbau der ganzen Startseite (kein Flackern).
   const sektion = (key, titel, count, inhalt, leerText) => `
-    <div class="glas-home-sec">
+    <div class="glas-home-sec${glasHomeOffen[key] ? " open" : ""}" data-sec="${key}">
       <div class="glas-home-sec-head" onclick="glasToggleHomeSektion('${key}')">
         <span>${titel} <span class="muted" style="font-weight:600;">(${count})</span></span>
         <span class="chev">${glasHomeOffen[key] ? "▲" : "▼"}</span>
       </div>
-      ${glasHomeOffen[key] ? (count ? inhalt : `<p class="glas-home-empty">${leerText}</p>`) : ""}
+      <div class="glas-home-sec-body">${count ? inhalt : `<p class="glas-home-empty">${leerText}</p>`}</div>
     </div>`;
 
   return `
@@ -1075,7 +1077,15 @@ function glasAnimateProgress() {
 
 // Standardmäßig sind die beiden Heute-Bereiche aufgeklappt, "Als Nächstes" eingeklappt
 let glasHomeOffen = { heuteTouren: true, heuteTermine: true, naechsteTouren: false, naechsteTermine: false };
-function glasToggleHomeSektion(key) { glasHomeOffen[key] = !glasHomeOffen[key]; glasUpdateTabContent(); }
+function glasToggleHomeSektion(key) {
+  glasHomeOffen[key] = !glasHomeOffen[key];
+  // Nur den einen Bereich umschalten - kein Neuaufbau der Startseite (sonst flackert alles).
+  const sec = document.querySelector(`.glas-home-sec[data-sec="${key}"]`);
+  if (!sec) { glasUpdateTabContent(); return; }
+  sec.classList.toggle("open", glasHomeOffen[key]);
+  const chev = sec.querySelector(".chev");
+  if (chev) chev.textContent = glasHomeOffen[key] ? "▲" : "▼";
+}
 
 // "Donnerstag, 2. Juli 2026"
 function glasHeuteLangDatum() {

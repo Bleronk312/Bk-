@@ -944,6 +944,11 @@ html.dark .glas-home-tile.t-ok   { background: #16301f; color: #6fd08c; }
 .glas-home-sec-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; cursor: pointer; padding: 2px 2px 4px; }
 .glas-home-sec-head .chev { color: var(--text-secondary); font-size: 12px; }
 .glas-home-empty { color: var(--text-secondary); font-size: 13.5px; padding: 10px 2px; }
+/* Bereichsinhalt liegt immer im DOM, nur ein-/ausgeblendet -> Auf-/Zuklappen ohne
+   Neuaufbau der Startseite (kein Flackern). */
+.glas-home-sec-body { display: none; }
+.glas-home-sec.open > .glas-home-sec-body { display: block; animation: glasSecReveal .2s ease; }
+@keyframes glasSecReveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 .glas-tour-card {
   background: var(--card); border: 1px solid var(--border); border-radius: 14px;
