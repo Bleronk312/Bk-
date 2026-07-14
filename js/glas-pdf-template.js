@@ -148,12 +148,21 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
 
   // Auszuführende Arbeiten Monat / Kd.-Nr.
   // GEKO-Template: immer die Haupt-Kundennummer des Kunden.
-  // Dietrich-Template: die zusätzliche Dietrich-Kdnr des Objekts (s.kdnr), fällt auf die
-  // Haupt-Kundennummer zurück, wenn beim Objekt nichts eingetragen wurde.
-  // (s.kunde_kdnr fehlt bei alten Stopps aus früheren Versionen - dann s.kdnr als Fallback.)
+  // Dietrich-Template: Haupt-Kd.-Nr. + Objekt-Nr. kombiniert ("2443 504 00" - so steht
+  // es auf Dietrichs Original-Schein). Enthält die Objekt-Kdnr die Haupt-Nummer bereits
+  // (Altbestand mit voll eingetippter Nummer), wird nichts doppelt vorangestellt.
   const kdnrForPdf = templateKey === "sub"
-    ? (s.kdnr || s.kunde_kdnr || "")
+    ? glasDietrichKdnr(s)
     : (s.kunde_kdnr || s.kdnr || "");
+
+  // Dietrich: LFD-Nr. (von Dietrich pro Schein/Intervall vergeben) - steht wie auf dem
+  // Original oben rechts ÜBER der Kd.-Nr.-Zeile.
+  if (templateKey === "sub" && (s.lfd_nr || "").trim()) {
+    doc.setFont(FONT, "bold");
+    doc.setFontSize(10.5);
+    doc.text(`LFD Nr.:  ${String(s.lfd_nr).trim()}`, L.kdnrX, lineY - 4);
+  }
+
   const rowY = lineY + L.rowGapAfterLine1;
   doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
@@ -290,12 +299,23 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
 
 // formatGlasDate kommt aus js/glas-shared.js (beide Glas-Seiten laden das vorher)
 
+// Dietrich-Kd.-Nr. eines Stopps: Haupt-Kd.-Nr. des Kunden + Objekt-Nr. kombiniert
+// (z.B. "2443  504 00" wie auf Dietrichs Original-Schein). Steckt die Haupt-Nummer schon
+// in der Objekt-Kdnr (Altbestand, komplett eingetippt), bleibt nur die Objekt-Kdnr.
+function glasDietrichKdnr(s) {
+  const haupt = String(s.kunde_kdnr || "").trim();
+  const obj = String(s.kdnr || "").trim();
+  if (!obj) return haupt;
+  if (!haupt || obj.includes(haupt)) return obj;
+  return `${haupt}  ${obj}`;
+}
+
 // Einheitlicher Dateiname für alle Abnahmescheine: LN_<Kd.-Nr.>_<Straße>.pdf
 // (LN = Leistungsnachweis). Straße = erste Adresszeile. Kd.-Nr. nach gleicher Logik wie im
-// PDF (Dietrich-Template bevorzugt die Objekt-Kdnr, sonst Haupt-Kdnr des Kunden).
+// PDF (Dietrich-Template: Haupt- + Objekt-Nr. kombiniert, sonst Haupt-Kdnr des Kunden).
 function glasScheinFilename(s, templateKey) {
   const kdnr = templateKey === "sub"
-    ? (s.kdnr || s.kunde_kdnr || "")
+    ? glasDietrichKdnr(s)
     : (s.kunde_kdnr || s.kdnr || "");
   const strasse = (s.adresse || "").split("\n")[0] || s.objekt || "";
   const clean = (v) => String(v || "").replace(/[^a-z0-9äöüß]+/gi, "_").replace(/^_+|_+$/g, "");

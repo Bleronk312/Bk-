@@ -37,6 +37,7 @@ let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), ges
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
 let glasTourExtras = new Map(); // objekt_id -> [{ nr, art, qm }] - händisch zusätzlich eingetragene Positionen (z.B. Extra-Stunden)
+let glasTourLfd = new Map(); // objekt_id -> Dietrich LFD-Nr. (pro Schein/Intervall neu, händisch)
 let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko", notiz: "" }; // Zustand des Tour-Formulars (überlebt Re-Renders)
 let glasTourenErledigtExpanded = false;
 let glasEditingTourId = null; // gesetzt, wenn eine bestehende Tour bearbeitet statt neu angelegt wird
@@ -514,12 +515,22 @@ async function loadGlasObjektPositionen() {
 }
 
 async function loadGlasTouren() {
-  const { data, error } = await sb
+  // lfd_nr im Stopp-Embed: für den "LFD-Nr. fehlt"-Hinweis auf Dietrich-Tourkarten.
+  // Fallback ohne die Spalte, solange die SQL-Migration noch nicht ausgeführt wurde.
+  let { data, error } = await sb
     .from("glas_touren")
-    .select("*, glas_stopps(id, status)")
+    .select("*, glas_stopps(id, status, lfd_nr)")
     .order("datum", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(120);
+  if (error && /lfd_nr/.test(error.message || "")) {
+    ({ data, error } = await sb
+      .from("glas_touren")
+      .select("*, glas_stopps(id, status)")
+      .order("datum", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(120));
+  }
   if (!error) glasTouren = data || [];
 }
 
@@ -1848,8 +1859,8 @@ Im Gildehof 8
       </div>
       <div class="row">
         <div class="field">
-          <label class="muted">Zusätzliche Dietrich Kd.-Nr. (optional)</label>
-          <input type="text" id="o_kdnr" value="${escapeHtml(o.kdnr)}" placeholder="3806 590 00" />
+          <label class="muted">Dietrich Objekt-Nr. (optional – steht auf dem Schein neben der Haupt-Kd.-Nr. des Kunden, z.B. „1586 <b>501</b>")</label>
+          <input type="text" id="o_kdnr" value="${escapeHtml(o.kdnr)}" placeholder="z.B. 501 00" />
           <p class="muted" style="margin:4px 0 0; font-size:11.5px;">Erscheint nur auf Scheinen mit dem Dietrich-Template. Leer lassen = Haupt-Kd.-Nr. des Kunden wird verwendet. Das GEKO-Template nutzt immer die Haupt-Kd.-Nr.</p>
         </div>
       </div>
@@ -2286,7 +2297,7 @@ function renderObjektDetailPage(id) {
       <p style="margin:0 0 4px; font-weight:700; font-size:19px;">${escapeHtml(o.name)}</p>
       <p class="muted" style="margin:0 0 10px;"><a href="javascript:void(0)" onclick="goGlasKunde('${o.kunde_id}')">${escapeHtml(o.kunde_name || "Ohne Kunde")}</a></p>
       <p style="margin:0; white-space:pre-line;">${escapeHtml(o.adresse)}</p>
-      <p class="muted" style="margin:6px 0 0;">Haupt-Kd.-Nr.: ${escapeHtml(glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "–")}${o.kdnr ? ` · Dietrich Kd.-Nr.: ${escapeHtml(o.kdnr)}` : ""}</p>
+      <p class="muted" style="margin:6px 0 0;">Haupt-Kd.-Nr.: ${escapeHtml(glasKunden.find((k) => k.id === o.kunde_id)?.kdnr || "–")}${o.kdnr ? ` · Dietrich Objekt-Nr.: ${escapeHtml(o.kdnr)}` : ""}</p>
       ${o.ansprechpartner ? `<p class="muted" style="margin:4px 0 0;">👤 A.P.: ${escapeHtml(o.ansprechpartner)}</p>` : ""}
       ${o.telefon ? `<p class="muted" style="margin:4px 0 0;">📞 Tel.: <a href="tel:${escapeHtml(o.telefon)}">${escapeHtml(o.telefon)}</a></p>` : ""}
       ${o.hinweise ? `<div class="glas-hinweis-box" style="margin-top:10px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-title">Hinweis fürs Team</p><p class="glas-hinweis-text">${escapeHtml(o.hinweise)}</p></div></div>` : ""}
@@ -2424,6 +2435,7 @@ function glasTemplateFuerObjekte(objektIds) {
 function glasJetztPlanen(objektId, positionIds) {
   glasTourNotizen = new Map();
   glasTourExtras = new Map();
+  glasTourLfd = new Map();
   const alle = glasGetObjektPositionen(objektId);
   const ids = positionIds || alle.map((p) => p.id || p.nr);
   glasSelectedObjekte = new Set([objektId]);
@@ -2728,6 +2740,12 @@ function renderTourenCard(t) {
   const maLabel = maSichtbar
     ? `<span style="color:var(--text-secondary);">👁️ bei MA</span>`
     : `<span style="color:var(--text-secondary);">🙈 nicht bei MA</span>`;
+  // Dietrich-Tour mit Stopps ohne LFD-Nr.: dicker Hinweis direkt auf der Karte.
+  // ("lfd_nr" in s: solange die SQL-Migration fehlt, gibt es die Spalte nicht - dann
+  // keinen falschen Alarm zeigen.)
+  const lfdFehlt = t.template === "sub"
+    ? (t.glas_stopps || []).filter((s) => "lfd_nr" in s && !(s.lfd_nr || "").trim()).length
+    : 0;
   return `
     <div class="glas-tour-card" onclick="${auswahl ? `glasAuswahlToggle('${t.id}')` : `openGlasTourDetail('${t.id}')`}">
       <div class="gtc-row">
@@ -2738,6 +2756,7 @@ function renderTourenCard(t) {
         </div>
         ${pill}
       </div>
+      ${lfdFehlt ? `<div class="gtc-notiz" style="color:var(--danger); font-weight:800;">⚠️ ${lfdFehlt === 1 ? "1 Schein ohne LFD-Nr." : lfdFehlt + " Scheine ohne LFD-Nr."} – bitte nachtragen!</div>` : ""}
       ${t.notiz ? `<div class="gtc-notiz">📝 ${escapeHtml(t.notiz)}</div>` : ""}
     </div>`;
 }
@@ -2766,6 +2785,7 @@ function renderTourenListView() {
 function glasStartNewTourForm() {
   glasTourNotizen = new Map();
   glasTourExtras = new Map();
+  glasTourLfd = new Map();
   glasShowNewTourForm = true;
   glasEditingTourId = null;
   glasManualOrder = [];
@@ -2870,6 +2890,7 @@ function renderTourDetailView() {
             </div>
             ${menuOpen ? renderGlasStopMenu(s) : ""}
             ${renderStopPositionenVorschau(s)}
+            ${t.template === "sub" ? renderStopLfdZeile(s) : ""}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
             ${isDone ? `
@@ -2931,6 +2952,39 @@ function renderTourDetailView() {
     }
     ${glasMergePickerFor === t.id ? renderGlasMergePicker(t) : ""}
   `;
+}
+
+// Dietrich LFD-Nr. am Stopp im Tour-Detail: vorhandene Nummer fett anzeigen (mit
+// "ändern"), fehlende mit dickem rotem Hinweis + Feld zum Nachtragen.
+let glasLfdEditStopId = null;
+function renderStopLfdZeile(s) {
+  const lfd = (s.lfd_nr || "").trim();
+  if (lfd && glasLfdEditStopId !== s.id) {
+    return `<p style="margin:8px 0 0; font-size:13px;">🔢 <b>LFD-Nr.: ${escapeHtml(lfd)}</b> <a href="javascript:void(0)" style="font-size:12px; color:var(--text-secondary);" onclick="glasLfdEditStopId='${s.id}'; renderGlasAdmin();">ändern</a></p>`;
+  }
+  return `
+    <div style="margin-top:8px; background:var(--warning-bg); border:1.5px solid var(--danger); border-radius:8px; padding:8px 10px;">
+      ${lfd ? "" : `<p style="margin:0 0 6px; font-weight:800; color:var(--danger); font-size:13px;">⚠️ LFD-Nr. fehlt – bitte nachtragen!</p>`}
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="stop_lfd_${s.id}" value="${escapeHtml(lfd)}" placeholder="z.B. 99883" inputmode="numeric" style="flex:1; font-weight:700; letter-spacing:.5px;" onclick="event.stopPropagation();" />
+        <button class="btn btn-sm btn-primary" onclick="glasSaveStopLfd('${s.id}')">Speichern</button>
+      </div>
+    </div>`;
+}
+
+async function glasSaveStopLfd(stopId) {
+  const val = (document.getElementById(`stop_lfd_${stopId}`)?.value || "").trim();
+  const { error } = await sb.from("glas_stopps").update({ lfd_nr: val }).eq("id", stopId);
+  if (error) {
+    showToast(/lfd_nr/.test(error.message || "") ? "Bitte zuerst supabase_add_lfd.sql in Supabase ausführen" : "Fehler: " + error.message);
+    return;
+  }
+  const stop = glasTourDetailStops.find((x) => x.id === stopId);
+  if (stop) stop.lfd_nr = val;
+  glasLfdEditStopId = null;
+  showToast(val ? "LFD-Nr. gespeichert" : "LFD-Nr. entfernt");
+  await loadGlasTouren(); // Tourkarten-Hinweis ("LFD fehlt") aktuell halten
+  renderGlasAdmin();
 }
 
 function downloadGlasPdfAdmin(stopId) {
@@ -3304,6 +3358,10 @@ function syncNewTourFormFromDom() {
     const el = document.getElementById(`tour_notiz_${objektId}`);
     if (el) n.text = el.value;
   });
+  // LFD-Nummern (Dietrich) aus den Feldern zurücklesen (überlebt Re-Renders)
+  document.querySelectorAll("input[id^='tour_lfd_']").forEach((el) => {
+    glasTourLfd.set(el.id.replace("tour_lfd_", ""), el.value);
+  });
   // Händische Extra-Positionen aus den Feldern zurücklesen (überlebt Re-Renders)
   glasTourExtras.forEach((liste, objektId) => {
     liste.forEach((ex, i) => {
@@ -3347,7 +3405,7 @@ function renderNewTourForm() {
       </div>
       <div class="field">
         <label class="muted">Template (Briefkopf des Abnahmescheins)</label>
-        <select id="t_template">
+        <select id="t_template" onchange="syncNewTourFormFromDom(); renderGlasAdmin();">
           <option value="geko" ${glasNewTour.template === "geko" ? "selected" : ""}>GEKO Clean</option>
           <option value="sub" ${glasNewTour.template === "sub" ? "selected" : ""}>Subunternehmen (Dietrich)</option>
         </select>
@@ -3404,12 +3462,23 @@ function renderTourSelectedSummary(items) {
       ${items.map((o) => {
         const positionen = glasGetObjektPositionen(o.id);
         const set = glasPreselectPositionen?.get(o.id);
+        // Dietrich-Objekt (Kunde bei Dietrich ODER Tour mit Dietrich-Template): jeder
+        // Schein braucht eine eigene LFD-Nr. (von Dietrich vergeben, neu pro Intervall).
+        const istDietrich = glasNewTour.template === "sub"
+          || (glasKunden.find((k) => k.id === o.kunde_id)?.firma === "sub");
+        const lfdWert = glasTourLfd.get(o.id) || "";
         return `
         <div style="padding:10px 0; border-top:1px solid var(--border);">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:14px; font-weight:600;">${escapeHtml(o.name)} <span class="muted" style="font-weight:400;">· ${escapeHtml(o.kunde_name || "")}</span></span>
             <button class="btn btn-sm" style="padding:3px 8px;" onclick="glasToggleTourObjekt('${o.id}')">✕</button>
           </div>
+          ${istDietrich ? `
+          <div style="margin-top:8px; background:var(--warning-bg); border:1.5px solid ${lfdWert.trim() ? "var(--border)" : "var(--danger)"}; border-radius:8px; padding:8px 10px;">
+            <label style="display:block; font-size:12.5px; font-weight:800;">🔢 Dietrich LFD-Nr. für diesen Schein${o.kdnr ? ` <span class="muted" style="font-weight:500;">· Objekt-Nr. ${escapeHtml(o.kdnr)}</span>` : ""}</label>
+            <input type="text" id="tour_lfd_${o.id}" value="${escapeHtml(lfdWert)}" placeholder="z.B. 99883" inputmode="numeric" style="margin-top:5px; font-weight:700; letter-spacing:.5px;" />
+            <p style="margin:5px 0 0; font-size:11.5px; ${lfdWert.trim() ? `color:var(--text-secondary);">Steht oben rechts auf Dietrichs Schein – für jedes Intervall neu.` : `color:var(--danger); font-weight:700;">⚠️ Ohne LFD-Nr. speichern geht – die Tour zeigt dann aber einen fetten Hinweis, bitte unbedingt nachtragen!`}</p>
+          </div>` : ""}
           ${(() => { glasInitTourNotiz(o.id); const n = glasTourNotizen.get(o.id); return `
           <div style="margin-top:8px;">
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
@@ -3710,6 +3779,11 @@ async function createGlasTour() {
         const neueNotiz = n.use ? (n.text || "").trim() : "";
         if (neueNotiz !== (s.notiz || "")) updates.notiz = neueNotiz;
       }
+      // Geänderte Dietrich LFD-Nr. am bestehenden Stopp mitschreiben
+      if (s.objekt_id && glasTourLfd.has(s.objekt_id)) {
+        const neueLfd = (glasTourLfd.get(s.objekt_id) || "").trim();
+        if (neueLfd !== (s.lfd_nr || "")) updates.lfd_nr = neueLfd;
+      }
       // Händisch ergänzte Extra-Positionen an den bestehenden Stopp anhängen
       const extras = glasCleanExtras(s.objekt_id);
       if (extras.length) {
@@ -3745,6 +3819,7 @@ async function createGlasTour() {
         telefon: o.telefon || "",
         hinweise: o.hinweise || "",
         notiz: (() => { const n = glasTourNotizen.get(o.id); return n && n.use ? (n.text || "").trim() : ""; })(),
+        lfd_nr: (glasTourLfd.get(o.id) || "").trim(),
         positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" })), ...glasCleanExtras(o.id)]),
         lat: o.lat,
         lng: o.lng,
@@ -3752,7 +3827,13 @@ async function createGlasTour() {
       };
     });
     if (stoppRows.length) {
-      const { error: stoppErr } = await sb.from("glas_stopps").insert(stoppRows);
+      let { error: stoppErr } = await sb.from("glas_stopps").insert(stoppRows);
+      if (stoppErr && /lfd_nr/.test(stoppErr.message || "")) {
+        // Spalte existiert noch nicht (SQL-Migration nicht ausgeführt) - Tour trotzdem
+        // speichern, nur die LFD-Nr. geht dann verloren.
+        ({ error: stoppErr } = await sb.from("glas_stopps").insert(stoppRows.map(({ lfd_nr, ...rest }) => rest)));
+        if (!stoppErr) showToast("Hinweis: LFD-Nr. noch nicht gespeichert – bitte supabase_add_lfd.sql ausführen");
+      }
       if (stoppErr) throw stoppErr;
     }
 
@@ -3796,8 +3877,10 @@ async function editGlasTour(tourId) {
   // bleiben beim Speichern exakt erhalten.
   glasTourNotizen = new Map();
   glasTourExtras = new Map();
+  glasTourLfd = new Map();
   stops.filter((s) => s.status !== "erledigt" && s.objekt_id).forEach((s) => {
     glasTourNotizen.set(s.objekt_id, { use: !!s.notiz, text: s.notiz || "" });
+    if (s.lfd_nr) glasTourLfd.set(s.objekt_id, s.lfd_nr);
   });
   glasEditingTourId = tourId;
   glasTourSearch = "";
@@ -3852,6 +3935,7 @@ function openGlasEinzelschein() {
     name: "",
     adresse: "",
     kdnr: "",
+    lfd: "",
     template: "geko",
     positionen: [{ id: null, nr: "", art: "", qm: "", custom: false }],
   };
@@ -3900,6 +3984,7 @@ async function editEinzelschein(tourId) {
     name: t.name || "",
     adresse: stop.adresse || "",
     kdnr: stop.kdnr || "",
+    lfd: stop.lfd_nr || "",
     template: t.template === "sub" ? "sub" : "geko",
     datum: t.datum || glasTodayIso(),
     positionen: positionen.length ? positionen : [{ id: null, nr: "", art: "", qm: "", custom: false }],
@@ -3958,8 +4043,12 @@ function renderEinzelscheinForm() {
 44793 Bochum">${escapeHtml(d.adresse)}</textarea>
       </div>
       <div class="field">
-        <label class="muted">Zusätzliche Dietrich Kd.-Nr. (optional, nur fürs Dietrich-Template – sonst gilt die Haupt-Kd.-Nr. des Kunden)</label>
-        <input type="text" id="es_kdnr" value="${escapeHtml(d.kdnr)}" />
+        <label class="muted">Dietrich Objekt-Nr. (optional, nur fürs Dietrich-Template – erscheint auf dem Schein neben der Haupt-Kd.-Nr. des Kunden)</label>
+        <input type="text" id="es_kdnr" value="${escapeHtml(d.kdnr)}" placeholder="z.B. 501 00" />
+      </div>
+      <div class="field">
+        <label class="muted"><b>Dietrich LFD-Nr.</b> (nur fürs Dietrich-Template – steht oben rechts auf dem Schein, für jedes Intervall neu)</label>
+        <input type="text" id="es_lfd" value="${escapeHtml(d.lfd || "")}" placeholder="z.B. 99883" inputmode="numeric" style="font-weight:700; letter-spacing:.5px;" />
       </div>
       <div class="row">
         <div class="field">
@@ -4047,6 +4136,7 @@ function syncEsFromDom() {
   d.name = document.getElementById("es_name")?.value ?? d.name;
   d.adresse = document.getElementById("es_adresse")?.value ?? d.adresse;
   d.kdnr = document.getElementById("es_kdnr")?.value ?? d.kdnr;
+  d.lfd = document.getElementById("es_lfd")?.value ?? d.lfd;
   d.template = document.getElementById("es_template")?.value ?? d.template;
 }
 
@@ -4158,6 +4248,7 @@ async function saveEinzelschein() {
     // im Verlauf/Termine-Reiter des Kunden auf.
     kunde_id: d.kunde_id || "",
     objekt: d.objekt, adresse: d.adresse, kdnr: d.kdnr,
+    lfd_nr: (d.lfd || "").trim(),
     kunde_kdnr: glasKunden.find((k) => k.id === d.kunde_id)?.kdnr || "",
     kunde_adresse: d.kunde_adresse,
     positionen: JSON.stringify(positionen), lat: coords.lat, lng: coords.lng,
@@ -4172,11 +4263,18 @@ async function saveEinzelschein() {
         notiz: esObjekt?.notiz || "",
         ...felder,
       });
-  let { error: stoppErr } = await stopSchreiben(stopFelder);
+  // Fehlende Spalten (SQL-Dateien noch nicht ausgeführt) einzeln weglassen und erneut
+  // versuchen, statt das Speichern komplett zu blockieren.
+  const felder = { ...stopFelder };
+  let { error: stoppErr } = await stopSchreiben(felder);
   if (stoppErr && /kunde_id/.test(stoppErr.message || "")) {
-    // Spalte existiert noch nicht (SQL-Datei nicht ausgeführt) - ohne kunde_id speichern
-    const { kunde_id, ...ohne } = stopFelder;
-    ({ error: stoppErr } = await stopSchreiben(ohne));
+    delete felder.kunde_id;
+    ({ error: stoppErr } = await stopSchreiben(felder));
+  }
+  if (stoppErr && /lfd_nr/.test(stoppErr.message || "")) {
+    delete felder.lfd_nr;
+    ({ error: stoppErr } = await stopSchreiben(felder));
+    if (!stoppErr && (d.lfd || "").trim()) showToast("Hinweis: LFD-Nr. noch nicht gespeichert – bitte supabase_add_lfd.sql ausführen");
   }
   if (stoppErr) { glasBusy = false; showToast("Fehler: " + stoppErr.message); renderGlasAdmin(); return; }
 
@@ -5605,6 +5703,7 @@ function glasOffeneZuTourHinzufuegen() {
   glasOffeneSelected.clear();
   glasTourNotizen = new Map();
   glasTourExtras = new Map();
+  glasTourLfd = new Map();
   // goGlasTab() setzt u.a. glasShowNewTourForm zurück auf false, deshalb erst danach setzen.
   goGlasTab("touren");
   glasSelectedObjekte = objektIds;
@@ -5633,10 +5732,15 @@ async function loadGlasScheine() {
   glasScheineLaden = true;
   // Unterschriftsbild NICHT mitladen (spart Speicher bei vielen Scheinen) - wird beim
   // PDF-Download gezielt für den einen Schein nachgeladen.
-  const { data, error } = await sb
+  const spalten = "id, objekt_id, objekt, adresse, kdnr, kunde_id, kunde_kdnr, kunde_adresse, positionen, zusatz, name, datum, signed_at, manuell_erledigt_am, unterschrift, tour_id, glas_touren(name, datum, template, archiviert_am, frei)";
+  let { data, error } = await sb
     .from("glas_stopps")
-    .select("id, objekt_id, objekt, adresse, kdnr, kunde_id, kunde_kdnr, kunde_adresse, positionen, zusatz, name, datum, signed_at, manuell_erledigt_am, unterschrift, tour_id, glas_touren(name, datum, template, archiviert_am, frei)")
+    .select(spalten + ", lfd_nr")
     .eq("status", "erledigt");
+  // Fallback ohne lfd_nr, solange supabase_add_lfd.sql noch nicht ausgeführt wurde
+  if (error && /lfd_nr/.test(error.message || "")) {
+    ({ data, error } = await sb.from("glas_stopps").select(spalten).eq("status", "erledigt"));
+  }
   glasScheineDaten = error ? [] : (data || [])
     .filter((s) => s.glas_touren && !s.glas_touren.archiviert_am && glasSignaturDatum(s))
     .map((s) => ({ ...s, __hatBild: !!s.unterschrift, unterschrift: undefined })); // Bild-Flag merken, Bild droppen
@@ -5758,7 +5862,8 @@ function glasScheinZeile(s, showDate = true) {
   const uhr = glasUhrzeitVonTimestamp(s.signed_at);
   const sub = `${escapeHtml(glasScheinKunde(s))}${qm ? ` · ${qm} qm` : ""}`
     + `${showDate ? ` · ${formatGlasDate(glasSignaturDatum(s))}` : ""}`
-    + `${manuell ? " · ✔️ markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}${uhr ? ` ${uhr}` : ""}` : ""}`;
+    + `${manuell ? " · ✔️ markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}${uhr ? ` ${uhr}` : ""}` : ""}`
+    + `${s.lfd_nr ? ` · <b>LFD ${escapeHtml(s.lfd_nr)}</b>` : (s.glas_touren?.template === "sub" && "lfd_nr" in s ? ` · <b style="color:var(--danger);">⚠️ LFD fehlt</b>` : "")}`;
   const titel = `<p class="glas-schein-t">${escapeHtml(s.objekt || "Schein")}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>`;
   if (glasScheineSelMode) {
     const on = glasScheineSel.has(s.id);
@@ -5785,7 +5890,7 @@ function renderScheineListe() {
   const q = glasScheineSearch.trim().toLowerCase();
 
   if (q) {
-    const gefiltert = (glasScheineDaten || []).filter((s) => glasSearchMatch(`${s.objekt || ""} ${glasScheinKunde(s)} ${s.name || ""} ${s.glas_touren?.name || ""} ${s.kdnr || ""} ${s.kunde_kdnr || ""}`, q));
+    const gefiltert = (glasScheineDaten || []).filter((s) => glasSearchMatch(`${s.objekt || ""} ${glasScheinKunde(s)} ${s.name || ""} ${s.glas_touren?.name || ""} ${s.kdnr || ""} ${s.kunde_kdnr || ""} ${s.lfd_nr || ""}`, q));
     const gruppen = new Map();
     gefiltert.forEach((s) => {
       const per = glasScheinPeriode(glasSignaturDatum(s), glasScheineGran);
