@@ -52,32 +52,37 @@ Deno.serve(async (_req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const today = berlinDateString(new Date());
 
-    const { data: scheine, error } = await supabase
-      .from("scheine")
-      .select("adresse, kategorie, termin")
-      .not("termin", "is", null)
-      .eq("archiviert", false);
-
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-    }
-
-    const todays = (scheine || [])
-      .filter((s) => berlinDateString(new Date(s.termin)) === today)
-      .sort((a, b) => new Date(a.termin) - new Date(b.termin));
-
     let gesendet = 0;
 
-    if (todays.length > 0) {
-      const lines = todays.map((s) => {
-        const strasse = (s.adresse || "").split("\n")[0];
-        return `${berlinTimeString(new Date(s.termin))} – ${strasse}`;
-      });
-      const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
-      const body = lines.join("\n");
-      await sendToRole(supabase, "graffiti", title, body, "/admin.html");
-      await sendToRole(supabase, "mitarbeiter", title, body, "/mitarbeiter.html");
-      gesendet += todays.length;
+    // ---- Graffiti: heutige Abnahmeschein-Termine ----
+    // Bewusst gekapselt: ein Fehler hier (z.B. Tabelle/Spalte fehlt) darf die
+    // Kalender-Erinnerungen weiter unten NICHT abbrechen. Früher brach ein 500 an
+    // dieser Stelle die komplette Function ab -> gar keine Erinnerungen mehr.
+    try {
+      const { data: scheine, error } = await supabase
+        .from("scheine")
+        .select("adresse, kategorie, termin")
+        .not("termin", "is", null)
+        .eq("archiviert", false);
+      if (error) throw error;
+
+      const todays = (scheine || [])
+        .filter((s) => berlinDateString(new Date(s.termin)) === today)
+        .sort((a, b) => new Date(a.termin) - new Date(b.termin));
+
+      if (todays.length > 0) {
+        const lines = todays.map((s) => {
+          const strasse = (s.adresse || "").split("\n")[0];
+          return `${berlinTimeString(new Date(s.termin))} – ${strasse}`;
+        });
+        const title = `☀️ ${todays.length} Termin${todays.length === 1 ? "" : "e"} heute!`;
+        const body = lines.join("\n");
+        await sendToRole(supabase, "graffiti", title, body, "/admin.html");
+        await sendToRole(supabase, "mitarbeiter", title, body, "/mitarbeiter.html");
+        gesendet += todays.length;
+      }
+    } catch (e) {
+      console.error("Graffiti-Scheine-Erinnerung fehlgeschlagen:", e);
     }
 
     // ---- Glasreinigung: Erinnerungen für Kalender-Termine (nur Admin) ----
@@ -85,9 +90,6 @@ Deno.serve(async (_req) => {
     // Wiederkehrende Termine (Spalte "wiederholung", JSON wie in der App) erinnern an
     // JEDEM Vorkommen - nicht nur am allerersten Startdatum.
     const offsets: Record<string, number> = { same_day: 0, "1d": 1, "2d": 2, "7d": 7 };
-    const { data: glasTermine } = await supabase
-      .from("glas_termine")
-      .select("titel, datum, erinnerung, notiz, wiederholung");
 
     const addDays = (iso: string, days: number) => {
       const d = new Date(iso + "T12:00:00Z");
@@ -125,40 +127,54 @@ Deno.serve(async (_req) => {
       return ziel === t.datum;
     };
 
-    for (const t of glasTermine || []) {
-      if (!(t.erinnerung in offsets)) continue;
-      const ziel = addDays(today, offsets[t.erinnerung]); // der Tag, an den erinnert wird
-      if (!vorkommenAm(t, ziel)) continue;
-      const [y, m, d] = ziel.split("-");
-      const wann = t.erinnerung === "same_day" ? "Heute" : `Am ${d}.${m}.${y}`;
-      await sendToRole(
-        supabase,
-        "kalender",
-        `⏰ Erinnerung: ${t.titel}`,
-        `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`,
-        "/kalender.html#/tab/kalender"
-      );
-      gesendet++;
+    try {
+      const { data: glasTermine, error: termineErr } = await supabase
+        .from("glas_termine")
+        .select("titel, datum, erinnerung, notiz, wiederholung");
+      if (termineErr) throw termineErr;
+
+      for (const t of glasTermine || []) {
+        if (!(t.erinnerung in offsets)) continue;
+        const ziel = addDays(today, offsets[t.erinnerung]); // der Tag, an den erinnert wird
+        if (!vorkommenAm(t, ziel)) continue;
+        const [y, m, d] = ziel.split("-");
+        const wann = t.erinnerung === "same_day" ? "Heute" : `Am ${d}.${m}.${y}`;
+        await sendToRole(
+          supabase,
+          "kalender",
+          `⏰ Erinnerung: ${t.titel}`,
+          `${wann}${t.notiz ? " · " + String(t.notiz).slice(0, 120) : ""}`,
+          "/kalender.html#/tab/kalender"
+        );
+        gesendet++;
+      }
+    } catch (e) {
+      console.error("Kalender-Erinnerung fehlgeschlagen:", e);
     }
 
     // ---- Glasreinigung: heutige Touren als Morgen-Übersicht (nur Admin) ----
-    const { data: glasTouren } = await supabase
-      .from("glas_touren")
-      .select("name, datum, datum_bis, archiviert_am")
-      .is("archiviert_am", null);
+    try {
+      const { data: glasTouren, error: tourenErr } = await supabase
+        .from("glas_touren")
+        .select("name, datum, datum_bis, archiviert_am")
+        .is("archiviert_am", null);
+      if (tourenErr) throw tourenErr;
 
-    const heutigeTouren = (glasTouren || []).filter(
-      (t) => t.datum && t.datum <= today && today <= (t.datum_bis || t.datum)
-    );
-    if (heutigeTouren.length > 0) {
-      await sendToRole(
-        supabase,
-        "glas",
-        `🚐 ${heutigeTouren.length} Glas-Tour${heutigeTouren.length === 1 ? "" : "en"} heute`,
-        heutigeTouren.map((t) => t.name || t.datum).join("\n"),
-        "/glas-admin.html#/tab/touren"
+      const heutigeTouren = (glasTouren || []).filter(
+        (t) => t.datum && t.datum <= today && today <= (t.datum_bis || t.datum)
       );
-      gesendet += heutigeTouren.length;
+      if (heutigeTouren.length > 0) {
+        await sendToRole(
+          supabase,
+          "glas",
+          `🚐 ${heutigeTouren.length} Glas-Tour${heutigeTouren.length === 1 ? "" : "en"} heute`,
+          heutigeTouren.map((t) => t.name || t.datum).join("\n"),
+          "/glas-admin.html#/tab/touren"
+        );
+        gesendet += heutigeTouren.length;
+      }
+    } catch (e) {
+      console.error("Glas-Touren-Erinnerung fehlgeschlagen:", e);
     }
 
     if (gesendet === 0) {
