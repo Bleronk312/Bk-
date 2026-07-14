@@ -1046,6 +1046,14 @@ function renderGlasHome() {
         <button class="btn btn-primary" style="flex:1; justify-content:center;" onclick="glasStartNewTourForm(); glasNavigate({type:'tabs', tab:'touren'});">+ Neue Tour</button>
         <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
+      ${(() => {
+        // Dezenter Hinweis: offene Dietrich-Scheine ohne LFD-Nr. (Antippen -> Touren).
+        // ("lfd_nr" in s: vor der SQL-Migration gibt es die Spalte nicht -> kein Alarm.)
+        const lfdOffen = glasTouren
+          .filter((t) => !t.archiviert_am && t.template === "sub")
+          .reduce((n, t) => n + (t.glas_stopps || []).filter((s) => "lfd_nr" in s && !(s.lfd_nr || "").trim()).length, 0);
+        return lfdOffen ? `<div class="glas-lfd-hint" onclick="goGlasTab('touren')">🔢 ${lfdOffen} Dietrich-Schein${lfdOffen === 1 ? "" : "e"} ohne LFD-Nr. <span style="opacity:.7;">· antippen zum Nachtragen</span></div>` : "";
+      })()}
 
       ${sektion("heuteTouren", "🚐 Heute · Touren", heuteTouren.length, heuteTouren.map(tourCard).join(""), "Heute keine Touren.")}
       ${sektion("heuteTermine", "📌 Heute · Termine", heuteTermine.length, heuteTermine.map(terminCard).join(""), "Heute keine Termine.")}
