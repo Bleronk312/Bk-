@@ -532,6 +532,7 @@ function glasParseHash() {
   const h = location.hash.replace(/^#\/?/, "");
   const [kind, id] = h.split("/");
   if (kind === "objekt" && id) return { type: "objekt", id };
+  if (kind === "objektliste" && id) return { type: "objektliste", filter: id };
   if (kind === "kunde" && id) return { type: "kunde", id };
   if (kind === "tab" && id) return { type: "tabs", tab: id };
   if (kind === "statistik") return { type: "statistik" };
@@ -540,6 +541,7 @@ function glasParseHash() {
 
 function glasHashFor(page) {
   if (page.type === "objekt") return `#/objekt/${page.id}`;
+  if (page.type === "objektliste") return `#/objektliste/${page.filter}`;
   if (page.type === "kunde") return `#/kunde/${page.id}`;
   if (page.type === "objekt-form") return location.hash || "#/tab/kunden"; // kein eigener Hash nötig
   if (page.type === "home") return "#/";
@@ -596,6 +598,7 @@ function glasNavigate(page) {
 }
 
 function goGlasObjekt(id) { glasContentAnimPending = true; glasScrollTop(); glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objekt", id }); }
+function goGlasObjektListe(filter) { glasContentAnimPending = true; glasScrollTop(); glasAuswahl = { modus: null, ids: new Set() }; glasNavigate({ type: "objektliste", filter }); }
 function goGlasKunde(id) {
   glasContentAnimPending = true;
   glasScrollTop();
@@ -660,6 +663,7 @@ function renderGlasAdmin() {
   document.body.classList.toggle("glas-cal-pur", glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender");
 
   if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); glasViewEintritt(view); return; }
+  if (glasPage.type === "objektliste") { view.innerHTML = renderObjektListePage(glasPage.filter); glasViewEintritt(view); return; }
   if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); glasViewEintritt(view); return; }
   if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); glasViewEintritt(view); return; }
   if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); glasViewEintritt(view); glasAnimateProgress(); return; }
@@ -773,7 +777,6 @@ function glasUpdateTabContent() {
 
   const anwenden = () => {
     content.innerHTML = html;
-    if (isHome && !glasGlobalSearch.trim()) glasAnimateHome();
     glasAnimateProgress();
     glasAttachTabHandlers(tab);
   };
@@ -948,11 +951,12 @@ function renderGlasHome() {
     .sort((a, b) => a.datum.localeCompare(b.datum))
     .slice(0, 3);
 
-  // Farbige Status-Kachel (Zahl zählt beim Öffnen hoch -> data-count)
+  // Farbige Status-Kachel. Die Zahl steht sofort da (kein Hochzählen mehr - das
+  // flackerte bei jedem Auf-/Zuklappen der Startseiten-Bereiche neu).
   const tile = (cls, icon, num, label, onclick) => `
     <div class="glas-home-tile ${cls}" onclick="${onclick}">
       <span class="ght-ic">${icon}</span>
-      <span class="ght-num" data-count="${num}">0</span>
+      <span class="ght-num">${num}</span>
       <span class="ght-lbl">${label}</span>
     </div>`;
 
@@ -1049,22 +1053,6 @@ function glasMiniRing(done, total) {
       </svg>
       <span class="glas-mini-ring-txt">${done}/${total}</span>
     </div>`;
-}
-
-// Nach dem Rendern der Startseite: Kachel-Zahlen hochzählen.
-function glasAnimateHome() {
-  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  document.querySelectorAll(".glas-home-tile .ght-num[data-count]").forEach((n) => {
-    const to = parseInt(n.getAttribute("data-count"), 10) || 0;
-    if (reduce || to === 0) { n.textContent = to; return; }
-    const start = performance.now(), dur = 650;
-    const step = (t) => {
-      const p = Math.min(1, (t - start) / dur);
-      n.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
-      if (p < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
 }
 
 // Fortschrittsbalken (Touren-Karten) + Fortschritts-Ring (Tour-Detail) füllen sich beim
@@ -1283,6 +1271,7 @@ function renderKundenWidgets(kunden, objekte) {
   const top5 = [...kunden].sort((a, b) => (kundeQm.get(b.id) || 0) - (kundeQm.get(a.id) || 0)).slice(0, 5).filter((k) => (kundeQm.get(k.id) || 0) > 0);
   const bester = top5[0] || null;
   const ohneIntervall = objekte.filter((o) => glasGetObjektPositionen(o.id).every((p) => !p.intervall_typ)).length;
+  const ohneQm = objekte.filter((o) => glasObjektQm(o) === 0).length;
   const topMax = bester ? kundeQm.get(bester.id) : 1;
 
   // Am längsten nicht gereinigt: pro Kunde die JÜNGSTE letzte_reinigung über alle
@@ -1300,7 +1289,7 @@ function renderKundenWidgets(kunden, objekte) {
   const altLabel = (x) => !x.letzte ? "noch nie"
     : (() => { const m = glasMonateSeit(x.letzte); return m <= 0 ? "diesen Monat" : `vor ${m} Mon.`; })();
 
-  const tile = (cls, n, l) => `<div class="glas-home-tile ${cls}" style="cursor:default;"><span class="ght-num">${n}</span><span class="ght-lbl">${l}</span></div>`;
+  const tile = (cls, n, l, onclick) => `<div class="glas-home-tile ${cls}" ${onclick ? `style="cursor:pointer;" onclick="${onclick}"` : `style="cursor:default;"`}><span class="ght-num">${n}</span><span class="ght-lbl">${l}</span></div>`;
   const rank = (pos, name, barPct, wert, onclick, warnv) => `
     <div class="glas-rankrow" ${onclick ? `style="cursor:pointer;" onclick="${onclick}"` : ""}>
       <span class="rp">${pos}.</span>
@@ -1326,8 +1315,8 @@ function renderKundenWidgets(kunden, objekte) {
           <div class="glas-home-tiles" style="margin-bottom:0;">
             ${tile("t-info t-fit", glasStatQmText(gesamtQm) + " m²", "Jahres-QM gesamt")}
             ${tile("t-neu t-fit", glasStatQmText(avgQm) + " m²", "Ø Jahres-QM pro Objekt")}
-            ${tile("t-ok t-name", bester ? escapeHtml(bester.name) : "–", bester ? "Bester Kunde · " + glasStatQmText(kundeQm.get(bester.id)) + " m²/Jahr" : "Bester Kunde")}
-            ${tile("t-warn", ohneIntervall, "Objekte ohne Intervall")}
+            ${tile("t-warn", ohneIntervall, "Objekte ohne Intervall", "goGlasObjektListe('ohne_intervall')")}
+            ${tile("t-crit", ohneQm, "Objekte ohne QM-Angabe", "goGlasObjektListe('ohne_qm')")}
           </div>
         </div>
         <div class="glas-cpage">
@@ -2209,6 +2198,49 @@ async function deleteGlasObjekt(id) {
 /* ========================================================================
    Objekt-Detail-Seite
    ======================================================================== */
+
+// Gefilterte Objektliste (z.B. "Objekte ohne Intervall" / "ohne QM-Angabe"),
+// erreichbar über die Kacheln im Kunden-Karussell. Jede Zeile führt zum Objekt.
+function renderObjektListePage(filter) {
+  const defs = {
+    ohne_intervall: {
+      icon: "🔁", titel: "Objekte ohne Intervall",
+      hint: "Diese Objekte haben (noch) kein Reinigungsintervall – sie zählen daher nicht in die Jahres-QM.",
+      leer: "Alle Objekte haben ein Intervall hinterlegt. 👍",
+      test: (o) => glasGetObjektPositionen(o.id).every((p) => !p.intervall_typ),
+    },
+    ohne_qm: {
+      icon: "📐", titel: "Objekte ohne QM-Angabe",
+      hint: "Diesen Objekten fehlt die Quadratmeter-Angabe – ohne QM zählen sie nicht in die Flächen-Statistik.",
+      leer: "Alle Objekte haben eine QM-Angabe. 👍",
+      test: (o) => glasObjektQm(o) === 0,
+    },
+  };
+  const def = defs[filter] || defs.ohne_intervall;
+  const kundeName = (o) => o.kunde_name || glasKunden.find((k) => k.id === o.kunde_id)?.name || "Ohne Kunde";
+  const objekte = glasObjekte
+    .filter((o) => glasKundenFirmaFilter === "alle" || (glasKunden.find((k) => k.id === o.kunde_id)?.firma || "geko") === glasKundenFirmaFilter)
+    .filter(def.test)
+    .sort((a, b) => kundeName(a).localeCompare(kundeName(b), "de") || (a.name || "").localeCompare(b.name || "", "de"));
+
+  const rows = objekte.length
+    ? objekte.map((o) => `
+      <div class="card" style="cursor:pointer; display:flex; gap:10px; justify-content:space-between; align-items:center;" onclick="goGlasObjekt('${o.id}')">
+        <div style="flex:1; min-width:0;">
+          <p style="margin:0; font-weight:600;">${escapeHtml(o.name)}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(kundeName(o))}${o.adresse ? " · " + escapeHtml((o.adresse || "").split("\n")[0]) : ""}</p>
+        </div>
+        <span style="font-size:18px; color:var(--text-secondary);">›</span>
+      </div>`).join("")
+    : `<p class="muted">${def.leer}</p>`;
+
+  return `
+    <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('kunden')">&larr; Kunden</button>
+    <h2 style="margin:0 0 2px;">${def.icon} ${def.titel}</h2>
+    <p class="muted" style="margin:0 0 6px;">${objekte.length} Objekt${objekte.length === 1 ? "" : "e"}</p>
+    <p class="muted" style="margin:0 0 14px; font-size:12.5px;">${def.hint}</p>
+    ${rows}`;
+}
 
 function renderObjektDetailPage(id) {
   if (glasObjektEditing !== null) return renderObjektForm();
