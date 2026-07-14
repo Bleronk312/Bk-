@@ -307,7 +307,7 @@ function glasDietrichKdnr(s) {
   const obj = String(s.kdnr || "").trim();
   if (!obj) return haupt;
   if (!haupt || obj.includes(haupt)) return obj;
-  return `${haupt}  ${obj}`;
+  return `${haupt} ${obj}`;
 }
 
 // Einheitlicher Dateiname für alle Abnahmescheine: LN_<Kd.-Nr.>_<Straße>.pdf
