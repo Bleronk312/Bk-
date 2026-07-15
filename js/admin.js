@@ -139,8 +139,15 @@ function fromDatetimeLocalValue(value) {
 
 async function showApp() {
   await Promise.all([loadKundenData(), loadKategorienData()]);
+  // Deep-Link aus dem Glas-Kalender: admin.html#/schein/<id> öffnet direkt den Schein.
+  const m = (location.hash || "").match(/#\/schein\/(.+)$/);
+  if (m) { openEdit(decodeURIComponent(m[1])); return; }
   switchTab("scheine");
 }
+window.addEventListener("hashchange", () => {
+  const m = (location.hash || "").match(/#\/schein\/(.+)$/);
+  if (m) openEdit(decodeURIComponent(m[1]));
+});
 
 showApp();
 

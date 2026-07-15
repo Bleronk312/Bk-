@@ -372,6 +372,8 @@ label {
 /* Leere Lane-Zeile: hält exakt die Chip-Höhe frei (unsichtbar), damit mehrtägige Balken
    Tag für Tag auf derselben Linie liegen und lückenlos durchlaufen. */
 .glas-cal-chip-spacer { visibility: hidden; }
+/* Erledigte Touren: klar als fertig erkennbar (grün + leicht durchgestrichen) */
+.glas-cal-chip.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
 /* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
@@ -2074,8 +2076,9 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a;
 .jv-oname{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jv-oqm{ font-size:11.5px; color:var(--text-secondary); margin-top:2px; display:flex; align-items:center; gap:6px; }
 .jv-spill{ font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:6px; }
-.jv-ichip{ font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:7px; flex:0 0 auto; white-space:nowrap;
-  background:var(--tint-bald-bg, #e7f0fb); color:var(--blue); }
+.jv-ichip{ font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:7px; flex:0 1 auto; white-space:nowrap;
+  max-width:120px; overflow:hidden; text-overflow:ellipsis; background:var(--tint-bald-bg, #e7f0fb); color:var(--blue); }
+.jv-orow-arr{ color:var(--text-secondary); font-size:16px; flex:0 0 auto; }
 
 .jv-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 .jv-ytile{ background:var(--card); border:1px solid var(--border); border-radius:15px; padding:12px 12px 11px; cursor:pointer;

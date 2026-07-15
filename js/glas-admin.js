@@ -383,6 +383,18 @@ function glasDebugOverlay() {
   lineal.innerHTML = s;
 }
 
+// Graffiti-Abnahmescheine mit Termin, damit sie im Haupt-Kalender miterscheinen.
+// (Eigene Tabelle "scheine" - die Glas-Termine sind glas_termine. Anzeige read-only,
+// bearbeitet wird in der Graffiti-App.)
+let glasGraffitiTermine = [];
+let glasKalGraffitiEinblenden = true;
+const GLAS_GRAFFITI_COL = "#b0308a";
+async function loadGlasGraffitiTermine() {
+  const spalten = "id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, termin, kdnr, monat, unterschrift_name, signed_at";
+  const { data, error } = await sb.from("scheine").select(spalten).not("termin", "is", null).eq("archiviert", false);
+  glasGraffitiTermine = error ? [] : (data || []);
+}
+
 async function glasInit() {
   glasShellHoehe();
   if (window.visualViewport) window.visualViewport.addEventListener("resize", glasShellHoehe);
@@ -397,7 +409,7 @@ async function glasInit() {
   if (glasCalApp && !location.hash) location.hash = "#/tab/kalender";
   glasPage = glasParseHash();
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
-  await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub()]);
+  await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub(), loadGlasGraffitiTermine()]);
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
   renderGlasAdmin();
   glasGeocodeFehlende();
@@ -5151,6 +5163,7 @@ function glasToggleKalSearch() {
 function glasToggleKalTouren() { glasKalTourenEinblenden = !glasKalTourenEinblenden; glasUpdateTabContent(); }
 function glasToggleKalTermine() { glasKalTermineEinblenden = !glasKalTermineEinblenden; glasUpdateTabContent(); }
 function glasToggleKalUrlaub() { glasKalUrlaubEinblenden = !glasKalUrlaubEinblenden; glasUpdateTabContent(); }
+function glasToggleKalGraffiti() { glasKalGraffitiEinblenden = !glasKalGraffitiEinblenden; glasUpdateTabContent(); }
 
 // Sucht Termine, Touren und Objekte - direkt aus dem Kalender heraus
 function renderKalenderSuchErgebnisse() {
@@ -5209,6 +5222,7 @@ function renderKalenderMonat() {
     ...(glasKalTourenEinblenden ? activeTouren.map((t) => ({
       datum: t.datum, datum_bis: t.datum_bis,
       col: glasTourKalenderFarbe(t),
+      done: glasTourAllDone(t), // erledigte Touren im Kalender durchgestrichen anzeigen
       label: t.name ? t.name : (t.frei ? "Blanko" : "Tour"),
     })) : []),
     // Eigene Büro-Termine (📌-Schalter)
@@ -5219,6 +5233,15 @@ function renderKalenderMonat() {
         datum: occ.datum, datum_bis: occ.datum_bis,
         col: c.dot, label: t.titel || "Termin",
       }));
+    }) : []),
+    // 🎨 Graffiti-Termine aus der Graffiti-App (scheine.termin) - eigene Farbe.
+    ...(glasKalGraffitiEinblenden ? glasGraffitiTermine.filter((g) => g.termin).map((g) => {
+      const iso = glasDatumVonTimestamp(g.termin);
+      return {
+        datum: iso, datum_bis: iso, col: GLAS_GRAFFITI_COL,
+        done: !!(g.unterschrift_name || g.signed_at),
+        label: (g.kunde || "").split("\n")[0] || "Graffiti",
+      };
     }) : []),
     // Urlaube (einblendbar über 🏖️): bewusst dezenter/transparenter gestylt als Touren/
     // Termine, damit man sie klar unterscheiden kann (is-urlaub)
@@ -5280,7 +5303,7 @@ function renderKalenderMonat() {
             if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
             const contLeft = t.datum < iso;
             const contRight = (t.datum_bis || t.datum) > iso;
-            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
           }).join("")
         : "";
       const more = overflow ? `<div class="glas-cal-more">+${overflow}</div>` : "";
@@ -5300,6 +5323,7 @@ function renderKalenderMonat() {
         <button class="btn btn-sm${glasKalSearchOpen ? " btn-primary" : ""}" title="Suchen" onclick="glasToggleKalSearch()">🔍</button>
         <button class="btn btn-sm${glasKalTourenEinblenden ? " btn-primary" : ""}" title="Touren (🚐) ein-/ausblenden" onclick="glasToggleKalTouren()">🚐</button>
         <button class="btn btn-sm${glasKalTermineEinblenden ? " btn-primary" : ""}" title="Eigene Termine (📌) ein-/ausblenden" onclick="glasToggleKalTermine()">📌</button>
+        <button class="btn btn-sm${glasKalGraffitiEinblenden ? " btn-primary" : ""}" title="Graffiti-Termine (🎨) ein-/ausblenden" onclick="glasToggleKalGraffiti()">🎨</button>
         <button class="btn btn-sm${glasKalUrlaubEinblenden ? " btn-primary" : ""}" title="Urlaube ein-/ausblenden" onclick="glasToggleKalUrlaub()">🏖️</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(-1)">‹</button>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
@@ -5319,13 +5343,51 @@ function renderKalenderMonat() {
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.geplant}; vertical-align:middle;"></span> geplant</span>
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.fertig}; vertical-align:middle;"></span> fertig${glasKalTourenEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
         <span style="margin-left:6px;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TERMIN_FARBEN.tuerkis.dot}; vertical-align:middle;"></span> 📌 eigener Termin${glasKalTermineEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
+        <span style="margin-left:6px;"><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_GRAFFITI_COL}; vertical-align:middle;"></span> 🎨 Graffiti${glasKalGraffitiEinblenden ? "" : " <b>(ausgeblendet)</b>"}</span>
       </div>
       <button class="btn btn-sm" style="margin:8px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
+    ${glasGraffitiInfoId ? renderGraffitiInfoModal() : ""}
   `;
   glasCalAnimDir = null;
   return html;
+}
+
+// Read-only Info zu einem Graffiti-Termin im Kalender + Sprung in die Graffiti-App.
+let glasGraffitiInfoId = null;
+function glasOpenGraffitiInfo(id) { glasGraffitiInfoId = id; renderGlasAdmin(); }
+function glasCloseGraffitiInfo() { glasGraffitiInfoId = null; renderGlasAdmin(); }
+function glasOpenGraffitiInApp(id) { window.location.href = "admin.html#/schein/" + id; }
+function renderGraffitiInfoModal() {
+  const g = glasGraffitiTermine.find((x) => x.id === glasGraffitiInfoId);
+  if (!g) return "";
+  const done = !!(g.unterschrift_name || g.signed_at);
+  const zeit = glasUhrzeitVonTimestamp(g.termin);
+  const datum = formatGlasDate(glasDatumVonTimestamp(g.termin));
+  const adresse = (g.adresse || "").trim();
+  const kundeLines = (g.kunde || "").split("\n").filter((l) => l.trim());
+  return `
+    <div class="modal-overlay" style="z-index:10000;" onclick="if(event.target===this)glasCloseGraffitiInfo()">
+      <div class="glas-day-sheet">
+        <div class="glas-sheet-grip"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <p style="margin:0; font-weight:800; font-size:17px;">🎨 Graffiti-Termin</p>
+          <button class="btn btn-sm" onclick="glasCloseGraffitiInfo()">✕</button>
+        </div>
+        ${done
+          ? `<div class="glas-notiz-box" style="background:var(--success-bg); color:var(--success-text); margin-bottom:10px;">✓ Bereits unterschrieben${g.unterschrift_name ? " von " + escapeHtml(g.unterschrift_name) : ""}</div>`
+          : `<div class="glas-notiz-box" style="margin-bottom:10px;">🕐 ${datum}${zeit ? " · " + zeit + " Uhr" : ""}</div>`}
+        <div class="glas-sheet-row"><span class="glas-sheet-ico">🏢</span><span style="white-space:pre-line;">${kundeLines.map(escapeHtml).join("\n") || "—"}</span></div>
+        ${adresse ? `<a class="glas-sheet-row" href="${wazeLink(adresse)}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit;"><span class="glas-sheet-ico">📍</span><span style="flex:1; min-width:0; white-space:pre-line;">${escapeHtml(adresse)}</span><span style="color:var(--blue); font-size:12px; font-weight:600; white-space:nowrap;">Route ›</span></a>` : ""}
+        ${g.kategorie ? `<div class="glas-sheet-row"><span class="glas-sheet-ico">🏷️</span><span>${escapeHtml(g.kategorie)}</span></div>` : ""}
+        ${g.leistungen ? `<div class="glas-sheet-row" style="align-items:flex-start;"><span class="glas-sheet-ico">🧹</span><span style="white-space:pre-line;">${escapeHtml(g.leistungen)}</span></div>` : ""}
+        ${g.ansprechpartner ? `<div class="glas-sheet-row"><span class="glas-sheet-ico">👤</span><span>${escapeHtml(g.ansprechpartner)}</span></div>` : ""}
+        ${g.telefon ? `<a class="glas-sheet-row" href="tel:${escapeHtml(g.telefon)}" style="text-decoration:none; color:inherit;"><span class="glas-sheet-ico">📞</span><span style="flex:1;">${escapeHtml(g.telefon)}</span><span style="color:var(--blue); font-size:12px; font-weight:600;">Anrufen ›</span></a>` : ""}
+        <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px;" onclick="glasOpenGraffitiInApp('${g.id}')">🎨 In Graffiti-App öffnen</button>
+        <p class="muted" style="text-align:center; font-size:11.5px; margin:8px 0 0;">Bearbeiten &amp; Unterschreiben in der Graffiti-App.</p>
+      </div>
+    </div>`;
 }
 
 // Aufklappender "Tages-Reiter" unter dem Kalender: alle Touren + freien Termine des Tages,
@@ -5341,12 +5403,32 @@ function renderKalenderTagPanel(iso) {
   const tourRows = (glasKalTourenEinblenden ? touren : []).map((t) => {
     const stops = t.glas_stopps || [];
     const done = stops.filter((s) => s.status === "erledigt").length;
+    const allDone = glasTourAllDone(t);
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasNavigate({type:'tabs', tab:'touren'}); openGlasTourDetail('${t.id}');">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${glasTourKalenderFarbe(t)};"></span>
         <div style="flex:1; min-width:0;">
-          <p style="margin:0; font-weight:600;">🚐 ${t.name ? escapeHtml(t.name) : (t.frei ? "Blanko" : "Tour")}</p>
+          <p style="margin:0; font-weight:600; ${allDone ? "text-decoration:line-through; color:var(--success-text);" : ""}">🚐 ${t.name ? escapeHtml(t.name) : (t.frei ? "Blanko" : "Tour")}${allDone ? " ✓" : ""}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)} · ${done}/${stops.length} erledigt</p>
+        </div>
+        <span style="color:var(--text-secondary);">›</span>
+      </div>`;
+  }).join("");
+
+  // 🎨 Graffiti-Termine dieses Tages (read-only Info + Sprung in die Graffiti-App)
+  const graffitiAmTag = glasKalGraffitiEinblenden
+    ? glasGraffitiTermine.filter((g) => g.termin && glasDatumVonTimestamp(g.termin) === iso)
+    : [];
+  const graffitiRows = graffitiAmTag.map((g) => {
+    const done = !!(g.unterschrift_name || g.signed_at);
+    const zeit = glasUhrzeitVonTimestamp(g.termin);
+    const strasse = (g.adresse || "").split("\n")[0];
+    return `
+      <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasOpenGraffitiInfo('${g.id}')">
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${GLAS_GRAFFITI_COL};"></span>
+        <div style="flex:1; min-width:0;">
+          <p style="margin:0; font-weight:600; ${done ? "text-decoration:line-through; color:var(--success-text);" : ""}">🎨 ${escapeHtml((g.kunde || "").split("\n")[0] || "Graffiti")}${done ? " ✓" : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${zeit ? zeit + " Uhr · " : ""}${escapeHtml(g.kategorie || "Graffiti")}${strasse ? " · " + escapeHtml(strasse) : ""}</p>
         </div>
         <span style="color:var(--text-secondary);">›</span>
       </div>`;
@@ -5395,8 +5477,8 @@ function renderKalenderTagPanel(iso) {
             <button class="btn btn-sm" onclick="glasSheetZu(this, () => { glasKalenderSelectedDay=null; renderGlasAdmin(); });">✕</button>
           </div>
         </div>
-        ${tourRows}${terminRows}${urlaubRows}
-        ${!(glasKalTourenEinblenden && touren.length) && !(glasKalTermineEinblenden && termine.length) && !urlaubeAmTag.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
+        ${tourRows}${terminRows}${graffitiRows}${urlaubRows}
+        ${!(glasKalTourenEinblenden && touren.length) && !(glasKalTermineEinblenden && termine.length) && !graffitiAmTag.length && !urlaubeAmTag.length ? `<p class="muted" style="margin:12px 0 4px;">Nichts geplant an diesem Tag.</p>` : ""}
       </div>
     </div>`;
 }
@@ -6286,14 +6368,20 @@ function glasJvMini(st) {
   if (st.open) p.push(`<span style="color:var(--jv-open); font-weight:700;"><span class="jv-ring"></span>${st.open}</span>`);
   return p.join(" ");
 }
+// Kurzes Intervall-Label für die Jahresvorschau (NICHT die volle Monatsliste - die
+// wurde bei monatlichen Objekten "Jan, Feb, … Dez" und überlappte die Kachel).
 function glasJvIntervalInfo(o) {
   const ps = glasGetObjektPositionen(o.id).filter((p) => !glasIstStundenPos(p) && p.intervall_typ);
   if (!ps.length) return ["manuell", "var(--text-secondary)"];
   const p = ps[0];
-  if (p.intervall_typ === "rollierend") return [glasIntervallLabel(p), "var(--jv-plan)"];
-  const n = ps.reduce((a, q) => a + glasPosReinigungenProJahr(q), 0);
+  if (p.intervall_typ === "rollierend") {
+    const w = parseInt(p.intervall_wochen, 10);
+    return [w > 0 ? `alle ${w} Wo.` : "rollierend", "var(--jv-plan)"];
+  }
+  const n = Math.round(ps.reduce((a, q) => a + glasPosReinigungenProJahr(q), 0));
+  const label = n >= 12 ? "monatlich" : n === 4 ? "quartalsweise" : `${n}×/Jahr`;
   const col = n >= 12 ? "var(--danger)" : n >= 4 ? "var(--blue)" : n >= 2 ? "var(--jv-done)" : "var(--text-secondary)";
-  return [glasIntervallLabel(p), col];
+  return [label, col];
 }
 function glasJvBadge(k) {
   return (k.firma || "geko") === "geko"
@@ -6338,7 +6426,7 @@ function glasJvRenderBody() {
     const orows = due.map((o) => {
       const [sl, sc] = GLAS_JV_STL[glasJvStatusOf(o, m)];
       const [ilbl, icol] = glasJvIntervalInfo(o);
-      return `<div class="jv-orow"><span class="jv-obar" style="background:${icol}"></span><div class="jv-oinfo"><div class="jv-oname">${escapeHtml(o.name)}</div><div class="jv-oqm">${glasStatQmText(glasObjektQm(o))} m² <span class="jv-spill ${sc}">${sl}</span></div></div><span class="jv-ichip">${escapeHtml(ilbl)}</span></div>`;
+      return `<div class="jv-orow" style="cursor:pointer;" onclick="goGlasObjekt('${o.id}')"><span class="jv-obar" style="background:${icol}"></span><div class="jv-oinfo"><div class="jv-oname">${escapeHtml(o.name)}</div><div class="jv-oqm">${glasStatQmText(glasObjektQm(o))} m² <span class="jv-spill ${sc}">${sl}</span></div></div><span class="jv-ichip">${escapeHtml(ilbl)}</span><span class="jv-orow-arr">›</span></div>`;
     }).join("");
     list += `<div class="jv-kg"><div class="jv-khead" onclick="glasJvToggleK(this)"><div class="jv-kav">${escapeHtml(initials)}</div><div class="jv-kmeta"><div class="jv-kname">${escapeHtml(k.name)}</div><div class="jv-ksub">${due.length} ${due.length === 1 ? "Objekt" : "Objekte"} ${glasJvMini(local)}</div></div>${glasJvBadge(k)}<span class="jv-kcount">${due.length}</span><span class="jv-chev">▾</span></div><div class="jv-objs"><div class="jv-objs-in">${orows}</div></div></div>`;
   });
