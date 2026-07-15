@@ -1197,6 +1197,7 @@ a { color: var(--blue); text-decoration: none; }
   background: var(--bg);
 }
 .file-input-wrap:hover { border-color: var(--blue); }
+.file-input-wrap.dragover { border-color: var(--blue); border-style: solid; background: var(--tint-bald-bg, var(--bg)); }
 
 .attachment-preview {
   display: flex;

@@ -652,6 +652,12 @@ async function openEdit(id, prefill) {
   }).join("");
   const kategorienOptions = kategorien.map((k) => `<option value="${escapeHtml(k.name)}">${escapeHtml(k.name)}</option>`).join("");
 
+  // Termin für den einfacheren Datum-/Zeit-Picker in Datum + Uhrzeit aufteilen (lokal).
+  const _pad = (n) => String(n).padStart(2, "0");
+  const _tdt = s.termin ? new Date(s.termin) : null;
+  const terminDatum = _tdt && !isNaN(_tdt.getTime()) ? `${_tdt.getFullYear()}-${_pad(_tdt.getMonth() + 1)}-${_pad(_tdt.getDate())}` : "";
+  const terminZeit = _tdt && !isNaN(_tdt.getTime()) ? `${_pad(_tdt.getHours())}:${_pad(_tdt.getMinutes())}` : "";
+
   document.getElementById("view").innerHTML = `
     <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
     <div class="card">
@@ -704,7 +710,25 @@ async function openEdit(id, prefill) {
 
       <div class="field">
         <label>Termin (optional, falls schon mit dem Ansprechpartner vereinbart)</label>
-        <input type="datetime-local" id="f_termin" value="${toDatetimeLocalValue(s.termin)}" />
+        <div class="row" style="align-items:flex-end;">
+          <div class="field" style="margin:0;">
+            <label class="muted" style="font-size:12px;">Datum</label>
+            <input type="date" id="f_termin_datum" value="${terminDatum}" onchange="graffitiTerminDatumChanged()" />
+          </div>
+          <div class="field" style="margin:0; flex:0 0 118px;">
+            <label class="muted" style="font-size:12px;">Uhrzeit</label>
+            <input type="time" id="f_termin_zeit" value="${terminZeit}" step="300" />
+          </div>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminQuick(0)">Heute</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminQuick(1)">Morgen</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminQuick(7)">+1 Woche</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminZeit('08:00')">08:00</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminZeit('10:00')">10:00</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiTerminZeit('13:00')">13:00</button>
+          <button type="button" class="btn btn-sm" onclick="graffitiClearTermin()">✕ Kein Termin</button>
+        </div>
       </div>
 
       <div class="row">
@@ -762,10 +786,49 @@ function renderAnhangPreview(s) {
     `;
   }
   return `
-    <div class="file-input-wrap" onclick="document.getElementById('f_anhang').click()">
-      <span class="muted">Klicken, um ein Foto oder PDF auszuwählen (Fotos werden automatisch verkleinert, PDF max. 4 MB)</span>
+    <div class="file-input-wrap" id="anhangDrop" onclick="document.getElementById('f_anhang').click()"
+      ondragover="graffitiDragOver(event)" ondragleave="graffitiDragLeave(event)" ondrop="graffitiDrop(event)">
+      <span class="muted">Klicken oder Datei hierher ziehen – Foto oder PDF (Fotos werden verkleinert, PDF max. 4 MB)</span>
     </div>
   `;
+}
+
+/* Drag & Drop für den Anhang (Foto/PDF) */
+function graffitiDragOver(e) { e.preventDefault(); e.currentTarget.classList.add("dragover"); }
+function graffitiDragLeave(e) { e.currentTarget.classList.remove("dragover"); }
+function graffitiDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("dragover");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) processAnhangFile(f);
+}
+
+/* Termin-Picker (Datum + Uhrzeit getrennt, mit Schnellwahl) */
+function graffitiTerminQuick(daysAhead) {
+  const d = new Date(); d.setDate(d.getDate() + daysAhead);
+  const p = (n) => String(n).padStart(2, "0");
+  document.getElementById("f_termin_datum").value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  if (!document.getElementById("f_termin_zeit").value) document.getElementById("f_termin_zeit").value = "08:00";
+}
+function graffitiTerminZeit(t) {
+  document.getElementById("f_termin_zeit").value = t;
+  const dEl = document.getElementById("f_termin_datum");
+  if (!dEl.value) { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); dEl.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+}
+function graffitiTerminDatumChanged() {
+  const z = document.getElementById("f_termin_zeit");
+  if (document.getElementById("f_termin_datum").value && !z.value) z.value = "08:00";
+}
+function graffitiClearTermin() {
+  document.getElementById("f_termin_datum").value = "";
+  document.getElementById("f_termin_zeit").value = "";
+}
+function graffitiTerminFromForm() {
+  const d = document.getElementById("f_termin_datum")?.value;
+  if (!d) return null;
+  const t = document.getElementById("f_termin_zeit")?.value || "08:00";
+  const dt = new Date(`${d}T${t}`);
+  return isNaN(dt.getTime()) ? null : dt.toISOString();
 }
 
 function compressImageFile(file, maxDim, quality) {
@@ -800,12 +863,19 @@ function compressImageFile(file, maxDim, quality) {
 
 async function handleAnhangChange(e) {
   const file = e.target.files[0];
+  if (file) await processAnhangFile(file);
+}
+
+async function processAnhangFile(file) {
   if (!file) return;
+  if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+    showToast("Nur Fotos oder PDF möglich");
+    return;
+  }
 
   if (file.type.startsWith("image/")) {
     if (file.size > 15 * 1024 * 1024) {
       showToast("Bild zu groß (max. 15 MB)");
-      e.target.value = "";
       return;
     }
     showToast("Bild wird komprimiert...");
@@ -824,7 +894,6 @@ async function handleAnhangChange(e) {
 
   if (file.size > 4 * 1024 * 1024) {
     showToast("Datei zu groß (max. 4 MB)");
-    e.target.value = "";
     return;
   }
   const reader = new FileReader();
@@ -873,7 +942,7 @@ async function saveScheine(id) {
     ansprechpartner: document.getElementById("f_ansprechpartner").value,
     telefon: document.getElementById("f_telefon").value,
     kategorie: document.getElementById("f_kategorie").value,
-    termin: fromDatetimeLocalValue(document.getElementById("f_termin").value),
+    termin: graffitiTerminFromForm(),
     monat: document.getElementById("f_monat").value,
     kdnr: document.getElementById("f_kdnr").value,
     leistungen: document.getElementById("f_leistungen").value,
