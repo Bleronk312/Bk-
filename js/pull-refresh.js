@@ -21,6 +21,12 @@
   }
 
   window.addEventListener("touchstart", (e) => {
+    // Nie auf Zeichenflächen/Eingaben auslösen: ein Abwärts-Strich auf dem
+    // Unterschrift-Canvas löste sonst Pull-to-Refresh aus -> die Seite lud beim
+    // Loslassen neu und die Unterschrift war weg (v.a. auf Android; iPhone-Nutzer
+    // waren meist schon runtergescrollt, wo Pull-to-Refresh ohnehin aus ist).
+    const t = e.target;
+    if (t && t.closest && t.closest("canvas, input, textarea, select, [contenteditable], .no-ptr")) { startY = null; return; }
     if (scrollTopNow() > 2) { startY = null; return; }
     startY = e.touches[0].clientY;
     pulling = false;
