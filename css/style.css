@@ -2038,7 +2038,19 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a;
 .jv-done{ background:var(--jv-done-bg); color:var(--jv-done); }
 .jv-plan{ background:var(--jv-plan-bg); color:var(--jv-plan); }
 .jv-open{ background:var(--jv-open-bg); color:var(--jv-open); }
-.jv-ring{ display:inline-block; width:9px; height:9px; border:2px solid currentColor; border-radius:50%; box-sizing:border-box; vertical-align:-1px; }
+/* "offen"-Indikator: gefüllter Punkt (Ampel-Logik) statt hohlem Kreis, der wie ein O aussah */
+.jv-ring{ display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor; box-sizing:border-box; vertical-align:0; }
+
+/* Startseiten-Karte für die Jahresvorschau (eigener, sichtbarer Platz) */
+.glas-jahr-card{ display:flex; align-items:center; gap:12px; width:100%; margin-top:12px; padding:14px 15px;
+  border:1px solid var(--border); border-radius:14px; cursor:pointer; text-align:left; font-family:inherit; color:var(--text);
+  background:var(--tint-bald-bg, var(--card)); box-shadow:var(--shadow); transition:transform .15s cubic-bezier(.32,.72,0,1), box-shadow .15s; }
+.glas-jahr-card:active{ transform:scale(.98); }
+.gjc-ic{ font-size:22px; flex:0 0 auto; }
+.gjc-txt{ flex:1; min-width:0; }
+.gjc-t{ display:block; font-size:15px; font-weight:700; letter-spacing:-.01em; }
+.gjc-s{ display:block; font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.gjc-arr{ color:var(--blue); font-size:20px; flex:0 0 auto; font-weight:600; }
 
 .jv-kg{ background:var(--card); border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; }
 .jv-khead{ display:flex; align-items:center; gap:10px; padding:12px 13px; cursor:pointer; transition:background .15s; }

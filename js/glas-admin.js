@@ -1055,6 +1055,12 @@ function renderGlasHome() {
         <button class="btn" style="flex:1; justify-content:center;" onclick="goGlasTab('touren'); openGlasEinzelschein();">📄 Blanko erstellen</button>
       </div>
 
+      <button class="glas-jahr-card" onclick="glasOpenJahr()">
+        <span class="gjc-ic">📅</span>
+        <span class="gjc-txt"><span class="gjc-t">Jahresvorschau</span><span class="gjc-s">Fällige Objekte pro Monat · erledigt, geplant, offen</span></span>
+        <span class="gjc-arr">›</span>
+      </button>
+
       ${sektion("heuteTouren", "🚐 Heute · Touren", heuteTouren.length, heuteTouren.map(tourCard).join(""), "Heute keine Touren.")}
       ${sektion("heuteTermine", "📌 Heute · Termine", heuteTermine.length, heuteTermine.map(terminCard).join(""), "Heute keine Termine.")}
       ${sektion("naechsteTouren", "🚐 Als Nächstes · Touren", naechsteTouren.length, naechsteTouren.map(tourCard).join(""), "Keine kommenden Touren geplant.")}
