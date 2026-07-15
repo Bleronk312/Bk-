@@ -102,23 +102,31 @@ Deno.serve(async (_req) => {
       return d.toISOString().slice(0, 10);
     };
     const wochentag = (iso: string) => new Date(iso + "T12:00:00Z").getUTCDay();
+    const tageZwischen = (a: string, b: string) =>
+      Math.round((new Date(b + "T12:00:00Z").getTime() - new Date(a + "T12:00:00Z").getTime()) / 86400000);
+    const montagVon = (iso: string) => addDays(iso, -(((wochentag(iso) + 6) % 7))); // Montag der Woche
+    const clampN = (v) => { const n = parseInt(v, 10); return n >= 1 && n <= 99 ? n : 1; };
 
     // Beginnt am Zieltag (heute + Vorlauf) ein Vorkommen dieses Termins?
+    // "intervall" = alle N Tage/Wochen/Monate/Jahre.
     const vorkommenAm = (t, ziel: string) => {
       if (!t.datum || ziel < t.datum) return false;
       let w = null;
       try { w = t.wiederholung ? JSON.parse(t.wiederholung) : null; } catch (_e) { w = null; }
       if (!w || !w.freq) return ziel === t.datum;
       if (w.ende && ziel > w.ende) return false;
-      if (w.freq === "taeglich") return true;
+      const N = clampN(w.intervall);
+      if (w.freq === "taeglich") return tageZwischen(t.datum, ziel) % N === 0;
       if (w.freq === "woechentlich") {
         const tage = Array.isArray(w.wochentage) && w.wochentage.length ? w.wochentage : [wochentag(t.datum)];
-        return tage.includes(wochentag(ziel));
+        if (!tage.includes(wochentag(ziel))) return false;
+        const wochen = Math.round(tageZwischen(montagVon(t.datum), montagVon(ziel)) / 7);
+        return wochen >= 0 && wochen % N === 0;
       }
       if (w.freq === "monatlich" || w.freq === "jaehrlich") {
-        const schritt = w.freq === "monatlich" ? 1 : 12;
+        const schritt = w.freq === "monatlich" ? N : N * 12;
         let cur = t.datum;
-        for (let i = 0; i < 500 && cur <= ziel; i++) {
+        for (let i = 0; i < 800 && cur <= ziel; i++) {
           if (cur === ziel) return true;
           cur = addMonths(cur, schritt);
         }

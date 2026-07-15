@@ -4739,15 +4739,17 @@ function editGlasTerminFromView() {
 }
 
 // Wiederholung normalisieren: aus dem DB-String (JSON) ein Formular-Objekt machen.
-// Formular-Form: { freq:"nie"|"taeglich"|"woechentlich"|"monatlich"|"jaehrlich", wochentage:[0-6], ende:"" }
+// Formular-Form: { freq:"nie"|"taeglich"|"woechentlich"|"monatlich"|"jaehrlich",
+//                  intervall:1..99 (alle N Tage/Wochen/Monate/Jahre), wochentage:[0-6], ende:"" }
+function glasIntervallClamp(v) { const n = parseInt(v, 10); return n >= 1 && n <= 99 ? n : 1; }
 function glasWiederholungToObj(raw) {
-  const leer = { freq: "nie", wochentage: [], ende: "" };
+  const leer = { freq: "nie", intervall: 1, wochentage: [], ende: "" };
   if (!raw) return leer;
-  if (typeof raw === "object") return { freq: raw.freq || "nie", wochentage: Array.isArray(raw.wochentage) ? raw.wochentage.slice() : [], ende: raw.ende || "" };
+  if (typeof raw === "object") return { freq: raw.freq || "nie", intervall: glasIntervallClamp(raw.intervall), wochentage: Array.isArray(raw.wochentage) ? raw.wochentage.slice() : [], ende: raw.ende || "" };
   try {
     const w = JSON.parse(raw);
     if (!w || !w.freq) return leer;
-    return { freq: w.freq, wochentage: Array.isArray(w.wochentage) ? w.wochentage.slice() : [], ende: w.ende || "" };
+    return { freq: w.freq, intervall: glasIntervallClamp(w.intervall), wochentage: Array.isArray(w.wochentage) ? w.wochentage.slice() : [], ende: w.ende || "" };
   } catch (e) { return leer; }
 }
 
@@ -4767,6 +4769,7 @@ function syncTerminFormFromDom() {
   if (get("tm_notiz") !== undefined) glasTerminEditing.notiz = get("tm_notiz");
   if (get("tm_adresse") !== undefined) glasTerminEditing.adresse = get("tm_adresse");
   if (get("tm_freq") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.freq = get("tm_freq");
+  if (get("tm_intervall") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.intervall = glasIntervallClamp(get("tm_intervall"));
   if (get("tm_wieder_ende") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.ende = get("tm_wieder_ende");
 }
 
@@ -4873,6 +4876,13 @@ function renderTerminForm() {
           ${Object.keys(freqLabels).map((f) => `<option value="${f}" ${w.freq === f ? "selected" : ""}>${freqLabels[f]}</option>`).join("")}
         </select>
       </div>
+      ${w.freq !== "nie" ? `
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico"></span>
+        <span class="muted">Alle</span>
+        <input type="number" id="tm_intervall" min="1" max="99" inputmode="numeric" value="${glasIntervallClamp(w.intervall)}" onchange="syncTerminFormFromDom(); renderGlasAdmin();" style="width:62px; margin:0 8px; text-align:center;" />
+        <span class="muted">${(GLAS_FREQ_EINHEIT[w.freq] || ["", ""])[glasIntervallClamp(w.intervall) > 1 ? 1 : 0]}</span>
+      </div>` : ""}
       ${w.freq === "woechentlich" ? `
       <div class="glas-sheet-row" style="align-items:flex-start;">
         <span class="glas-sheet-ico"></span>
@@ -4997,11 +5007,15 @@ function glasDatumGross(iso) {
 }
 
 // Menschenlesbare Wiederholungs-Beschreibung, z.B. "Wöchentlich (Mo, Mi, Fr) bis 31.12.2026"
+const GLAS_FREQ_EINHEIT = { taeglich: ["Tag", "Tage"], woechentlich: ["Woche", "Wochen"], monatlich: ["Monat", "Monate"], jaehrlich: ["Jahr", "Jahre"] };
 function glasWiederholungLabel(raw) {
   const w = glasWiederholungToObj(raw);
   if (w.freq === "nie") return "";
   const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-  let s = { taeglich: "Täglich", woechentlich: "Wöchentlich", monatlich: "Monatlich", jaehrlich: "Jährlich" }[w.freq] || "";
+  const n = glasIntervallClamp(w.intervall);
+  let s = n > 1
+    ? `Alle ${n} ${(GLAS_FREQ_EINHEIT[w.freq] || ["", ""])[1]}`
+    : ({ taeglich: "Täglich", woechentlich: "Wöchentlich", monatlich: "Monatlich", jaehrlich: "Jährlich" }[w.freq] || "");
   if (w.freq === "woechentlich" && w.wochentage && w.wochentage.length) {
     const tage = w.wochentage.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => wt[d]);
     s += ` (${tage.join(", ")})`;
@@ -5131,6 +5145,7 @@ async function deleteGlasTermin(id) {
 function glasWiederholungToStr(w) {
   if (!w || !w.freq || w.freq === "nie") return "";
   const obj = { freq: w.freq };
+  if (glasIntervallClamp(w.intervall) > 1) obj.intervall = glasIntervallClamp(w.intervall);
   if (w.freq === "woechentlich" && Array.isArray(w.wochentage) && w.wochentage.length) obj.wochentage = w.wochentage.slice().sort((a, b) => a - b);
   if (w.ende) obj.ende = w.ende;
   return JSON.stringify(obj);
@@ -5160,25 +5175,32 @@ function glasTerminVorkommen(t, von, bis) {
     const back = glasAddDaysIso(von, -(dauer + 1));
     return back > t.datum ? back : t.datum;
   })();
+  const N = glasIntervallClamp(w.intervall); // "alle N ..."
   let guard = 0;
   if (w.freq === "taeglich") {
-    let cur = scanFrom;
-    while (cur <= hardStop && guard++ < 800) { addOcc(cur); cur = glasAddDaysIso(cur, 1); }
+    // Nur jeden N-ten Tag ab dem Startdatum (ausgerichtet an t.datum)
+    let cur = t.datum;
+    while (cur < scanFrom && guard++ < 4000) cur = glasAddDaysIso(cur, N);
+    while (cur <= hardStop && guard++ < 4000) { addOcc(cur); cur = glasAddDaysIso(cur, N); }
   } else if (w.freq === "woechentlich") {
     const tage = Array.isArray(w.wochentage) && w.wochentage.length ? w.wochentage : [new Date(t.datum + "T00:00:00").getDay()];
+    const startMontag = glasMontagVon(t.datum); // Kalenderwochen ab der Startwoche zählen
     let cur = scanFrom;
-    while (cur <= hardStop && guard++ < 800) {
-      if (tage.includes(new Date(cur + "T00:00:00").getDay())) addOcc(cur);
+    while (cur <= hardStop && guard++ < 1500) {
+      if (tage.includes(new Date(cur + "T00:00:00").getDay())) {
+        const wochen = Math.round(glasDaysBetween(startMontag, glasMontagVon(cur)) / 7);
+        if (wochen >= 0 && wochen % N === 0) addOcc(cur);
+      }
       cur = glasAddDaysIso(cur, 1);
     }
   } else if (w.freq === "monatlich") {
     let cur = t.datum;
-    while (cur < scanFrom && guard++ < 600) cur = glasAddMonthsIso(cur, 1);
-    while (cur <= hardStop && guard++ < 600) { addOcc(cur); cur = glasAddMonthsIso(cur, 1); }
+    while (cur < scanFrom && guard++ < 1200) cur = glasAddMonthsIso(cur, N);
+    while (cur <= hardStop && guard++ < 1200) { addOcc(cur); cur = glasAddMonthsIso(cur, N); }
   } else if (w.freq === "jaehrlich") {
     let cur = t.datum;
-    while (cur < scanFrom && guard++ < 400) cur = glasAddMonthsIso(cur, 12);
-    while (cur <= hardStop && guard++ < 400) { addOcc(cur); cur = glasAddMonthsIso(cur, 12); }
+    while (cur < scanFrom && guard++ < 800) cur = glasAddMonthsIso(cur, N * 12);
+    while (cur <= hardStop && guard++ < 800) { addOcc(cur); cur = glasAddMonthsIso(cur, N * 12); }
   } else {
     addOcc(t.datum);
   }
