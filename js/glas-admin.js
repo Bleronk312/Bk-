@@ -670,9 +670,58 @@ function glasPortalModals() {
     if (!host) { host = document.createElement("div"); host.id = "glasModalHost"; document.body.appendChild(host); }
     host.innerHTML = "";
     modals.forEach((m) => host.appendChild(m));
+    host.querySelectorAll(".glas-day-sheet").forEach((sh) => glasAttachSheetSwipe(sh, sh.closest(".modal-overlay")));
   } else if (host && host.innerHTML) {
     host.innerHTML = "";
   }
+}
+
+// Nach-unten-Wischen schließt das Sheet - ABER nur, wenn es ganz oben steht (sonst
+// scrollt der Inhalt normal). Die Entscheidung fällt einmal beim Antippen (Start-
+// Scrollposition), es wird also NIE mitten in einer Scrollgeste umgeschaltet -> kein
+// Ruckeln, kein versehentliches Zuklappen.
+function glasAttachSheetSwipe(sheet, overlay) {
+  let startY = 0, startScroll = 0, dragging = false, dy = 0;
+  const close = () => {
+    if (overlay && overlay.classList.contains("glas-graffiti-ov")) glasGraffitiInfoId = null;
+    else glasKalenderSelectedDay = null;
+    renderGlasAdmin();
+  };
+  sheet.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    startScroll = sheet.scrollTop;
+    dragging = false; dy = 0;
+    sheet.style.transition = "";
+    sheet.style.animation = "none"; // Eintritts-Animation nicht mit dem Ziehen kollidieren lassen
+  }, { passive: true });
+  sheet.addEventListener("touchmove", (e) => {
+    const delta = e.touches[0].clientY - startY;
+    if (!dragging) {
+      if (delta > 4 && startScroll <= 0 && sheet.scrollTop <= 0) dragging = true;
+      else return; // normales Scrollen zulassen
+    }
+    dy = Math.max(0, delta);
+    sheet.style.transform = `translateY(${dy}px)`;
+    if (overlay) overlay.style.background = `rgba(20,25,35,${(0.45 * Math.max(0, 1 - dy / 420)).toFixed(3)})`;
+    if (e.cancelable) e.preventDefault(); // verhindert gleichzeitiges Scrollen/Gummiband
+  }, { passive: false });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = "transform .28s cubic-bezier(.32,.72,0,1)";
+    if (dy > 90) {
+      sheet.style.transform = "translateY(100%)";
+      if (overlay) { overlay.style.transition = "background .28s"; overlay.style.background = "rgba(20,25,35,0)"; }
+      setTimeout(close, 250);
+    } else {
+      sheet.style.transform = "translateY(0)";
+      if (overlay) overlay.style.background = "";
+    }
+    dy = 0;
+  };
+  sheet.addEventListener("touchend", end, { passive: true });
+  sheet.addEventListener("touchcancel", end, { passive: true });
 }
 
 function glasViewEintritt(view) {
@@ -5386,7 +5435,7 @@ function renderGraffitiInfoModal() {
   const adresse = (g.adresse || "").trim();
   const kundeLines = (g.kunde || "").split("\n").filter((l) => l.trim());
   return `
-    <div class="modal-overlay" style="z-index:10000;" onclick="if(event.target===this)glasCloseGraffitiInfo()">
+    <div class="modal-overlay glas-graffiti-ov" style="z-index:10000;" onclick="if(event.target===this)glasCloseGraffitiInfo()">
       <div class="glas-day-sheet">
         <div class="glas-sheet-grip"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
