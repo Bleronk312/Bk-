@@ -475,7 +475,7 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
   background: var(--card); width: 100%; max-width: 520px;
   border-radius: 20px 20px 0 0;
   padding: 8px 18px calc(20px + env(safe-area-inset-bottom, 0px));
-  max-height: 84vh; overflow-y: auto;
+  max-height: 84vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   box-shadow: 0 -10px 40px rgba(20, 30, 50, 0.22);
   animation: glasSheetUp 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
 }

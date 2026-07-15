@@ -658,6 +658,23 @@ function goGlasTab(tab) {
 
 // Einmaliger, weicher Eintritt für Detailseiten (Kunde/Objekt/Statistik/Formular) beim
 // ECHTEN Navigieren. Interaktionen auf der Seite rendern ohne Animation (kein Flackern).
+// Modal-Overlays (z.B. das Kalender-Tages-Sheet) als DIREKTES body-Kind hosten statt
+// tief in #glasScroller: sonst lässt sich ihr Inhalt auf iOS im Standalone-Modus NICHT
+// scrollen (fixe Elemente in einem Scroll-Container fangen die Wischgeste nicht ab -
+// derselbe Grund, warum die untere Leiste als #glasNavHost am body hängt).
+function glasPortalModals() {
+  const view = document.getElementById("view");
+  let host = document.getElementById("glasModalHost");
+  const modals = view ? [...view.querySelectorAll(".modal-overlay")] : [];
+  if (modals.length) {
+    if (!host) { host = document.createElement("div"); host.id = "glasModalHost"; document.body.appendChild(host); }
+    host.innerHTML = "";
+    modals.forEach((m) => host.appendChild(m));
+  } else if (host && host.innerHTML) {
+    host.innerHTML = "";
+  }
+}
+
 function glasViewEintritt(view) {
   if (!glasContentAnimPending) return;
   glasContentAnimPending = false;
@@ -687,12 +704,12 @@ function renderGlasAdmin() {
   document.body.classList.toggle("glas-fullwidth", glasPage.type === "tabs" && glasPage.tab === "kalender");
   document.body.classList.toggle("glas-cal-pur", glasCalApp && glasPage.type === "tabs" && glasPage.tab === "kalender");
 
-  if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); glasViewEintritt(view); return; }
-  if (glasPage.type === "objektliste") { view.innerHTML = renderObjektListePage(glasPage.filter); glasViewEintritt(view); return; }
-  if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); glasViewEintritt(view); return; }
-  if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); glasViewEintritt(view); return; }
-  if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); glasViewEintritt(view); glasAnimateProgress(); return; }
-  if (glasPage.type === "jahr") { view.innerHTML = renderJahrPage(); glasViewEintritt(view); return; }
+  if (glasPage.type === "objekt") { view.innerHTML = renderObjektDetailPage(glasPage.id); glasViewEintritt(view); glasPortalModals(); return; }
+  if (glasPage.type === "objektliste") { view.innerHTML = renderObjektListePage(glasPage.filter); glasViewEintritt(view); glasPortalModals(); return; }
+  if (glasPage.type === "kunde") { view.innerHTML = renderKundeDetailPage(glasPage.id); glasViewEintritt(view); glasPortalModals(); return; }
+  if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); glasViewEintritt(view); glasPortalModals(); return; }
+  if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); glasViewEintritt(view); glasAnimateProgress(); glasPortalModals(); return; }
+  if (glasPage.type === "jahr") { view.innerHTML = renderJahrPage(); glasViewEintritt(view); glasPortalModals(); return; }
 
   // Startseite (Dashboard) und alle Reiter teilen sich dieselbe Reiter-Leiste, damit die
   // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
@@ -805,6 +822,7 @@ function glasUpdateTabContent() {
     content.innerHTML = html;
     glasAnimateProgress();
     glasAttachTabHandlers(tab);
+    glasPortalModals();
   };
 
   if (!animieren) {
