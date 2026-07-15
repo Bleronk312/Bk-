@@ -1557,6 +1557,7 @@ async function saveGlasKunde() {
   glasBusy = true;
   renderGlasAdmin();
   const payload = { id: glasKundeEditing.id || genCode(), name, adresse: (glasKundeEditing.adresse || "").trim(), kdnr: (glasKundeEditing.kdnr || "").trim(), bereich: glasKundeEditing.bereich || "glas", firma: glasKundeEditing.firma === "sub" ? "sub" : "geko" };
+  gekoCleanPayload(payload);
   const { error } = await sb.from("kunden").upsert(payload);
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
@@ -2142,6 +2143,7 @@ async function saveGlasObjekt() {
     lng: coords.lng,
   };
 
+  gekoCleanPayload(payload);
   const { error } = await sb.from("glas_objekte").upsert(payload);
   if (error) { glasBusy = false; glasProgressText = ""; showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
 
@@ -3733,14 +3735,14 @@ async function createGlasTour() {
     }
 
     const tourId = glasEditingTourId || genCode();
-    const { error: tourErr } = await sb.from("glas_touren").upsert({
+    const { error: tourErr } = await sb.from("glas_touren").upsert(gekoCleanPayload({
       id: tourId,
       name,
       datum: datum || null,
       datum_bis: datumBis || null,
       template,
       notiz,
-    });
+    }));
     if (tourErr) throw tourErr;
 
     // Beim Bearbeiten gilt: BESTEHENDE Stopps werden NIE neu aus den Objekt-Stammdaten
@@ -3832,6 +3834,7 @@ async function createGlasTour() {
       };
     });
     if (stoppRows.length) {
+      stoppRows.forEach(gekoCleanPayload);
       let { error: stoppErr } = await sb.from("glas_stopps").insert(stoppRows);
       if (stoppErr && /lfd_nr/.test(stoppErr.message || "")) {
         // Spalte existiert noch nicht (SQL-Migration nicht ausgeführt) - Tour trotzdem
@@ -4240,9 +4243,9 @@ async function saveEinzelschein() {
   const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
 
   const tourName = (d.name || "").trim() || `Einzelschein – ${d.objekt}`;
-  const { error: tourErr } = await sb.from("glas_touren").upsert({
+  const { error: tourErr } = await sb.from("glas_touren").upsert(gekoCleanPayload({
     id: tourId, name: tourName, datum: datum || null, template, frei: true,
-  });
+  }));
   if (tourErr) { glasBusy = false; showToast("Fehler: " + tourErr.message); renderGlasAdmin(); return; }
 
   // Beim Bearbeiten NUR die editierbaren Felder des bestehenden Stopps aktualisieren -
@@ -4270,7 +4273,7 @@ async function saveEinzelschein() {
       });
   // Fehlende Spalten (SQL-Dateien noch nicht ausgeführt) einzeln weglassen und erneut
   // versuchen, statt das Speichern komplett zu blockieren.
-  const felder = { ...stopFelder };
+  const felder = gekoCleanPayload({ ...stopFelder });
   let { error: stoppErr } = await stopSchreiben(felder);
   if (stoppErr && /kunde_id/.test(stoppErr.message || "")) {
     delete felder.kunde_id;
@@ -5002,6 +5005,7 @@ async function saveGlasTermin() {
     anhaenge: JSON.stringify(t.anhaenge || []),
   };
   const warNeu = !t.id;
+  gekoCleanPayload(payload);
   let { error } = await sb.from("glas_termine").upsert(payload);
   if (error && /wiederholung|adresse/.test(error.message || "")) {
     // Spalten existieren noch nicht (neueste SQL-Datei nicht ausgeführt) - Termin
@@ -5624,6 +5628,7 @@ async function glasVerschiebeSchonGereinigt() {
       positionen: JSON.stringify(positionen), datum: heute, signed_at: jetzt, manuell_erledigt_am: jetzt,
       lat: o.lat, lng: o.lng,
     };
+    gekoCleanPayload(stopFelder);
     let { error: se } = await sb.from("glas_stopps").insert(stopFelder);
     if (se && /(kunde_id|manuell_erledigt_am)/.test(se.message || "")) {
       const { kunde_id, manuell_erledigt_am, ...ohne } = stopFelder;

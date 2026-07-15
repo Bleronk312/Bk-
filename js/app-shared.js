@@ -6,6 +6,25 @@
 //   appGetCurrentSchein()  -> der gerade geöffnete Schein (für Foto-Speichern)
 //   appRerenderDetail()    -> baut die Detailansicht der Seite neu auf
 
+/* ---------------- Text säubern vor dem Speichern ---------------- */
+// Postgres/PostgREST lehnt das NUL-Zeichen und diverse Steuerzeichen in
+// Strings ab und meldet "unsupported Unicode escape sequence" - dann lässt sich der
+// ganze Datensatz nicht speichern. Solche Zeichen rutschen unsichtbar mit, wenn man
+// Text aus einem PDF oder einer anderen App in ein Feld einfügt. Vor dem Speichern
+// entfernen (Zeilenumbruch \n, Tab \t und \r bleiben erhalten).
+function gekoCleanText(v) {
+  return typeof v === "string"
+    ? v.replace(/\u0000/g, "").replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    : v;
+}
+// Alle String-Werte eines Payload-Objekts säubern (an Ort und Stelle) und zurückgeben.
+function gekoCleanPayload(obj) {
+  if (obj && typeof obj === "object") {
+    for (const k in obj) if (typeof obj[k] === "string") obj[k] = gekoCleanText(obj[k]);
+  }
+  return obj;
+}
+
 /* ---------------- Service Worker: Offline-Fähigkeit ---------------- */
 // Auf JEDER Seite registrieren (nicht nur beim Aktivieren von Push), damit die App-Shell
 // zwischengespeichert wird und die App auch ohne Empfang öffnet. Läuft im Hintergrund

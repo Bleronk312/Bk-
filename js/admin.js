@@ -575,6 +575,7 @@ async function saveSignatureAdmin(id) {
   if (vorherFotos.length) payload.vorher_fotos = JSON.stringify(vorherFotos);
   if (nachherFotos.length) payload.nachher_fotos = JSON.stringify(nachherFotos);
 
+  gekoCleanPayload(payload);
   const { error } = await sb.from("scheine").update(payload).eq("id", id);
 
   if (error) { showToast("Fehler: " + error.message); return; }
@@ -900,6 +901,7 @@ async function saveScheine(id) {
     payload.anhang_type = null;
   }
 
+  gekoCleanPayload(payload); // NUL/Steuerzeichen aus eingefügtem Text entfernen (sonst DB-Fehler)
   const { error } = await sb.from("scheine").upsert(payload);
   if (error) {
     showToast("Fehler: " + error.message);
@@ -1535,6 +1537,7 @@ async function saveMaterialSurvey() {
     payload.material_freitext = document.getElementById("m_freitext").value || null;
   }
 
+  gekoCleanPayload(payload);
   const { error } = await sb.from("scheine").update(payload).eq("id", currentViewScheine.id);
   if (error) {
     showToast("Fehler beim Speichern: " + error.message);
