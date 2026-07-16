@@ -641,6 +641,22 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 .glas-hinweis-title { margin: 0 0 2px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #8a5a07; }
 .glas-hinweis-text { margin: 0; font-size: 13px; color: #5c4a12; white-space: pre-line; font-weight: 500; }
 
+/* Unterschrift speichern: bleibt beim Unterschreiben immer sichtbar.
+   Grund: Das Unterschrift-Canvas hat touch-action:none (zum Zeichnen nötig) - ein
+   Wisch ueber das Canvas scrollt nicht, sondern malt. Auf kleinen Android-Handys
+   fuellt das Canvas fast den Schirm, dadurch kam man frueher nicht mehr runter zum
+   Speichern-Knopf. Als sticky Leiste ist er jetzt immer mit einem Tipp erreichbar. */
+.gs-save-bar {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  z-index: 6;
+  margin: 16px -14px -13px;
+  padding: 11px 14px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  background: linear-gradient(to top, var(--card) 78%, transparent);
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
 /* ---------------- Foto-Lightbox (Vollbild + Swipe) ---------------- */
 .photo-viewer {
   position: fixed;

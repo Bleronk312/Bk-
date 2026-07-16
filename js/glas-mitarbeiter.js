@@ -479,7 +479,9 @@ function renderGlasSignForm(s) {
         <p class="muted" style="margin:6px 0 0; font-size:12px;">Jede Zeile steht als eigene Position mit auf dem Abnahmeschein.</p>
       </div>
       <input type="hidden" id="gs_datum" value="${today}" />
-      <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
+      <div class="gs-save-bar">
+        <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
+      </div>
     </div>`;
 }
 
