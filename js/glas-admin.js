@@ -671,8 +671,12 @@ function glasPortalModals() {
     host.innerHTML = "";
     modals.forEach((m) => host.appendChild(m));
     host.querySelectorAll(".glas-day-sheet").forEach((sh) => glasAttachSheetSwipe(sh, sh.closest(".modal-overlay")));
-  } else if (host && host.innerHTML) {
-    host.innerHTML = "";
+    // Hintergrund (Kalender-Scroller) sperren, solange ein Sheet offen ist - sonst
+    // scrollt beim Runterwischen des Tages-Sheets der Kalender dahinter mit.
+    document.body.classList.add("glas-modal-open");
+  } else {
+    if (host && host.innerHTML) host.innerHTML = "";
+    document.body.classList.remove("glas-modal-open");
   }
 }
 

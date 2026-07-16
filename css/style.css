@@ -482,6 +482,9 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 @keyframes glasSheetUp { from { transform: translateY(100%); } to { transform: none; } }
 .glas-sheet-grip { width: 38px; height: 5px; border-radius: 3px; background: var(--border); margin: 4px auto 12px; }
 @media (prefers-reduced-motion: reduce) { .glas-day-sheet { animation: none; } }
+/* Solange ein Sheet/Modal offen ist, den Kalender-Hintergrund NICHT mitscrollen
+   lassen (sonst passieren beim Runterwischen des Tages-Sheets 3 Dinge gleichzeitig). */
+body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
 
 /* ---------------- Startseite (Hallo GEKO Clean) ---------------- */
 .glas-welcome {

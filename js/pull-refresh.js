@@ -25,9 +25,10 @@
     // Unterschrift-Canvas löste sonst Pull-to-Refresh aus -> die Seite lud beim
     // Loslassen neu und die Unterschrift war weg (v.a. auf Android; iPhone-Nutzer
     // waren meist schon runtergescrollt, wo Pull-to-Refresh ohnehin aus ist).
-    // Solange ein Vollbild-Sheet offen ist (z.B. Unterschreiben), NIE neu laden -
-    // ein Abwaerts-Wisch dort ist Scrollen, kein Pull-to-Refresh.
-    if (document.querySelector(".glas-sign-sheet")) { startY = null; return; }
+    // Solange ein Sheet/Modal offen ist (Unterschreiben, Kalender-Tages-Sheet,
+    // Info-Karten), NIE neu laden - ein Abwaerts-Wisch dort ist zum Schliessen/Scrollen
+    // gedacht, nicht fuers Neuladen. Sonst kam beim Runterwischen das Aktualisieren-Symbol.
+    if (document.querySelector(".glas-sign-sheet, .glas-day-sheet, .modal-overlay, .glas-graffiti-ov")) { startY = null; return; }
     const t = e.target;
     if (t && t.closest && t.closest("canvas, input, textarea, select, [contenteditable], .no-ptr")) { startY = null; return; }
     if (scrollTopNow() > 2) { startY = null; return; }
