@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v72";
+const GEKO_CACHE = "geko-cache-v73";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -56,8 +56,31 @@ self.addEventListener("fetch", (event) => {
   // CDN-Bibliotheken: sofort aus dem Cache (schneller Start), im Hintergrund frisch
   // nachladen. Wichtig, weil z.B. supabase-js@2 eine BEWEGLICHE Versions-URL ist -
   // reines "Cache zuerst" würde sie für immer einfrieren.
-  event.respondWith(isCdn ? gekoCdnStaleWhileRevalidate(req) : gekoNetworkFirst(req));
+  if (isCdn) { event.respondWith(gekoCdnStaleWhileRevalidate(req)); return; }
+  // Eigene, VERSIONIERTE Dateien (…?v=NN) sind pro Version unveränderlich -> Cache
+  // zuerst = blitzschneller Start, kein Warten aufs Netz. Nach einem Deploy laden die
+  // HTML-Dateien automatisch die neuen ?v-URLs, also gibt es nie eine alte Version.
+  if (/[?&]v=\d+/.test(url.search)) { event.respondWith(gekoCacheFirst(req)); return; }
+  // HTML & unversionierte Anfragen: Netz zuerst (frische App-Hülle nach Deploy).
+  event.respondWith(gekoNetworkFirst(req));
 });
+
+// Cache zuerst; nur bei Fehltreffer ins Netz (und dann in den Cache legen). Fuer
+// unveraenderliche ?v-URLs sicher und am schnellsten.
+async function gekoCacheFirst(req) {
+  const cache = await caches.open(GEKO_CACHE);
+  const cached = await cache.match(req);
+  if (cached) return cached;
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) cache.put(req, res.clone());
+    return res;
+  } catch (e) {
+    // Offline und genau diese Version fehlt -> gleiche Datei ohne ?v aus dem Cache
+    const alt = await cache.match(req, { ignoreSearch: true });
+    return alt || Response.error();
+  }
+}
 
 async function gekoCdnStaleWhileRevalidate(req) {
   const cache = await caches.open(GEKO_CACHE);
