@@ -229,6 +229,11 @@ let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen D
 function renderGlasMa() {
   const view = document.getElementById("view");
 
+  // Sicherheitsnetz: Ist kein Unterschrift-Sheet (mehr) offen, darf die Seite NIE in
+  // overflow:hidden 'eingefroren' bleiben. Sonst koennte man nach dem Unterschreiben
+  // nicht mehr weiterscrollen (z.B. zum naechsten Stopp).
+  if (!document.getElementById("glasSignSheet")) document.body.classList.remove("glas-sheet-open");
+
   // Nur bei echtem Screen-Wechsel animieren. Hintergrund-Refreshes (Touren nachgeladen,
   // Offline-Sync, Intervall) bauen denselben Screen neu auf - dann NICHT erneut animieren,
   // sonst flackert/„ruckelt" die Ansicht (Animation lief scheinbar zweimal).
