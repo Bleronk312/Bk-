@@ -2117,10 +2117,10 @@ html.dark .glas-objekt-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 /* ============================================================
    Jahresvorschau (fällige Objekte pro Monat)
    ============================================================ */
-:root{ --jv-done:#1c7f3e; --jv-plan:#1f5d92; --jv-open:#bd6413;
-  --jv-done-bg:#e2f3e8; --jv-plan-bg:#e7f0fb; --jv-open-bg:#fdeede; }
-html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a;
-  --jv-done-bg:#16301f; --jv-plan-bg:#16283a; --jv-open-bg:#33251a; }
+:root{ --jv-done:#1c7f3e; --jv-plan:#1f5d92; --jv-open:#bd6413; --jv-none:#98a2b0;
+  --jv-done-bg:#e2f3e8; --jv-plan-bg:#e7f0fb; --jv-open-bg:#fdeede; --jv-none-bg:#eef1f5; }
+html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a; --jv-none:#7c8794;
+  --jv-done-bg:#16301f; --jv-plan-bg:#16283a; --jv-open-bg:#33251a; --jv-none-bg:#222a34; }
 
 .jv-rail{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 8px; scroll-snap-type:x proximity; scrollbar-width:none; }
 .jv-rail::-webkit-scrollbar{ display:none; }
@@ -2152,6 +2152,7 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a;
 .jv-done{ background:var(--jv-done-bg); color:var(--jv-done); }
 .jv-plan{ background:var(--jv-plan-bg); color:var(--jv-plan); }
 .jv-open{ background:var(--jv-open-bg); color:var(--jv-open); }
+.jv-none{ background:var(--jv-none-bg); color:var(--jv-none); }
 /* "offen"-Indikator: gefüllter Punkt (Ampel-Logik) statt hohlem Kreis, der wie ein O aussah */
 .jv-ring{ display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor; box-sizing:border-box; vertical-align:0; }
 

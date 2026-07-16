@@ -6438,11 +6438,14 @@ let glasJvMode = "monat";                 // "monat" | "jahr"
 let glasJvMonat = new Date().getMonth() + 1;
 const GLAS_JV_JAHR = new Date().getFullYear();
 let glasJvDueCache = new Map();            // objekt_id -> Set faelliger Monate (pro Öffnen neu)
+let glasJvStatusCache = new Map();         // objekt_id -> {monat: status} (pro Öffnen neu)
+const GLAS_JV_TOLERANZ = 2;                // Monate Puffer: vorgezogene/nachgeholte Reinigung zählt
 const GLAS_JV_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 function glasOpenJahr() {
   glasContentAnimPending = true;
   glasJvDueCache = new Map();
+  glasJvStatusCache = new Map();
   glasJvMode = "monat";
   glasJvMonat = Math.min(12, new Date().getMonth() + 1);
   if (!glasStatistikDaten) loadGlasStatistik(); // liefert die "erledigt"-Info (unterschriebene Scheine)
@@ -6475,20 +6478,52 @@ function glasJvDueMonths(o) {
 }
 function glasJvDue(o) { if (!glasJvDueCache.has(o.id)) glasJvDueCache.set(o.id, glasJvDueMonths(o)); return glasJvDueCache.get(o.id); }
 
-// Status eines Objekts in einem Monat: "done" (unterschrieben), "plan" (in Tour eingeplant),
-// sonst "open". Für vergangene Monate ohne Unterschrift bleibt es "open" (= wurde nicht erfasst).
-function glasJvStatusOf(o, m) {
+// Ordnet die tatsächlichen Reinigungen eines Objekts seinen fälligen Monaten zu -
+// mit Toleranz (GLAS_JV_TOLERANZ Monate): eine im Nachbarmonat vorgezogene ODER
+// nachgeholte Reinigung zählt für den fälligen Monat. Jede Reinigung wird nur EINEM
+// fälligen Monat zugeordnet (nächstgelegener zuerst) -> monatliche Objekte werden nie
+// doppelt gezählt. Die Intervall-Logik selbst bleibt komplett unberührt.
+// Ergebnis je fälligem Monat: "done" | "plan" | "open" | "none" (vergangen, nicht erfasst).
+function glasJvObjektStatusMap(o) {
+  if (glasJvStatusCache.has(o.id)) return glasJvStatusCache.get(o.id);
+  const due = [...glasJvDue(o)].sort((a, b) => a - b);
+  // Reinigungs-Monate dieses Objekts im Jahr (evtl. mehrere)
+  const clean = [];
+  (glasStatistikDaten || []).forEach((s) => {
+    if (s.objekt_id === o.id && s.datum && Number(s.datum.slice(0, 4)) === GLAS_JV_JAHR) {
+      const mm = Number(s.datum.slice(5, 7));
+      if (mm >= 1 && mm <= 12) clean.push(mm);
+    }
+  });
+  // Paare (fälliger Monat, Reinigung) im Toleranzfenster, nach Abstand -> greedy zuordnen
+  const paare = [];
+  due.forEach((dm, di) => clean.forEach((cm, ci) => {
+    const dist = Math.abs(dm - cm);
+    if (dist <= GLAS_JV_TOLERANZ) paare.push({ di, ci, dist });
+  }));
+  paare.sort((a, b) => a.dist - b.dist || a.di - b.di || a.ci - b.ci);
+  const dueDone = new Set(), cleanUsed = new Set();
+  for (const p of paare) {
+    if (dueDone.has(p.di) || cleanUsed.has(p.ci)) continue;
+    dueDone.add(p.di); cleanUsed.add(p.ci);
+  }
   const heute = new Date(), hM = heute.getMonth() + 1, hY = heute.getFullYear();
-  const past = (GLAS_JV_JAHR < hY) || (GLAS_JV_JAHR === hY && m < hM);
-  const erledigt = (glasStatistikDaten || []).some((s) => s.objekt_id === o.id && s.datum &&
-    Number(s.datum.slice(0, 4)) === GLAS_JV_JAHR && Number(s.datum.slice(5, 7)) === m);
-  if (erledigt) return "done";
-  if (!past && glasGetObjektPositionen(o.id).some(glasIstEingeplant)) return "plan";
-  return "open";
+  const eingeplant = glasGetObjektPositionen(o.id).some(glasIstEingeplant);
+  const map = {};
+  due.forEach((dm, di) => {
+    const past = (GLAS_JV_JAHR < hY) || (GLAS_JV_JAHR === hY && dm < hM);
+    if (dueDone.has(di)) map[dm] = "done";
+    else if (past) map[dm] = "none";       // vergangen ohne Aufzeichnung -> grau "nicht erfasst"
+    else if (eingeplant) map[dm] = "plan";
+    else map[dm] = "open";
+  });
+  glasJvStatusCache.set(o.id, map);
+  return map;
 }
+function glasJvStatusOf(o, m) { return glasJvObjektStatusMap(o)[m] || "open"; }
 function glasJvFirmaOk(k) { return glasKundenFirmaFilter === "alle" || (k.firma || "geko") === glasKundenFirmaFilter; }
 function glasJvMonthStats(m) {
-  let obj = 0, qm = 0; const st = { done: 0, plan: 0, open: 0 }; const kun = new Set();
+  let obj = 0, qm = 0; const st = { done: 0, plan: 0, open: 0, none: 0 }; const kun = new Set();
   glasObjekte.forEach((o) => {
     const k = glasKunden.find((x) => x.id === o.kunde_id);
     if (!k || !glasJvFirmaOk(k) || !glasJvDue(o).has(m)) return;
@@ -6496,12 +6531,13 @@ function glasJvMonthStats(m) {
   });
   return { obj, qm, st, kun: kun.size };
 }
-const GLAS_JV_STL = { done: ["✓ erledigt", "jv-done"], plan: ["📅 geplant", "jv-plan"], open: ['<span class="jv-ring"></span> offen', "jv-open"] };
+const GLAS_JV_STL = { done: ["✓ erledigt", "jv-done"], plan: ["📅 geplant", "jv-plan"], open: ['<span class="jv-ring"></span> offen', "jv-open"], none: ["– nicht erfasst", "jv-none"] };
 function glasJvMini(st) {
   const p = [];
   if (st.done) p.push(`<span style="color:var(--jv-done); font-weight:700;">✓${st.done}</span>`);
   if (st.plan) p.push(`<span style="color:var(--jv-plan); font-weight:700;">📅${st.plan}</span>`);
   if (st.open) p.push(`<span style="color:var(--jv-open); font-weight:700;"><span class="jv-ring"></span>${st.open}</span>`);
+  if (st.none) p.push(`<span style="color:var(--jv-none); font-weight:700;">–${st.none}</span>`);
   return p.join(" ");
 }
 // Kurzes Intervall-Label für die Jahresvorschau (NICHT die volle Monatsliste - die
@@ -6557,7 +6593,7 @@ function glasJvRenderBody() {
     if (!glasJvFirmaOk(k)) return;
     const due = glasObjekte.filter((o) => o.kunde_id === k.id && glasJvDue(o).has(m));
     if (!due.length) return;
-    const local = { done: 0, plan: 0, open: 0 }; due.forEach((o) => local[glasJvStatusOf(o, m)]++);
+    const local = { done: 0, plan: 0, open: 0, none: 0 }; due.forEach((o) => local[glasJvStatusOf(o, m)]++);
     const initials = (k.name.match(/[A-ZÄÖÜ0-9]/g) || ["G"]).slice(0, 2).join("");
     const orows = due.map((o) => {
       const [sl, sc] = GLAS_JV_STL[glasJvStatusOf(o, m)];
@@ -6570,7 +6606,7 @@ function glasJvRenderBody() {
   return `
     <div class="jv-mhead"><button class="jv-nav" onclick="glasJvStep(-1)">‹</button><h2>${GLAS_MONATE_LANG[m - 1]} ${GLAS_JV_JAHR}</h2><button class="jv-nav" onclick="glasJvStep(1)">›</button></div>
     <div class="jv-tiles"><div class="jv-tile"><div class="n a">${s.obj}</div><div class="l">Objekte fällig</div></div><div class="jv-tile"><div class="n">${s.kun}</div><div class="l">Kunden</div></div><div class="jv-tile"><div class="n">${glasStatQmText(s.qm)}</div><div class="l">m² Reinigung</div></div></div>
-    <div class="jv-sbar"><span class="jv-sb jv-done">✓ ${s.st.done} erledigt</span><span class="jv-sb jv-plan">📅 ${s.st.plan} geplant</span><span class="jv-sb jv-open"><span class="jv-ring"></span> ${s.st.open} offen</span></div>
+    <div class="jv-sbar"><span class="jv-sb jv-done">✓ ${s.st.done} erledigt</span><span class="jv-sb jv-plan">📅 ${s.st.plan} geplant</span><span class="jv-sb jv-open"><span class="jv-ring"></span> ${s.st.open} offen</span>${s.st.none ? `<span class="jv-sb jv-none">– ${s.st.none} nicht erfasst</span>` : ""}</div>
     ${list}`;
 }
 function glasJvRenderMonat() { return glasJvRenderRail() + `<div id="glasJvBody">${glasJvRenderBody()}</div>`; }
@@ -6579,14 +6615,14 @@ function glasJvRenderJahr() {
   const data = []; let max = 1;
   for (let i = 1; i <= 12; i++) { const s = glasJvMonthStats(i); data[i] = s; if (s.obj > max) max = s.obj; }
   const heuteM = new Date().getMonth() + 1, isNow = (GLAS_JV_JAHR === new Date().getFullYear());
-  const legend = `<div class="jv-legend"><span><i class="jv-ldot" style="background:var(--jv-done)"></i>erledigt</span><span><i class="jv-ldot" style="background:var(--jv-plan)"></i>geplant</span><span><i class="jv-ldot" style="background:var(--jv-open)"></i>offen</span></div>`;
+  const legend = `<div class="jv-legend"><span><i class="jv-ldot" style="background:var(--jv-done)"></i>erledigt</span><span><i class="jv-ldot" style="background:var(--jv-plan)"></i>geplant</span><span><i class="jv-ldot" style="background:var(--jv-open)"></i>offen</span><span><i class="jv-ldot" style="background:var(--jv-none)"></i>nicht erfasst</span></div>`;
   const grid = `<div class="jv-grid">` + Array.from({ length: 12 }, (_, i) => {
     const m = i + 1, { obj, st } = data[m];
     const now = isNow && m === heuteM ? `<span class="jv-ynow">jetzt</span>` : "";
     if (!obj) return `<button class="jv-ytile zero" style="animation-delay:${i * 0.03}s" onclick="glasJvJump(${m})">${now}<div class="jv-ytm">${GLAS_MONATE_LANG[i]}</div><div class="jv-ytn">–</div><div class="jv-ytl">nichts fällig</div></button>`;
     const seg = (v, c) => v ? `<i style="flex:${v};background:${c}"></i>` : "";
     const heavy = obj >= max * 0.75;
-    return `<button class="jv-ytile ${heavy ? "heavy" : ""}" style="animation-delay:${i * 0.03}s" onclick="glasJvJump(${m})">${now}<div class="jv-ytm">${GLAS_MONATE_LANG[i]}</div><div class="jv-ytn">${obj}</div><div class="jv-ytl">Objekte fällig</div><div class="jv-ystack">${seg(st.done, "var(--jv-done)")}${seg(st.plan, "var(--jv-plan)")}${seg(st.open, "var(--jv-open)")}</div><div class="jv-ycounts"><b style="color:var(--jv-done)">✓${st.done}</b><b style="color:var(--jv-plan)">📅${st.plan}</b><b style="color:var(--jv-open)"><span class="jv-ring"></span>${st.open}</b></div></button>`;
+    return `<button class="jv-ytile ${heavy ? "heavy" : ""}" style="animation-delay:${i * 0.03}s" onclick="glasJvJump(${m})">${now}<div class="jv-ytm">${GLAS_MONATE_LANG[i]}</div><div class="jv-ytn">${obj}</div><div class="jv-ytl">Objekte fällig</div><div class="jv-ystack">${seg(st.done, "var(--jv-done)")}${seg(st.plan, "var(--jv-plan)")}${seg(st.open, "var(--jv-open)")}${seg(st.none, "var(--jv-none)")}</div><div class="jv-ycounts"><b style="color:var(--jv-done)">✓${st.done}</b><b style="color:var(--jv-plan)">📅${st.plan}</b><b style="color:var(--jv-open)"><span class="jv-ring"></span>${st.open}</b>${st.none ? `<b style="color:var(--jv-none)">–${st.none}</b>` : ""}</div></button>`;
   }).join("") + `</div>`;
   return legend + grid;
 }
