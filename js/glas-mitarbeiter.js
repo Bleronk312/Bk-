@@ -241,7 +241,9 @@ function renderGlasMa() {
     const t = glasTouren.find((x) => x.id === glasOpenTourId);
     if (t) {
       view.innerHTML = renderGlasTourScreen(t);
-      if (glasSignStopId) setTimeout(() => setupGlasSigPad(), 30);
+      // Das Unterschrift-Formular läuft als eigenes Vollbild-Sheet (glasSignSheet),
+      // NICHT inline in #view. Darum hier bewusst kein setupGlasSigPad - sonst würde
+      // ein Hintergrund-Refresh die schon begonnene Unterschrift zurücksetzen.
       return;
     }
   }
@@ -449,40 +451,83 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
       </div>`
         : isNg
           ? `<div class="glas-notiz-box" style="margin-top:12px;">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
-          : glasSignStopId === s.id
-            ? renderGlasSignForm(s)
-            : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="glasSignStopId = '${s.id}'; renderGlasMa();">✍️ Abnahmeschein unterschreiben</button>`
+          : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Abnahmeschein unterschreiben</button>`
       }
     </div>`;
 }
 
+// Nur die Eingabefelder. Der "Speichern"-Knopf sitzt in der festen Fußleiste des
+// Vollbild-Sheets (openGlasSignSheet) - so ist er auf jedem Handy immer erreichbar,
+// ohne am Unterschrift-Canvas vorbeiscrollen zu müssen.
 function renderGlasSignForm(s) {
   const today = todayIso();
   return `
-    <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
-      ${renderGlasStundenInputs(s, "gs-std")}
-      <div class="field">
-        <label class="muted">Name der unterschreibenden Person</label>
-        <input type="text" id="gs_name" placeholder="Vor- und Nachname" style="font-size:16px;" />
+    ${renderGlasStundenInputs(s, "gs-std")}
+    <div class="field">
+      <label class="muted">Name der unterschreibenden Person</label>
+      <input type="text" id="gs_name" placeholder="Vor- und Nachname" style="font-size:16px;" />
+    </div>
+    <div class="field">
+      <label class="muted">Unterschrift</label>
+      <canvas id="gs_sigCanvas" style="width:100%; height:190px; border:1px solid var(--border); border-radius:10px; background:white; touch-action:none;"></canvas>
+      <p class="muted" style="margin:8px 2px 0; font-size:12px;">Zum Weiterscrollen einfach neben dem Unterschriftfeld wischen.</p>
+    </div>
+    <div class="field">
+      <label class="muted">➕ Extra was gemacht? (optional)</label>
+      <div id="gs_zusatz_list">
+        <textarea class="gs-zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich"></textarea>
       </div>
-      <div class="field">
-        <label class="muted">Unterschrift</label>
-        <canvas id="gs_sigCanvas" style="width:100%; height:180px; border:1px solid var(--border); border-radius:10px; background:white; touch-action:none;"></canvas>
-        <button class="btn btn-sm" style="margin-top:8px;" onclick="clearGlasSig()">🗑️ Löschen & neu</button>
+      <button class="btn btn-sm" style="margin-top:8px;" onclick="glasZusatzAddField()">+ Noch etwas hinzufügen</button>
+      <p class="muted" style="margin:6px 0 0; font-size:12px;">Jede Zeile steht als eigene Position mit auf dem Abnahmeschein.</p>
+    </div>
+    <input type="hidden" id="gs_datum" value="${today}" />`;
+}
+
+// Vollbild-Unterschrift-Sheet: Kopf + scrollbarer Inhalt + feste Fußleiste.
+// Bewusst als eigenes Overlay am <body> (nicht inline in #view), damit
+//   - der Speichern-Knopf in der Fußleiste IMMER sichtbar/tippbar ist,
+//   - man neben dem Canvas frei scrollen kann (das Canvas selbst braucht
+//     touch-action:none zum Zeichnen und "schluckt" sonst das Scrollen),
+//   - ein Hintergrund-Refresh der Touren-Liste die Unterschrift nicht wegräumt.
+function openGlasSignSheet(stopId) {
+  let stop = null;
+  for (const t of glasTouren) {
+    const s = t.stopps.find((x) => x.id === stopId);
+    if (s) stop = s;
+  }
+  if (!stop) return;
+  closeGlasSignSheet();
+  glasSignStopId = stopId;
+  const el = document.createElement("div");
+  el.className = "glas-sign-sheet";
+  el.id = "glasSignSheet";
+  el.innerHTML = `
+    <div class="gss-head">
+      <button class="gss-close" onclick="closeGlasSignSheet()" aria-label="Schließen">✕</button>
+      <div class="gss-title">
+        <p class="gss-t">Abnahmeschein unterschreiben</p>
+        <p class="gss-s">${escapeHtml(stop.objekt || "Stopp")}</p>
       </div>
-      <div class="field">
-        <label class="muted">➕ Extra was gemacht? (optional)</label>
-        <div id="gs_zusatz_list">
-          <textarea class="gs-zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich"></textarea>
-        </div>
-        <button class="btn btn-sm" style="margin-top:8px;" onclick="glasZusatzAddField()">+ Noch etwas hinzufügen</button>
-        <p class="muted" style="margin:6px 0 0; font-size:12px;">Jede Zeile steht als eigene Position mit auf dem Abnahmeschein.</p>
-      </div>
-      <input type="hidden" id="gs_datum" value="${today}" />
-      <div class="gs-save-bar">
-        <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="saveGlasSignature('${s.id}')">✓ Unterschrift speichern</button>
-      </div>
+    </div>
+    <div class="gss-body">
+      ${renderGlasSignForm(stop)}
+    </div>
+    <div class="gss-foot">
+      <button class="btn gss-clear" onclick="clearGlasSig()">🗑️ Neu</button>
+      <button class="btn btn-primary" onclick="saveGlasSignature('${stop.id}')">✓ Unterschrift speichern</button>
     </div>`;
+  document.body.appendChild(el);
+  document.body.classList.add("glas-sheet-open");
+  // Canvas braucht seine endgültige Breite, bevor SignaturePad initialisiert wird
+  setTimeout(() => setupGlasSigPad(), 40);
+}
+
+function closeGlasSignSheet() {
+  const el = document.getElementById("glasSignSheet");
+  if (el) el.remove();
+  document.body.classList.remove("glas-sheet-open");
+  glasSigPad = null;
+  glasSignStopId = null;
 }
 
 // Fügt ein weiteres Zusatz-Feld hinzu, ohne die Seite neu zu bauen (Unterschrift bleibt).
@@ -578,8 +623,8 @@ async function saveGlasSignature(stopId) {
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }
 
-  // Stopp bleibt aufgeklappt und zeigt jetzt den grünen "Unterschrieben"-Block
-  glasSignStopId = null;
+  // Sheet schließen; Stopp bleibt aufgeklappt und zeigt den grünen "Unterschrieben"-Block
+  closeGlasSignSheet();
   glasOpenStopId = stopId;
   renderGlasMa();
 }

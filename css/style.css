@@ -641,21 +641,64 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 .glas-hinweis-title { margin: 0 0 2px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: #8a5a07; }
 .glas-hinweis-text { margin: 0; font-size: 13px; color: #5c4a12; white-space: pre-line; font-weight: 500; }
 
-/* Unterschrift speichern: bleibt beim Unterschreiben immer sichtbar.
+/* Vollbild-Unterschrift-Sheet.
    Grund: Das Unterschrift-Canvas hat touch-action:none (zum Zeichnen nötig) - ein
-   Wisch ueber das Canvas scrollt nicht, sondern malt. Auf kleinen Android-Handys
-   fuellt das Canvas fast den Schirm, dadurch kam man frueher nicht mehr runter zum
-   Speichern-Knopf. Als sticky Leiste ist er jetzt immer mit einem Tipp erreichbar. */
-.gs-save-bar {
-  position: sticky;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-  z-index: 6;
-  margin: 16px -14px -13px;
-  padding: 11px 14px calc(env(safe-area-inset-bottom, 0px) + 8px);
-  background: linear-gradient(to top, var(--card) 78%, transparent);
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
+   Wisch über das Canvas scrollt nicht, sondern malt. Auf kleinen Android-Handys
+   füllte das Canvas fast den Schirm, dadurch kam man nicht mehr zum Speichern-Knopf.
+   Lösung: eigenes Vollbild mit fester Kopf-/Fußleiste. Der Speichern-Knopf steht
+   IMMER unten, der Mittelteil scrollt frei neben dem Canvas. */
+.glas-sign-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  animation: gssSlideIn 0.22s ease;
 }
+@keyframes gssSlideIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .glas-sign-sheet { animation: none; } }
+.gss-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.gss-close {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 17px;
+  cursor: pointer;
+}
+.gss-title { min-width: 0; }
+.gss-title .gss-t { margin: 0; font-weight: 700; font-size: 15.5px; }
+.gss-title .gss-s { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gss-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.gss-foot {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+.gss-foot .btn-primary { flex: 1 1 auto; justify-content: center; padding: 14px; font-size: 16px; }
+.gss-foot .gss-clear { flex: 0 0 auto; padding: 14px 16px; }
+/* Hintergrund nicht mitscrollen, solange das Sheet offen ist */
+body.glas-sheet-open { overflow: hidden; }
 
 /* ---------------- Foto-Lightbox (Vollbild + Swipe) ---------------- */
 .photo-viewer {
