@@ -172,6 +172,24 @@ async function loadGlasTouren() {
   glasApplyPendingSigns();
 }
 
+// Fetter "Aktualisieren"-Knopf: Ersatz fuers fruehere Pull-to-Refresh (das auf den
+// MA-Seiten entfernt wurde). Laedt die Touren neu vom Server und baut die Ansicht neu.
+function glasRefreshButton() {
+  return `<button class="btn glas-refresh-btn" onclick="glasRefreshTouren(this)">
+    <span class="glas-refresh-ic">🔄</span> Aktualisieren
+  </button>`;
+}
+
+async function glasRefreshTouren(btn) {
+  if (btn && btn.classList) btn.classList.add("is-loading");
+  try {
+    await glasFlushSignQueue(); // offline gesammelte Unterschriften zuerst senden
+    await loadGlasTouren();
+  } catch (e) {}
+  renderGlasMa(); // baut die Ansicht inkl. Knopf neu auf
+  showToast(glasOfflineModus ? "Kein Netz – zuletzt gespeicherter Stand" : "Aktualisiert ✓");
+}
+
 // Fertige Touren (kein offener Stopp mehr) verschwinden AB DEM FOLGETAG automatisch
 // aus der Mitarbeiter-Ansicht - am Erledigungstag selbst bleiben sie sichtbar (PDF,
 // Kontrolle). Im Admin bleiben sie natürlich vollständig erhalten.
@@ -262,6 +280,7 @@ function renderGlasMa() {
 
   view.innerHTML = `
     <button class="btn btn-sm" style="margin:16px 0 4px;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
+    ${glasRefreshButton()}
     ${glasOfflineBanner()}
     ${renderGlasTourList()}`;
 }
@@ -357,6 +376,7 @@ function renderGlasTourScreen(t) {
 
   return `
     <button class="btn btn-sm" style="margin-bottom:12px;" onclick="closeGlasTour()">&larr; Alle Touren</button>
+    ${glasRefreshButton()}
     <div class="card">
       <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
       <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>

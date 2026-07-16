@@ -711,6 +711,30 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 /* Hintergrund nicht mitscrollen, solange das Sheet offen ist */
 body.glas-sheet-open { overflow: hidden; }
 
+/* Fetter "Aktualisieren"-Knopf auf den MA-Touren-Seiten (Ersatz fuer Pull-to-Refresh).
+   Doppelte Klasse (.btn.glas-refresh-btn), damit die spaeteren .btn-Regeln die Farbe
+   nicht ueberschreiben. */
+.btn.glas-refresh-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 10px;
+  padding: 15px;
+  margin: 4px 0 14px;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--blue);
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(31, 93, 146, 0.28);
+}
+.btn.glas-refresh-btn:active { transform: translateY(1px); }
+.btn.glas-refresh-btn.is-loading { opacity: 0.7; pointer-events: none; }
+.glas-refresh-ic { display: inline-block; font-size: 18px; }
+.btn.glas-refresh-btn.is-loading .glas-refresh-ic { animation: glasSpin 0.8s linear infinite; }
+@keyframes glasSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .glas-refresh-btn.is-loading .glas-refresh-ic { animation: none; } }
+
 /* ---------------- Foto-Lightbox (Vollbild + Swipe) ---------------- */
 .photo-viewer {
   position: fixed;
