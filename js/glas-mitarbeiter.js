@@ -17,6 +17,10 @@ let glasSignStopId = null; // Stopp, bei dem gerade das Unterschrift-Formular of
 let glasSigPad = null;
 let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
 
+// ---------------- Login ----------------
+const GLAS_AUTH_KEY = "geko_ma_auth";
+let glasCurrentUser = null; // {id, name, username} des angemeldeten Mitarbeiters
+
 
 
 function todayIso() {
@@ -25,10 +29,90 @@ function todayIso() {
 }
 
 async function glasMaInit() {
+  const ok = await glasEnsureLoggedIn();
+  if (!ok) return; // Es läuft der Login-Screen
   renderGlasMa(); // Startseite sofort zeigen, Touren laden im Hintergrund
   await glasFlushSignQueue(); // eventuell offline gesammelte Unterschriften zuerst nachsenden
   await loadGlasTouren();
   renderGlasMa();
+}
+
+// Prüft die gespeicherte Anmeldung. Rückgabe true = angemeldet, weiter mit der App.
+// WICHTIG (bugfrei nach Wunsch): einmal angemeldet, bleibt man angemeldet - rausgeworfen
+// wird NUR, wenn der Account online nachweislich gesperrt/gelöscht ist. Bei fehlendem
+// Netz (Objekt ohne Empfang) NIE ausloggen, sonst blockiert das Unterschreiben.
+async function glasEnsureLoggedIn() {
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(GLAS_AUTH_KEY) || "null"); } catch (e) {}
+  if (!stored || !stored.id || !stored.tok) { glasRenderLogin(); return false; }
+  try {
+    const { data, error } = await sb.from("glas_mitarbeiter")
+      .select("id, name, username, pass_hash, login_aktiv").eq("id", stored.id).maybeSingle();
+    if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
+    if (!data || data.login_aktiv === false || !data.username) { glasLogout(); return false; } // gesperrt/gelöscht
+    const tok = await gekoSessionTok(data.id, data.pass_hash);
+    if (tok !== stored.tok) { glasLogout(); return false; } // Passwort geändert -> neu anmelden
+    glasCurrentUser = { id: data.id, name: data.name, username: data.username };
+    stored.name = data.name;
+    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(stored)); } catch (e) {}
+    return true;
+  } catch (e) {
+    // Kein Netz: der zuletzt gespeicherten Anmeldung vertrauen (nicht ausloggen)
+    glasCurrentUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
+    return true;
+  }
+}
+
+function glasRenderLogin(fehler) {
+  const view = document.getElementById("view");
+  if (!view) return;
+  glasCurrentUser = null;
+  view.innerHTML = `
+    <div class="glas-login">
+      <p class="glas-login-title">Anmelden</p>
+      <p class="glas-login-sub">Melde dich mit deinem Benutzernamen an. Du bleibst danach angemeldet.</p>
+      ${fehler ? `<div class="glas-login-err">${escapeHtml(fehler)}</div>` : ""}
+      <div class="field"><label class="muted">Benutzername</label>
+        <input type="text" id="login_user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" style="font-size:16px;" /></div>
+      <div class="field"><label class="muted">Passwort</label>
+        <input type="password" id="login_pass" autocomplete="current-password" style="font-size:16px;" /></div>
+      <button class="btn btn-primary" id="login_btn" style="width:100%; justify-content:center; padding:14px; font-size:16px; margin-top:6px;" onclick="glasDoLogin()">Anmelden</button>
+    </div>`;
+  const pass = document.getElementById("login_pass");
+  if (pass) pass.addEventListener("keydown", (e) => { if (e.key === "Enter") glasDoLogin(); });
+}
+
+async function glasDoLogin() {
+  const userEl = document.getElementById("login_user");
+  const passEl = document.getElementById("login_pass");
+  const user = (userEl ? userEl.value : "").trim().toLowerCase();
+  const pass = passEl ? passEl.value : "";
+  if (!user || !pass) { glasRenderLogin("Bitte Benutzername und Passwort eingeben."); return; }
+  const btn = document.getElementById("login_btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Prüfe…"; }
+  try {
+    const { data, error } = await sb.from("glas_mitarbeiter")
+      .select("id, name, username, pass_hash, pass_salt, login_aktiv").eq("username", user).maybeSingle();
+    if (error) throw error;
+    if (!data || !data.username || !data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
+    if (data.login_aktiv === false) { glasRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
+    const h = await gekoHashPw(pass, data.pass_salt || "");
+    if (h !== data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
+    const tok = await gekoSessionTok(data.id, data.pass_hash);
+    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify({ id: data.id, tok, name: data.name, username: data.username })); } catch (e) {}
+    glasCurrentUser = { id: data.id, name: data.name, username: data.username };
+    glasMaInit();
+  } catch (e) {
+    glasRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
+  }
+}
+
+function glasLogout() {
+  try { localStorage.removeItem(GLAS_AUTH_KEY); } catch (e) {}
+  glasCurrentUser = null;
+  glasMaScreen = "home";
+  glasOpenTourId = null; glasOpenStopId = null;
+  glasRenderLogin();
 }
 
 // ---------------- Offline-Unterschriften ----------------
@@ -68,7 +152,7 @@ function glasApplyPendingSigns() {
   for (const item of q) {
     for (const t of glasTouren) {
       const stop = t.stopps.find((s) => s.id === item.stopId);
-      if (stop) Object.assign(stop, { name: item.name, datum: item.datum, unterschrift: item.unterschrift, zusatz: item.zusatz, positionen: item.positionen || stop.positionen, status: "erledigt", signed_at: item.signedAt, __pendingSync: true });
+      if (stop) Object.assign(stop, { name: item.name, datum: item.datum, unterschrift: item.unterschrift, zusatz: item.zusatz, positionen: item.positionen || stop.positionen, status: "erledigt", signed_at: item.signedAt, erfasst_von: item.erfasstVon || stop.erfasst_von, __pendingSync: true });
     }
   }
 }
@@ -81,7 +165,7 @@ async function glasFlushSignQueue() {
   let sent = 0;
   for (const item of q) {
     try {
-      const { error } = await glasSignStop(item.stopId, item.positionen, item.name, item.datum, item.unterschrift, item.zusatz, item.signedAt);
+      const { error } = await glasSignStop(item.stopId, item.positionen, item.name, item.datum, item.unterschrift, item.zusatz, item.signedAt, item.erfasstVon);
       if (error) { remaining.push(item); } else {
         sent++;
         // Büro benachrichtigen - genauso wie bei einer direkt online erfassten Unterschrift
@@ -256,6 +340,7 @@ function renderGlasMa() {
             🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
           </button>
         </div>
+        ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
       </div>`;
     return;
   }
@@ -620,11 +705,12 @@ async function saveGlasSignature(stopId) {
   // damit im Objekt ohne Netz nichts verloren geht. Eine ECHTE Server-Ablehnung wird
   // dagegen als Fehler angezeigt (Formular bleibt offen) - sie darf nicht als
   // "gespeichert" durchgehen.
+  const erfasstVon = (glasCurrentUser && glasCurrentUser.name) || "";
   let saved = false;
   let serverFehler = null;
   if (navigator.onLine) {
     try {
-      const { error, payload } = await glasSignStop(stopId, posJson, name, datum, unterschrift, zusatz, signedAt);
+      const { error, payload } = await glasSignStop(stopId, posJson, name, datum, unterschrift, zusatz, signedAt, erfasstVon);
       if (!error) {
         if (stopRef) Object.assign(stopRef, payload, { __pendingSync: false });
         saved = true;
@@ -643,8 +729,8 @@ async function saveGlasSignature(stopId) {
     showToast("Gespeichert");
     glasPushUnterschriftAnAdmin(stopRef, name, zusatz, tourName);
   } else {
-    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", tour: tourName, positionen: posJson, name, datum, unterschrift, zusatz, signedAt });
-    if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, positionen: posJson, status: "erledigt", signed_at: signedAt, __pendingSync: true });
+    glasQueueSign({ stopId, objekt: stopRef?.objekt || "", tour: tourName, positionen: posJson, name, datum, unterschrift, zusatz, signedAt, erfasstVon });
+    if (stopRef) Object.assign(stopRef, { name, datum, unterschrift, zusatz, positionen: posJson, status: "erledigt", signed_at: signedAt, erfasst_von: erfasstVon, __pendingSync: true });
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }
 

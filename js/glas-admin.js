@@ -1791,7 +1791,7 @@ function renderKundeDetailPage(id) {
                 <span style="width:4px; align-self:stretch; border-radius:2px; background:#2e9e4f;"></span>
                 <div style="flex:1; min-width:0;">
                   <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren && s.glas_touren.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
-                  <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ als unterschrieben markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}` : ""}${qm ? ` · ${qm} qm` : ""}${s.glas_touren?.name ? ` · ${escapeHtml(s.glas_touren.name)}` : ""}</p>
+                  <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ als unterschrieben markiert" : s.name ? ` · ✓ ${escapeHtml(s.name)}` : ""}${s.erfasst_von ? ` · 👤 ${escapeHtml(s.erfasst_von)}` : ""}${qm ? ` · ${qm} qm` : ""}${s.glas_touren?.name ? ` · ${escapeHtml(s.glas_touren.name)}` : ""}</p>
                 </div>
                 ${s.objekt_id ? `<span style="color:var(--text-secondary);">›</span>` : ""}
               </div>`;
@@ -1860,7 +1860,7 @@ function renderKundeTermine(kundeId) {
         <span style="width:4px; align-self:stretch; border-radius:2px; background:#2e9e4f;"></span>
         <div style="flex:1; min-width:0;${s.objekt_id ? " cursor:pointer;" : ""}" ${s.objekt_id ? `onclick="goGlasObjekt('${s.objekt_id}')"` : ""}>
           <p style="margin:0; font-weight:500;">${escapeHtml(s.objekt)}${s.glas_touren?.frei ? ` <span class="badge badge-open" style="font-size:10px;">Blanko</span>` : ""}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ als unterschrieben markiert" : s.name ? " · ✓ " + escapeHtml(s.name) : ""}${s.glas_touren?.name ? " · " + escapeHtml(s.glas_touren.name) : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDate(glasSignaturDatum(s))}${manuell ? " · ✔️ als unterschrieben markiert" : s.name ? " · ✓ " + escapeHtml(s.name) : ""}${s.erfasst_von ? " · 👤 " + escapeHtml(s.erfasst_von) : ""}${s.glas_touren?.name ? " · " + escapeHtml(s.glas_touren.name) : ""}</p>
         </div>
         <span class="badge badge-signed">Erledigt</span>
       </div>`;
@@ -2457,7 +2457,7 @@ function renderObjektDetailPage(id) {
                 ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als gereinigt vermerkt`
                 : (!s.unterschrift && s.manuell_erledigt_am)
                   ? `${formatGlasDate(glasSignaturDatum(s))} · ✔️ als unterschrieben markiert`
-                  : `${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}`;
+                  : `${formatGlasDate(glasSignaturDatum(s))} · ${escapeHtml(s.name || "")}${s.erfasst_von ? " · 👤 " + escapeHtml(s.erfasst_von) : ""}`;
               return `
             <div style="padding:10px 0; border-top:1px solid var(--border);">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -4640,7 +4640,13 @@ function renderMaVerwaltung() {
       <div class="card" style="display:flex; align-items:center; gap:10px;">
         <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)}; width:14px; height:14px;"></span>
         <div style="flex:1;">
-          <p style="margin:0; font-weight:600;">${escapeHtml(m.name)}</p>
+          <p style="margin:0; font-weight:600;">${escapeHtml(m.name)}
+            ${m.username
+              ? (m.login_aktiv === false
+                ? `<span class="badge" style="background:#fbe0e0; color:#b5371f;">🔒 gesperrt</span>`
+                : `<span class="badge" style="background:#e3f3ea; color:#1f7a4d;">🔑 ${escapeHtml(m.username)}</span>`)
+              : `<span class="badge" style="background:#eef2f7; color:#6b7683;">kein Login</span>`}
+          </p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} von ${b.anspruch} Urlaubstagen übrig</b></p>
         </div>
         <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
@@ -4656,6 +4662,17 @@ function renderMaForm() {
     <div class="card">
       <h2>${m.id ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"}</h2>
       <div class="field"><label class="muted">Name</label><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>
+
+      <div class="card" style="background:var(--bg); margin:0 0 14px; padding:12px 14px;">
+        <p style="margin:0 0 8px; font-weight:700; font-size:14px;">🔑 App-Zugang (Glas-Touren-App)</p>
+        <div class="field"><label class="muted">Benutzername</label>
+          <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
+        <div class="field"><label class="muted">Passwort ${m.pass_hash ? "(nur ausfüllen, um es zu ändern)" : ""}</label>
+          <input type="text" id="ma_pass" value="" placeholder="${m.pass_hash ? "•••••• bleibt unverändert" : "Passwort vergeben"}" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
+        ${m.id ? `<label class="glas-aktiv-toggle"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt, kommt nicht mehr rein)</span></span></label>` : ""}
+      </div>
+
       <div class="field">
         <label class="muted">Arbeitswoche (für die Urlaubstage-Zählung)</label>
         <select id="ma_tage" style="width:auto;">
@@ -4681,7 +4698,33 @@ async function saveGlasMa() {
   if (!name) { showToast("Bitte einen Namen eintragen"); return; }
   const anspruch = parseInt(document.getElementById("ma_anspruch").value, 10);
   const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value, urlaubsanspruch: isNaN(anspruch) ? 30 : Math.max(0, anspruch) };
+
+  // ---- App-Zugang (Benutzername/Passwort/gesperrt) ----
+  const username = (document.getElementById("ma_username")?.value || "").trim().toLowerCase().replace(/\s+/g, "");
+  const passRaw = document.getElementById("ma_pass")?.value || "";
+  const aktivEl = document.getElementById("ma_aktiv");
+  if (username) {
+    const konflikt = glasMitarbeiter.find((x) => x.id !== payload.id && (x.username || "").toLowerCase() === username);
+    if (konflikt) { showToast(`Benutzername „${username}" ist schon vergeben (${konflikt.name})`); return; }
+    if (!m.pass_hash && !passRaw) { showToast("Bitte ein Passwort für den neuen Zugang vergeben"); return; }
+    payload.username = username;
+    payload.login_aktiv = aktivEl ? aktivEl.checked : true;
+  } else {
+    payload.username = null; // kein Login für diesen MA
+  }
+  if (passRaw) {
+    const salt = gekoMakeSalt();
+    payload.pass_salt = salt;
+    payload.pass_hash = await gekoHashPw(passRaw, salt);
+  }
+
   let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  if (error && /(username|pass_hash|pass_salt|login_aktiv)/i.test(error.message || "")) {
+    // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
+    delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.login_aktiv;
+    showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
+    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
+  }
   if (error && /urlaubsanspruch/.test(error.message || "")) {
     // Spalte fehlt noch (neueste SQL-Datei nicht ausgeführt) - ohne Anspruch speichern
     delete payload.urlaubsanspruch;

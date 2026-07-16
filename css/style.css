@@ -715,6 +715,20 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
 
+/* Mitarbeiter-Login */
+.glas-login { max-width: 420px; margin: 8vh auto 0; padding: 4px; }
+.glas-login-title { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+.glas-login-sub { margin: 0 0 16px; color: var(--text-secondary); font-size: 14px; }
+.glas-login-err {
+  background: #fbe0e0; color: #b5371f; border: 1px solid #f0c2bc;
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13.5px; font-weight: 500;
+}
+html.dark .glas-login-err { background: #3a1a14; color: #e8735c; border-color: #5a2a20; }
+.glas-welcome-user { margin: 18px 0 0; font-size: 13px; color: var(--text-secondary); }
+.glas-welcome-user a { color: var(--blue); text-decoration: underline; }
+.glas-aktiv-toggle { display: flex; align-items: center; gap: 9px; font-size: 14px; cursor: pointer; margin-top: 2px; }
+.glas-aktiv-toggle input { width: 18px; height: 18px; flex-shrink: 0; }
+
 /* Fetter "Aktualisieren"-Knopf auf den MA-Touren-Seiten (Ersatz fuer Pull-to-Refresh).
    Doppelte Klasse (.btn.glas-refresh-btn), damit die spaeteren .btn-Regeln die Farbe
    nicht ueberschreiben. */

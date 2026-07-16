@@ -1,6 +1,24 @@
 // Gemeinsame Hilfsfunktionen für das Glasreinigungs-Modul:
 // Geocoding (OpenStreetMap Nominatim, kostenlos, kein API-Key), Fälligkeiten, PDF-Namen.
 
+/* ---------------- Mitarbeiter-Login (Glas-Touren-App) ----------------
+   Passwörter werden NIE im Klartext gespeichert, sondern als SHA-256-Hash mit
+   pro-Nutzer-Salt. Diese Helfer werden von der Admin-Seite (Nutzer anlegen) und der
+   Mitarbeiter-App (Anmelden) genutzt. crypto.subtle gibt es auf https + localhost. */
+async function gekoSha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function gekoMakeSalt() {
+  const a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function gekoHashPw(password, salt) { return gekoSha256((salt || "") + "|" + (password || "")); }
+// Sitzungs-Token: nur ableitbar, wenn man den pass_hash kennt. Ändert sich das Passwort
+// oder wird der Account gesperrt, passt der Token nicht mehr -> neue Anmeldung nötig.
+function gekoSessionTok(id, passHash) { return gekoSha256(id + "|" + (passHash || "") + "|geko-ma-2026"); }
+
 async function glasGeocodeRaw(query) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -293,14 +311,20 @@ function renderGlasStundenInputs(s, cssKlasse) {
 // Markiert einen Stopp als unterschrieben und setzt "zuletzt gereinigt" nur für die
 // Positionen zurück, die tatsächlich auf diesem Schein enthalten waren (nicht automatisch
 // für alle Positionen des Objekts) - inkl. Zurücksetzen einer evtl. manuellen Verschiebung.
-async function glasSignStop(stopId, positionenJson, name, datum, unterschrift, zusatz, signedAt) {
+async function glasSignStop(stopId, positionenJson, name, datum, unterschrift, zusatz, signedAt, erfasstVon) {
   const payload = { name, datum, unterschrift, status: "erledigt", signed_at: signedAt || new Date().toISOString(), zusatz: (zusatz || "").trim() };
   // Der Positions-Schnappschuss wird mitgespeichert, damit vor Ort erfasste Werte
   // (z.B. Stunden bei Pos. 2/5) fest auf dem Schein landen.
   if (typeof positionenJson === "string" && positionenJson) payload.positionen = positionenJson;
+  if (erfasstVon) payload.erfasst_von = erfasstVon; // welcher Account hat die Unterschrift geholt
   let { error } = await sb.from("glas_stopps").update(payload).eq("id", stopId);
-  if (error && /zusatz/.test(error.message || "")) {
-    // Spalte existiert noch nicht (SQL-Datei nicht ausgeführt) - ohne Zusatz speichern
+  // Spalten evtl. noch nicht angelegt (SQL nicht ausgeführt) - dann ohne die neue Spalte
+  // erneut versuchen, damit die Unterschrift auf keinen Fall verloren geht.
+  if (error && /erfasst_von/i.test(error.message || "")) {
+    delete payload.erfasst_von;
+    ({ error } = await sb.from("glas_stopps").update(payload).eq("id", stopId));
+  }
+  if (error && /zusatz/i.test(error.message || "")) {
     delete payload.zusatz;
     ({ error } = await sb.from("glas_stopps").update(payload).eq("id", stopId));
   }
