@@ -25,6 +25,43 @@ function gekoCleanPayload(obj) {
   return obj;
 }
 
+/* ---------------- Anhänge am Abnahmeschein (Foto/PDF, mehrere möglich) ----------------
+   Neue Spalte "anhaenge" (jsonb) hält eine Liste [{data,name,type}]. Abwärtskompatibel
+   zum alten Einzel-Anhang (Spalten anhang/anhang_name/anhang_type): existiert nur der,
+   wird er als 1-Element-Liste behandelt. */
+function gekoAnhangListe(s) {
+  let liste = [];
+  const raw = s && s.anhaenge;
+  if (raw) {
+    try {
+      const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (Array.isArray(arr)) liste = arr.filter((a) => a && a.data);
+    } catch (e) {}
+  }
+  if (!liste.length && s && s.anhang) {
+    liste = [{ data: s.anhang, name: s.anhang_name || "Anhang", type: s.anhang_type || "" }];
+  }
+  return liste;
+}
+
+// Read-only Anzeige der Anhänge: Bilder direkt, PDF/Dateien als Öffnen-Knopf.
+// openFnName = Name einer globalen Funktion, die mit dem Listen-Index aufgerufen wird.
+function gekoRenderAnhaenge(s, openFnName) {
+  if (!s || (!s.anhang_name && !s.anhang_type && !s.anhaenge)) return "";
+  const liste = gekoAnhangListe(s);
+  if (!liste.length) {
+    return `<div class="card"><div class="muted" style="margin-bottom:6px;">Anhang</div><p class="muted" style="margin:0;">Lade...</p></div>`;
+  }
+  const titel = liste.length === 1 ? "Anhang" : `Anhänge (${liste.length})`;
+  const items = liste.map((a, i) => {
+    const isImg = (a.type || "").startsWith("image/");
+    return isImg
+      ? `<img src="${a.data}" style="max-width:100%; border-radius:8px; border:1px solid var(--border); margin-top:8px; display:block;" />`
+      : `<button class="btn btn-sm" style="margin-top:8px;" onclick="${openFnName}(${i})">📎 ${escapeHtml(a.name || "Anhang öffnen")}</button>`;
+  }).join("");
+  return `<div class="card"><div class="muted" style="margin-bottom:2px;">${titel}</div>${items}</div>`;
+}
+
 /* ---------------- Service Worker: Offline-Fähigkeit ---------------- */
 // Auf JEDER Seite registrieren (nicht nur beim Aktivieren von Push), damit die App-Shell
 // zwischengespeichert wird und die App auch ohne Empfang öffnet. Läuft im Hintergrund

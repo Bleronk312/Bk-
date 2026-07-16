@@ -76,9 +76,9 @@ function openBase64File(dataUrl, filename) {
   }
 }
 
-function openAttachmentFile() {
-  if (!currentScheine || !currentScheine.anhang) return;
-  openBase64File(currentScheine.anhang, currentScheine.anhang_name || "anhang.pdf");
+function openAttachmentFile(i) {
+  const a = gekoAnhangListe(currentScheine)[i || 0];
+  if (a) openBase64File(a.data, a.name || "anhang.pdf");
 }
 
 function todayIso() {
@@ -113,7 +113,7 @@ async function init() {
   render();
 
   const { data: heavy, error: heavyError } = await sb.from("scheine")
-    .select("anhang, anhang_name, anhang_type, unterschrift, vorher_fotos, nachher_fotos")
+    .select("anhang, anhang_name, anhang_type, anhaenge, unterschrift, vorher_fotos, nachher_fotos")
     .eq("id", id).maybeSingle();
 
   if (!heavyError && heavy && currentScheine && currentScheine.id === id) {
@@ -129,30 +129,7 @@ async function init() {
 }
 
 function renderAttachment(s) {
-  if (!s.anhang_name && !s.anhang_type) return "";
-  if (!s.anhang) {
-    return `
-      <div class="card">
-        <div class="muted" style="margin-bottom:6px;">Anhang</div>
-        <p class="muted" style="margin:0;">Lade...</p>
-      </div>
-    `;
-  }
-  const isImg = (s.anhang_type || "").startsWith("image/");
-  if (isImg) {
-    return `
-      <div class="card">
-        <div class="muted" style="margin-bottom:6px;">Anhang</div>
-        <img src="${s.anhang}" style="max-width:100%; border-radius:8px; border:1px solid var(--border);" />
-      </div>
-    `;
-  }
-  return `
-    <div class="card">
-      <div class="muted" style="margin-bottom:6px;">Anhang</div>
-      <button class="btn btn-sm" onclick="openAttachmentFile()">📎 ${escapeHtml(s.anhang_name || "Anhang öffnen")}</button>
-    </div>
-  `;
+  return gekoRenderAnhaenge(s, "openAttachmentFile");
 }
 
 function render() {

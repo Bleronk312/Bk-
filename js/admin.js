@@ -26,8 +26,8 @@ let archivScheine = [];
 let kunden = [];
 let kategorien = [];
 let currentTab = "scheine";
-let pendingAnhang = null; // {data, name, type} when a new file was chosen
-let removeAnhangFlag = false;
+let anhangEditListe = []; // Anhänge (Foto/PDF) im offenen Formular - mehrere möglich
+let anhangOrigLen = 0;    // Anzahl beim Öffnen (um "nachträglich hinzugefügt" zu erkennen)
 let scheineSearchQuery = "";
 let signFormOpen = false;
 let materialSurveyOpen = false;
@@ -103,9 +103,9 @@ function openBase64File(dataUrl, filename) {
   }
 }
 
-function openAttachmentFileAdmin() {
-  if (!currentViewScheine || !currentViewScheine.anhang) return;
-  openBase64File(currentViewScheine.anhang, currentViewScheine.anhang_name || "anhang.pdf");
+function openAttachmentFileAdmin(i) {
+  const a = gekoAnhangListe(currentViewScheine)[i || 0];
+  if (a) openBase64File(a.data, a.name || "anhang.pdf");
 }
 
 
@@ -364,7 +364,7 @@ async function openView(id) {
     renderViewScheine({ ...light });
 
     const { data, error } = await sb.from("scheine")
-      .select("anhang, anhang_name, anhang_type, unterschrift, vorher_fotos, nachher_fotos")
+      .select("anhang, anhang_name, anhang_type, anhaenge, unterschrift, vorher_fotos, nachher_fotos")
       .eq("id", id)
       .maybeSingle();
 
@@ -395,27 +395,7 @@ function renderViewScheine(s) {
     .map((l) => `<li>${escapeHtml(l.trim())}</li>`).join("");
   const signed = !!s.signed_at;
 
-  let anhangHtml = "";
-  if (s.anhang_name || s.anhang_type) {
-    if (!s.anhang) {
-      anhangHtml = `
-        <div class="card">
-          <div class="muted" style="margin-bottom:6px;">Anhang</div>
-          <p class="muted" style="margin:0;">Lade...</p>
-        </div>
-      `;
-    } else {
-      const isImg = (s.anhang_type || "").startsWith("image/");
-      anhangHtml = `
-        <div class="card">
-          <div class="muted" style="margin-bottom:6px;">Anhang</div>
-          ${isImg
-            ? `<img src="${s.anhang}" style="max-width:100%; border-radius:8px; border:1px solid var(--border);" />`
-            : `<button class="btn btn-sm" onclick="openAttachmentFileAdmin()">📎 ${escapeHtml(s.anhang_name || "Anhang öffnen")}</button>`}
-        </div>
-      `;
-    }
-  }
+  const anhangHtml = gekoRenderAnhaenge(s, "openAttachmentFileAdmin");
 
   document.getElementById("view").innerHTML = `
     <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
@@ -633,9 +613,6 @@ function aktuellerMonatName() {
 }
 
 async function openEdit(id, prefill) {
-  pendingAnhang = null;
-  removeAnhangFlag = false;
-
   let s;
   if (id) {
     document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
@@ -651,6 +628,10 @@ async function openEdit(id, prefill) {
       kategorie: "", leistungen: "", monat: aktuellerMonatName(), kdnr: "", anhang: null, anhang_name: null, interne_notiz: "",
     };
   }
+
+  // Vorhandene Anhänge in die Bearbeitungs-Liste laden (Duplikat startet ohne Anhänge)
+  anhangEditListe = prefill ? [] : gekoAnhangListe(s).map((a) => ({ ...a }));
+  anhangOrigLen = anhangEditListe.length;
 
   const kundenOptions = kunden.map((k) => {
     const addressHint = firstLine(k.adresse);
@@ -761,9 +742,9 @@ async function openEdit(id, prefill) {
       </div>
 
       <div class="field">
-        <label>Anhang für Mitarbeiter (Foto/PDF, optional – erscheint nicht im PDF, nur in der App)</label>
-        <div id="anhangContainer">${renderAnhangPreview(s)}</div>
-        <input type="file" id="f_anhang" accept="image/*,application/pdf" style="display:none;" onchange="handleAnhangChange(event)" />
+        <label>Anhänge für Mitarbeiter (Fotos/PDF, optional – erscheinen nicht im PDF, nur in der App)</label>
+        <div id="anhangContainer">${renderAnhangPreview()}</div>
+        <input type="file" id="f_anhang" accept="image/*,application/pdf" multiple style="display:none;" onchange="handleAnhangChange(event)" />
       </div>
 
       <button class="btn btn-primary btn-block" onclick="saveScheine('${s.id}')">Speichern</button>
@@ -771,43 +752,33 @@ async function openEdit(id, prefill) {
   `;
 }
 
-function renderAnhangPreview(s) {
-  if (pendingAnhang) {
-    const isImg = pendingAnhang.type.startsWith("image/");
+function renderAnhangPreview() {
+  const thumbs = anhangEditListe.map((a, i) => {
+    const isImg = (a.type || "").startsWith("image/");
     return `
       <div class="attachment-preview">
-        ${isImg ? `<img src="${pendingAnhang.data}" />` : `<div class="file-icon">PDF</div>`}
-        <div style="flex:1; font-size:13.5px;">${escapeHtml(pendingAnhang.name)}</div>
-        <button class="btn btn-sm" onclick="clearAnhangSelection()">Entfernen</button>
-      </div>
-    `;
-  }
-  if (s.anhang && !removeAnhangFlag) {
-    const isImg = (s.anhang_type || "").startsWith("image/");
-    return `
-      <div class="attachment-preview">
-        ${isImg ? `<img src="${s.anhang}" />` : `<div class="file-icon">PDF</div>`}
-        <div style="flex:1; font-size:13.5px;">${escapeHtml(s.anhang_name || "Anhang")}</div>
-        <button class="btn btn-sm" onclick="removeExistingAnhang('${s.id}')">Entfernen</button>
-      </div>
-    `;
-  }
+        ${isImg ? `<img src="${a.data}" />` : `<div class="file-icon">PDF</div>`}
+        <div style="flex:1; min-width:0; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.name || "Anhang")}</div>
+        <button class="btn btn-sm" onclick="removeAnhang(${i})">Entfernen</button>
+      </div>`;
+  }).join("");
   return `
+    ${thumbs}
     <div class="file-input-wrap" id="anhangDrop" onclick="document.getElementById('f_anhang').click()"
       ondragover="graffitiDragOver(event)" ondragleave="graffitiDragLeave(event)" ondrop="graffitiDrop(event)">
-      <span class="muted">Klicken oder Datei hierher ziehen – Foto oder PDF (Fotos werden verkleinert, PDF max. 4 MB)</span>
+      <span class="muted">${anhangEditListe.length ? "Weitere hinzufügen – k" : "K"}licken oder Dateien hierher ziehen – Fotos oder PDF (Fotos werden verkleinert, PDF max. 4 MB)</span>
     </div>
   `;
 }
 
-/* Drag & Drop für den Anhang (Foto/PDF) */
+/* Drag & Drop für Anhänge (Fotos/PDF, mehrere möglich) */
 function graffitiDragOver(e) { e.preventDefault(); e.currentTarget.classList.add("dragover"); }
 function graffitiDragLeave(e) { e.currentTarget.classList.remove("dragover"); }
 function graffitiDrop(e) {
   e.preventDefault();
   e.currentTarget.classList.remove("dragover");
-  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) processAnhangFile(f);
+  const files = e.dataTransfer && e.dataTransfer.files ? [...e.dataTransfer.files] : [];
+  files.forEach((f) => processAnhangFile(f));
 }
 
 /* Termin-Picker (Datum + Uhrzeit getrennt, mit Schnellwahl) */
@@ -869,8 +840,14 @@ function compressImageFile(file, maxDim, quality) {
 }
 
 async function handleAnhangChange(e) {
-  const file = e.target.files[0];
-  if (file) await processAnhangFile(file);
+  const files = [...e.target.files];
+  for (const file of files) await processAnhangFile(file);
+  e.target.value = ""; // erlaubt, dieselbe Datei später erneut zu wählen
+}
+
+function refreshAnhangContainer() {
+  const c = document.getElementById("anhangContainer");
+  if (c) c.innerHTML = renderAnhangPreview();
 }
 
 async function processAnhangFile(file) {
@@ -879,19 +856,21 @@ async function processAnhangFile(file) {
     showToast("Nur Fotos oder PDF möglich");
     return;
   }
+  if (anhangEditListe.length >= 12) {
+    showToast("Maximal 12 Anhänge");
+    return;
+  }
 
   if (file.type.startsWith("image/")) {
     if (file.size > 15 * 1024 * 1024) {
       showToast("Bild zu groß (max. 15 MB)");
       return;
     }
-    showToast("Bild wird komprimiert...");
     try {
       const compressed = await compressImageFile(file, 1280, 0.78);
-      const jpegName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-      pendingAnhang = { data: compressed, name: jpegName, type: "image/jpeg" };
-      removeAnhangFlag = false;
-      document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+      const jpegName = gekoCleanText(file.name.replace(/\.[^.]+$/, "") + ".jpg");
+      anhangEditListe.push({ data: compressed, name: jpegName, type: "image/jpeg" });
+      refreshAnhangContainer();
       showToast("Bild angehängt");
     } catch (err) {
       showToast("Bild konnte nicht verarbeitet werden");
@@ -905,23 +884,15 @@ async function processAnhangFile(file) {
   }
   const reader = new FileReader();
   reader.onload = () => {
-    pendingAnhang = { data: reader.result, name: file.name, type: file.type };
-    removeAnhangFlag = false;
-    document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+    anhangEditListe.push({ data: reader.result, name: gekoCleanText(file.name), type: file.type });
+    refreshAnhangContainer();
   };
   reader.readAsDataURL(file);
 }
 
-function clearAnhangSelection() {
-  pendingAnhang = null;
-  document.getElementById("f_anhang").value = "";
-  document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
-}
-
-function removeExistingAnhang(id) {
-  removeAnhangFlag = true;
-  pendingAnhang = null;
-  document.getElementById("anhangContainer").innerHTML = renderAnhangPreview({});
+function removeAnhang(i) {
+  anhangEditListe.splice(i, 1);
+  refreshAnhangContainer();
 }
 
 function applyKundeSelection() {
@@ -964,27 +935,33 @@ async function saveScheine(id) {
   }
 
   // Wurde einem BESTEHENDEN Schein nachträglich ein Anhang hinzugefügt? Dann bekommt
-  // der Mitarbeiter unten eine Benachrichtigung, damit er den Anhang mitbekommt.
-  const anhangNachtraeglich = !isNew && !!pendingAnhang;
+  // der Mitarbeiter unten eine Benachrichtigung, damit er den/die Anhang/-änge mitbekommt.
+  const anhangNachtraeglich = !isNew && anhangEditListe.length > anhangOrigLen;
 
-  if (pendingAnhang) {
-    payload.anhang = pendingAnhang.data;
-    payload.anhang_name = pendingAnhang.name;
-    payload.anhang_type = pendingAnhang.type;
-  } else if (removeAnhangFlag) {
-    payload.anhang = null;
-    payload.anhang_name = null;
-    payload.anhang_type = null;
-  }
+  // Mehrere Anhänge -> Spalte "anhaenge". Den ERSTEN zusätzlich in die alten Einzel-Spalten
+  // schreiben, damit Badge/ältere App-Versionen weiter funktionieren.
+  payload.anhaenge = anhangEditListe.length
+    ? anhangEditListe.map((a) => ({ data: a.data, name: gekoCleanText(a.name || ""), type: a.type || "" }))
+    : null;
+  payload.anhang = anhangEditListe[0] ? anhangEditListe[0].data : null;
+  payload.anhang_name = anhangEditListe[0] ? gekoCleanText(anhangEditListe[0].name || "") : null;
+  payload.anhang_type = anhangEditListe[0] ? anhangEditListe[0].type : null;
 
   gekoCleanPayload(payload); // NUL/Steuerzeichen aus eingefügtem Text entfernen (sonst DB-Fehler)
-  const { error } = await sb.from("scheine").upsert(payload);
+  let { error } = await sb.from("scheine").upsert(payload);
+  if (error && /anhaenge/i.test(error.message || "")) {
+    // Falls die neue Spalte "anhaenge" in Supabase noch nicht angelegt wurde, trotzdem
+    // speichern (der erste Anhang bleibt über die alten Spalten erhalten). Sobald die
+    // Migration (supabase_add_anhaenge.sql) läuft, funktionieren mehrere Anhänge.
+    const { anhaenge, ...ohneAnhaenge } = payload;
+    ({ error } = await sb.from("scheine").upsert(ohneAnhaenge));
+  }
   if (error) {
     showToast("Fehler: " + error.message);
     return;
   }
-  pendingAnhang = null;
-  removeAnhangFlag = false;
+  anhangEditListe = [];
+  anhangOrigLen = 0;
   await loadScheineList();
   switchTab("scheine");
   showToast("Gespeichert");
