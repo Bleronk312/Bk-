@@ -649,7 +649,11 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
    IMMER unten, der Mittelteil scrollt frei neben dem Canvas. */
 .glas-sign-sheet {
   position: fixed;
+  /* Explizite Seiten statt nur inset: aeltere Engines (u.a. Xiaomi/MIUI-Browser)
+     kennen die inset-Kurzform nicht zuverlaessig. */
+  top: 0; right: 0; bottom: 0; left: 0;
   inset: 0;
+  height: 100%;
   z-index: 300;
   background: var(--bg);
   display: flex;
@@ -682,8 +686,15 @@ body.glas-cal-pur .glas-bottomnav { display: none; }
 .gss-title .gss-s { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gss-body {
   flex: 1 1 auto;
+  /* min-height:0 ist PFLICHT: ohne dehnt sich ein Flex-Kind auf volle Inhaltshoehe
+     und scrollt auf strengeren Engines (u.a. Xiaomi/MIUI) gar nicht - der Fuss wird
+     rausgeschoben. Modernes Chrome verzeiht das, MIUI oft nicht. */
+  min-height: 0;
+  height: auto;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   overscroll-behavior: contain;
   padding: 16px;
 }
