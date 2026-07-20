@@ -4657,6 +4657,7 @@ function renderMaVerwaltung() {
                 : `<span class="badge" style="background:#e3f3ea; color:#1f7a4d;">🔑 ${escapeHtml(m.username)}</span>`)
               : `<span class="badge" style="background:#eef2f7; color:#6b7683;">kein Login</span>`}
           </p>
+          ${m.username && m.pass_klar ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🔑 <b>${escapeHtml(m.username)}</b> · Passwort: <b>${escapeHtml(m.pass_klar)}</b></p>` : ""}
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} von ${b.anspruch} Urlaubstagen übrig</b></p>
         </div>
         <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
@@ -4678,8 +4679,8 @@ function renderMaForm() {
         <div class="field"><label class="muted">Benutzername</label>
           <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
-        <div class="field"><label class="muted">Passwort ${m.pass_hash ? "(nur ausfüllen, um es zu ändern)" : ""}</label>
-          <input type="text" id="ma_pass" value="" placeholder="${m.pass_hash ? "•••••• bleibt unverändert" : "Passwort vergeben"}" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
+        <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
+          <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
         ${m.id ? `<label class="glas-aktiv-toggle"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt, kommt nicht mehr rein)</span></span></label>` : ""}
       </div>
 
@@ -4726,12 +4727,13 @@ async function saveGlasMa() {
     const salt = gekoMakeSalt();
     payload.pass_salt = salt;
     payload.pass_hash = await gekoHashPw(passRaw, salt);
+    payload.pass_klar = passRaw; // zum Nachschauen im Büro (Admin-only, hinter PIN)
   }
 
   let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
-  if (error && /(username|pass_hash|pass_salt|login_aktiv)/i.test(error.message || "")) {
+  if (error && /(username|pass_hash|pass_salt|pass_klar|login_aktiv)/i.test(error.message || "")) {
     // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
-    delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.login_aktiv;
+    delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.pass_klar; delete payload.login_aktiv;
     showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
