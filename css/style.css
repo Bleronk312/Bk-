@@ -325,11 +325,7 @@ label {
   border: none;
   border-top: 1px solid #eceef2;
   transition: background 0.12s ease;
-  /* overflow sichtbar, damit der Text eines MEHRTÄGIGEN Balkens über die Folgetage
-     laufen kann. Eintägige Chips clippen ihren Text weiterhin selbst (siehe unten),
-     bleiben also in ihrer Zelle. Vertikal wächst die Grid-Zeile mit dem Inhalt -
-     es entsteht kein Überlauf nach unten. */
-  overflow: visible;
+  overflow: hidden;
 }
 .glas-cal-cell:hover { background: #f5f7fa; }
 .glas-cal-cell.is-selected { background: #eaf2fb; }
@@ -378,12 +374,8 @@ label {
 .glas-cal-chip-spacer { visibility: hidden; }
 /* Erledigte Touren: klar als fertig erkennbar (grün + leicht durchgestrichen) */
 .glas-cal-chip.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
-.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; position: relative; z-index: 1; }
+.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-/* Erster Chip eines mehrtägigen Balkens: Text darf über die (gleichfarbigen) Folgetage
-   laufen statt im ersten Tag abgeschnitten zu werden. Liegt per z-index über den
-   Folge-Chips, sodass die Schrift auf dem Balken lesbar bleibt. */
-.glas-cal-chip.continues-right:not(.continues-left) { overflow: visible; position: relative; z-index: 2; }
 /* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
 .glas-cal-chip.is-urlaub {
   background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
