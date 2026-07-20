@@ -1011,8 +1011,18 @@ function renderMehrTab() {
     <div class="card" style="padding:0; overflow:hidden;">
       ${item("📅", "Jahresvorschau", "Anstehende Reinigungen pro Monat – erledigt, geplant, offen", "glasOpenJahr()")}
       ${item("📊", "Statistiken", "Reinigungen, Jahres-QM und Kunden-Auswertung", "glasOpenStatistik()")}
-      ${item("⚙️", "Weitere Einstellungen", "Mitarbeiter, Urlaub & Benachrichtigungen", "goGlasTab('einstellungen')")}
+      ${item("👥", "Mitarbeiter & Zugänge", "Benutzer & Passwörter anlegen, App-Zugang sperren/entsperren", "goGlasMaVerwaltung()")}
+      ${item("⚙️", "Weitere Einstellungen", "Urlaub & Benachrichtigungen", "goGlasTab('einstellungen')")}
     </div>`;
+}
+
+// Direkt zur Mitarbeiter-Verwaltung (Login/Passwort/Sperren). goGlasTab setzt die
+// Flags zurück, darum ERST wechseln, DANN die Verwaltung öffnen.
+function goGlasMaVerwaltung() {
+  goGlasTab("kalender");
+  glasKalenderAnsicht = "urlaub";
+  glasUrlaubVerwaltung = true;
+  renderGlasAdmin();
 }
 
 // Eigener Reiter für die fälligen Objekte (früher Unterreiter im Kalender).
