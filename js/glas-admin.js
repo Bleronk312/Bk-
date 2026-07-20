@@ -5373,9 +5373,12 @@ function renderKalenderMonat() {
     // 🎨 Graffiti-Termine aus der Graffiti-App (scheine.termin) - eigene Farbe.
     ...(glasKalGraffitiEinblenden ? glasGraffitiTermine.filter((g) => g.termin).map((g) => {
       const iso = glasDatumVonTimestamp(g.termin);
+      const gdone = !!(g.unterschrift_name || g.signed_at);
       return {
-        datum: iso, datum_bis: iso, col: GLAS_GRAFFITI_COL,
-        done: !!(g.unterschrift_name || g.signed_at),
+        datum: iso, datum_bis: iso,
+        // Unterschrieben -> grün + durchgestrichen (wie erledigte Touren), sonst Graffiti-Pink
+        col: gdone ? GLAS_TOUR_FARBE.fertig : GLAS_GRAFFITI_COL,
+        done: gdone,
         label: (g.kunde || "").split("\n")[0] || "Graffiti",
       };
     }) : []),
@@ -5561,7 +5564,7 @@ function renderKalenderTagPanel(iso) {
     const strasse = (g.adresse || "").split("\n")[0];
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasOpenGraffitiInfo('${g.id}')">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${GLAS_GRAFFITI_COL};"></span>
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${done ? GLAS_TOUR_FARBE.fertig : GLAS_GRAFFITI_COL};"></span>
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600; ${done ? "text-decoration:line-through; color:var(--success-text);" : ""}">🎨 ${escapeHtml((g.kunde || "").split("\n")[0] || "Graffiti")}${done ? " ✓" : ""}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${zeit ? zeit + " Uhr · " : ""}${escapeHtml(g.kategorie || "Graffiti")}${strasse ? " · " + escapeHtml(strasse) : ""}</p>
