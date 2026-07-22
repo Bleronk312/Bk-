@@ -2053,8 +2053,8 @@ function renderPositionenRows(positionen) {
             <select id="pos_art_${i}" onchange="onGlasPositionArtChange(${i})">${positionenOptions(pos)}</select>
           </div>
           <div class="field" style="flex:1; margin-bottom:0;">
-            <label class="muted">QM</label>
-            <input type="text" id="pos_qm_${i}" value="${escapeHtml(pos.qm)}" placeholder="144,50" />
+            <label class="muted">${glasIstStundenPos(pos) ? "Stunden" : "QM"}</label>
+            <input type="text" id="pos_qm_${i}" value="${escapeHtml(pos.qm)}" placeholder="${glasIstStundenPos(pos) ? "z.B. 3" : "144,50"}" />
           </div>
         </div>
         ${pos.custom ? `
@@ -2066,6 +2066,13 @@ function renderPositionenRows(positionen) {
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Bezeichnung</label>
             <input type="text" id="pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
+          </div>
+          <div class="field" style="flex:0 0 110px; margin-bottom:0;">
+            <label class="muted">Einheit</label>
+            <select id="pos_einheit_${i}" onchange="onGlasPositionEinheitChange(${i})">
+              <option value="qm" ${glasIstStundenPos(pos) ? "" : "selected"}>QM</option>
+              <option value="std" ${glasIstStundenPos(pos) ? "selected" : ""}>Stunden</option>
+            </select>
           </div>
         </div>` : (pos.art && pos.nr ? `<p class="muted" style="margin:-2px 0 8px; font-size:11.5px;">Pos.-Nr. ${escapeHtml(pos.nr)}</p>` : "")}
         <div class="field" style="margin-bottom:8px;">
@@ -2111,10 +2118,12 @@ function onGlasPositionArtChange(i) {
     pos.custom = true;
     pos.art = "";
     pos.nr = "";
+    if (!pos.einheit) pos.einheit = "qm"; // eigene Position: Standard QM, umschaltbar
   } else {
     pos.custom = false;
     pos.art = val;
     pos.nr = select.options[select.selectedIndex]?.getAttribute("data-nr") || pos.nr;
+    pos.einheit = ""; // Katalog-Position: Einheit folgt wieder der Pos.-Nr.-Regel
   }
   renderGlasAdmin();
 }
@@ -2135,6 +2144,12 @@ function onGlasIntervallTypChange(i) {
   renderGlasAdmin();
 }
 
+// Einheit (QM/Stunden) einer eigenen Position umgestellt -> Label des Wert-Felds anpassen
+function onGlasPositionEinheitChange(i) {
+  syncObjektFormFromDom();
+  renderGlasAdmin();
+}
+
 function syncPositionenFromDom() {
   if (!glasObjektEditing) return;
   glasObjektEditing.positionen = glasObjektEditing.positionen.map((pos, i) => ({
@@ -2143,6 +2158,7 @@ function syncPositionenFromDom() {
     pos_text: document.getElementById(`pos_text_${i}`) ? document.getElementById(`pos_text_${i}`).value : pos.pos_text,
     nr: pos.custom ? (document.getElementById(`pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
     art: pos.custom ? (document.getElementById(`pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
+    einheit: pos.custom ? (document.getElementById(`pos_einheit_${i}`)?.value ?? pos.einheit ?? "") : (pos.einheit || ""),
     qm: document.getElementById(`pos_qm_${i}`)?.value.trim() ?? pos.qm,
     intervall_typ: document.getElementById(`pos_ivtyp_${i}`)?.value ?? pos.intervall_typ,
     intervall_wochen: document.getElementById(`pos_ivw_${i}`) ? (parseInt(document.getElementById(`pos_ivw_${i}`).value, 10) || null) : pos.intervall_wochen,
@@ -2265,6 +2281,7 @@ async function saveGlasObjekt() {
     pos_text: p.pos_text || "",
     nr: p.nr || "",
     art: p.art || "",
+    einheit: p.einheit || "",
     qm: p.qm || "",
     intervall_typ: p.intervall_typ || "",
     intervall_wochen: p.intervall_typ === "rollierend" ? (p.intervall_wochen || null) : null,
@@ -2273,7 +2290,15 @@ async function saveGlasObjekt() {
     faelligkeit_override: p.faelligkeit_override || null,
     reihenfolge: i,
   }));
-  if (posPayload.length) await sb.from("glas_objekt_positionen").upsert(posPayload);
+  if (posPayload.length) {
+    let { error: posErr } = await sb.from("glas_objekt_positionen").upsert(posPayload);
+    if (posErr && /einheit/i.test(posErr.message || "")) {
+      // Spalte fehlt noch (SQL nicht ausgeführt) - ohne Einheit speichern, damit nichts verloren geht
+      posPayload.forEach((p) => delete p.einheit);
+      ({ error: posErr } = await sb.from("glas_objekt_positionen").upsert(posPayload));
+      if (!posErr) showToast("Hinweis: Einheit (QM/Std.) noch nicht gespeichert – bitte supabase_add_einheit.sql ausführen");
+    }
+  }
 
   glasBusy = false;
   glasProgressText = "";
@@ -2515,7 +2540,7 @@ function downloadBlankGlasSchein(objektId) {
   const o = glasObjekte.find((x) => x.id === objektId);
   if (!o) return;
   const template = document.getElementById(`objekt_schein_template_${objektId}`)?.value || "geko";
-  const positionen = glasGetObjektPositionen(objektId).map((p) => ({ nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" }));
+  const positionen = glasGetObjektPositionen(objektId).map((p) => ({ nr: p.nr, art: p.art, einheit: p.einheit || "", qm: p.qm, pos_text: p.pos_text || "" }));
   const s = {
     kunde_adresse: o.kunde_adresse,
     objekt: o.name,
@@ -3929,7 +3954,7 @@ async function createGlasTour() {
         hinweise: o.hinweise || "",
         notiz: (() => { const n = glasTourNotizen.get(o.id); return n && n.use ? (n.text || "").trim() : ""; })(),
         lfd_nr: (glasTourLfd.get(o.id) || "").trim(),
-        positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" })), ...glasCleanExtras(o.id)]),
+        positionen: JSON.stringify([...positionenForStop.map((p) => ({ id: p.id, nr: p.nr, art: p.art, einheit: p.einheit || "", qm: p.qm, pos_text: p.pos_text || "" })), ...glasCleanExtras(o.id)]),
         lat: o.lat,
         lng: o.lng,
         status: "offen",
@@ -4068,7 +4093,7 @@ async function editEinzelschein(tourId) {
   if (stop.status === "erledigt") { showToast("Bereits unterschrieben – kann nicht mehr bearbeitet werden"); renderGlasAdmin(); return; }
 
   const positionen = glasStopPositionen(stop).map((p) => ({
-    id: p.id || null, nr: p.nr || "", art: p.art || "", qm: p.qm != null ? String(p.qm) : "",
+    id: p.id || null, nr: p.nr || "", art: p.art || "", einheit: p.einheit || "", qm: p.qm != null ? String(p.qm) : "",
     custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
   }));
   const kunde = glasKunden.find((k) => stop.kunde_id && k.id === stop.kunde_id)
@@ -4194,7 +4219,7 @@ function renderEsPositionenRows(positionen) {
             <select id="es_pos_art_${i}" onchange="onEsPositionArtChange(${i})">${glasPositionSelectOptions(pos)}</select>
           </div>
           <div class="field" style="flex:1; margin-bottom:0;">
-            <label class="muted">QM</label>
+            <label class="muted">${glasIstStundenPos(pos) ? "Stunden" : "QM"}</label>
             <input type="text" id="es_pos_qm_${i}" value="${escapeHtml(pos.qm)}" />
           </div>
         </div>
@@ -4207,6 +4232,13 @@ function renderEsPositionenRows(positionen) {
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Bezeichnung</label>
             <input type="text" id="es_pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
+          </div>
+          <div class="field" style="flex:0 0 110px; margin-bottom:0;">
+            <label class="muted">Einheit</label>
+            <select id="es_pos_einheit_${i}" onchange="onEsPositionEinheitChange(${i})">
+              <option value="qm" ${glasIstStundenPos(pos) ? "" : "selected"}>QM</option>
+              <option value="std" ${glasIstStundenPos(pos) ? "selected" : ""}>Stunden</option>
+            </select>
           </div>
         </div>` : ""}
       </div>`)
@@ -4222,14 +4254,21 @@ function onEsPositionArtChange(i) {
     pos.custom = true;
     pos.art = "";
     pos.nr = "";
+    if (!pos.einheit) pos.einheit = "qm"; // eigene Position: Standard QM, umschaltbar
   } else {
     pos.custom = false;
     pos.art = val;
     pos.nr = select.options[select.selectedIndex]?.getAttribute("data-nr") || pos.nr;
+    pos.einheit = ""; // Katalog-Position: Einheit folgt wieder der Pos.-Nr.-Regel
   }
   // Leistung geändert -> nicht mehr die übernommene Objekt-Position; deren Fälligkeit
   // darf beim Unterschreiben dieses Scheins nicht mehr zurückgesetzt werden
   pos.id = null;
+  renderGlasAdmin();
+}
+
+function onEsPositionEinheitChange(i) {
+  syncEsFromDom();
   renderGlasAdmin();
 }
 
@@ -4239,6 +4278,7 @@ function syncEsFromDom() {
     ...pos,
     nr: pos.custom ? (document.getElementById(`es_pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
     art: pos.custom ? (document.getElementById(`es_pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
+    einheit: pos.custom ? (document.getElementById(`es_pos_einheit_${i}`)?.value ?? pos.einheit ?? "") : (pos.einheit || ""),
     qm: document.getElementById(`es_pos_qm_${i}`)?.value.trim() ?? pos.qm,
   }));
   d.kunde_adresse = document.getElementById("es_kunde_adresse")?.value ?? d.kunde_adresse;
@@ -4303,7 +4343,7 @@ function onEsObjektChange() {
     const positionen = glasGetObjektPositionen(o.id);
     if (positionen.length) {
       glasEinzelscheinData.positionen = positionen.map((p) => ({
-        id: p.id || null, nr: p.nr, art: p.art, qm: p.qm,
+        id: p.id || null, nr: p.nr, art: p.art, einheit: p.einheit || "", qm: p.qm,
         custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
       }));
     }
@@ -4341,7 +4381,7 @@ async function saveEinzelschein() {
   // id unbedingt mitschreiben: nur so setzt das Unterschreiben "zuletzt gereinigt" der
   // Objekt-Position zurück und die Position zählt als "eingeplant" (war der Grund, warum
   // per Blanko erledigte Objekte weiter als fällig standen).
-  const positionen = d.positionen.filter((p) => p.art || p.qm).map((p) => ({ id: p.id || null, nr: p.nr, art: p.art, qm: p.qm }));
+  const positionen = d.positionen.filter((p) => p.art || p.qm).map((p) => ({ id: p.id || null, nr: p.nr, art: p.art, einheit: p.einheit || "", qm: p.qm }));
   const esObjekt = d.objekt_id ? glasObjekte.find((x) => x.id === d.objekt_id) : null;
 
   const tourName = (d.name || "").trim() || `Einzelschein – ${d.objekt}`;
@@ -5852,7 +5892,7 @@ async function glasVerschiebeSchonGereinigt() {
   const jetzt = new Date().toISOString();
   const positionen = glasGetObjektPositionen(objektId)
     .filter((p) => positionIds.includes(p.id) || positionIds.includes(p.nr))
-    .map((p) => ({ id: p.id, nr: p.nr, art: p.art, qm: p.qm, pos_text: p.pos_text || "" }));
+    .map((p) => ({ id: p.id, nr: p.nr, art: p.art, einheit: p.einheit || "", qm: p.qm, pos_text: p.pos_text || "" }));
 
   glasBusy = true; renderGlasAdmin();
   try {

@@ -124,7 +124,11 @@ function glasStopPositionen(s) {
 // versehentlich zur Pflicht-Eingabe wird.
 function glasIstStundenPos(p) {
   if (!p) return false;
-  if (p.einheit === "std") return true; // beim Unterschreiben bereits als Stunden erfasst
+  // Explizit gewählte Einheit gewinnt IMMER (eigene Positionen): "std" oder "qm".
+  // Sonst würde z.B. eine eigene Position mit Nr. 2/5 zwangsweise als Stunden gelten,
+  // obwohl QM eingetragen wurde (der alte Bug).
+  if (p.einheit === "std") return true;
+  if (p.einheit === "qm") return false;
   const nr = String(p.nr || "").trim();
   return nr === "2" || nr === "5";
 }
