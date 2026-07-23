@@ -64,14 +64,16 @@ function ciAddDaysA(iso, days) { const d = new Date(iso + "T00:00:00"); d.setDat
 // Offene Schichten aus VERGANGENEN Tagen automatisch auf das geplante Ende schließen und
 // als "auto_beendet" markieren (Auschecken vergessen). Läuft, wenn der Admin die Seite öffnet.
 async function ciaAutoCloseOldShifts() {
-  const heute = ciTodayIso();
-  const offen = (ciaData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.datum < heute);
+  const GRACE = 60 * 60000; // erst 1h nach geplantem Ende schließen (auch über Mitternacht)
+  const nowMs = Date.now();
+  const offen = (ciaData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.ein_ts);
   for (const s of offen) {
     const ort = (ciaData.orte || []).find((o) => o.id === s.ort_id);
     const fenster = ort ? ciOrtFensterAn(ort, s.datum) : null;
-    const endeMin = fenster ? fenster.bis : 23 * 60 + 59;
-    const ende = new Date(s.datum + "T00:00:00"); ende.setMinutes(endeMin);
-    const patch = { aus_ts: ende.toISOString(), dauer_min: ciSchichtDauerMin(s.ein_ts, ende.toISOString(), fenster || { von: 0, bis: 1439 }), auto_beendet: true };
+    const endeMs = ciSchichtEndeMs(s.datum, fenster);
+    if (nowMs <= endeMs + GRACE) continue; // noch innerhalb der Schicht -> offen lassen
+    const endeIso = new Date(endeMs).toISOString();
+    const patch = { aus_ts: endeIso, dauer_min: ciSchichtDauerMin(s.ein_ts, endeIso, fenster || { von: 0, bis: 1439 }), auto_beendet: true };
     Object.assign(s, patch);
     try { await sb.from("checkin_schichten").update(patch).eq("id", s.id); } catch (e) {}
   }
@@ -824,7 +826,11 @@ function ciaRenderOrte() {
   const list = (ciaData.orte || []).map((o) => {
     const maNamen = ciOrtMitarbeiter(o).map((id) => ciaMaName(id)).filter(Boolean);
     const z = ciJson(o.zeiten, {});
-    const tage = Object.keys(z).map(Number).sort().map((wd) => `${CI_TAGE_KURZ[wd - 1]} ${z[wd].von}–${z[wd].bis}`);
+    const tage = Object.keys(z).map(Number).sort().map((wd) => {
+      const v = ciTimeToMin(z[wd].von), b = ciTimeToMin(z[wd].bis);
+      const bisTxt = (v != null && b != null && b <= v) ? z[wd].bis + " +1" : z[wd].bis; // über Mitternacht
+      return `${CI_TAGE_KURZ[wd - 1]} ${z[wd].von}–${bisTxt}`;
+    });
     return `<div class="rgc" style="${o.aktiv === false ? "opacity:.62;" : ""}">
       <div class="top"><span class="nm">🏢 ${escapeHtml(o.name)}</span>
         <label class="sw-t"><input type="checkbox" ${o.aktiv !== false ? "checked" : ""} onchange="ciaToggleOrt('${o.id}',this.checked)"><i></i></label></div>
@@ -891,6 +897,7 @@ function ciaRenderOrtForm() {
     </div>
     <div class="f-lbl">Feste Zeiten je Wochentag (leer = an dem Tag kein Dienst)</div>
     <div class="az-days">${dayRows}</div>
+    <p class="muted" style="font-size:12px;margin:7px 2px 0;">Ende bis Mitternacht = <b>24:00</b>. Geht die Schicht in den nächsten Tag, einfach die frühere Endzeit eintragen (z.B. <b>07:00 – 05:15</b>) – die App erkennt automatisch, dass ausgecheckt am Folgetag wird.</p>
     <div class="f-lbl">Puffer am Rand (Knopf früher/später nutzbar – zählt NICHT als Zeit)</div>
     <select class="f-in" id="ort_puffer" style="width:auto;">
       ${[0, 5, 10, 15, 30].map((p) => `<option value="${p}" ${Number(f.puffer_min) === p ? "selected" : ""}>± ${p} Min</option>`).join("")}
@@ -922,8 +929,10 @@ async function ciaSaveOrt() {
     if (!cb || !cb.checked) continue;
     const von = (document.getElementById(`ortvon_${wd}`).value || "").trim();
     const bis = (document.getElementById(`ortbis_${wd}`).value || "").trim();
-    if (ciTimeToMin(von) == null || ciTimeToMin(bis) == null) { showToast(`Bitte gültige Zeiten für ${CI_TAGE_KURZ[wd - 1]} (z.B. 07:00)`); return; }
-    if (ciTimeToMin(bis) <= ciTimeToMin(von)) { showToast(`${CI_TAGE_KURZ[wd - 1]}: Ende muss nach dem Start liegen`); return; }
+    const vm = ciTimeToMin(von), bm = ciTimeToMin(bis);
+    // Ende darf VOR dem Start liegen (= über Mitternacht, z.B. 07:00–05:15) oder 24:00 sein.
+    if (vm == null || bm == null || vm >= 1440) { showToast(`Bitte gültige Zeiten für ${CI_TAGE_KURZ[wd - 1]} (z.B. 07:00; Ende auch 24:00 oder 05:15)`); return; }
+    if (vm === bm) { showToast(`${CI_TAGE_KURZ[wd - 1]}: Start und Ende dürfen nicht gleich sein`); return; }
     zeiten[wd] = { von, bis };
   }
   if (!Object.keys(zeiten).length) { showToast("Bitte für mindestens einen Tag Zeiten eintragen"); return; }

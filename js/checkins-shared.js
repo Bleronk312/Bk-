@@ -31,10 +31,12 @@ function ciIsoFromDate(d) {
 }
 
 // "HH:MM" -> Minuten seit Mitternacht (oder null, wenn ungültig/leer).
+// "24:00" ist als Tagesende (Mitternacht) erlaubt -> 1440.
 function ciTimeToMin(hhmm) {
   const m = String(hhmm || "").match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
   const h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+  if (h === 24 && mi === 0) return 1440;
   if (h > 23 || mi > 59) return null;
   return h * 60 + mi;
 }
@@ -194,30 +196,48 @@ function ciOrtMitarbeiter(ort) {
 }
 
 // Geplantes Fenster eines Arbeitsorts an einem Datum -> {von, bis} in Minuten oder null.
+// Endet die Schicht am Folgetag (Endzeit <= Startzeit, z.B. 07:00–05:15), wird bis um
+// 1440 Minuten erhöht, sodass bis IMMER > von ist (durchgehende Zeitachse ab Starttag).
 function ciOrtFensterAn(ort, iso) {
   const z = ciJson(ort && ort.zeiten, {});
   const d = new Date(iso + "T00:00:00");
   const key = String(ciIsoDay(d));
   const tag = z && z[key];
   if (!tag) return null;
-  const von = ciTimeToMin(tag.von), bis = ciTimeToMin(tag.bis);
+  let von = ciTimeToMin(tag.von), bis = ciTimeToMin(tag.bis);
   if (von == null || bis == null) return null;
+  if (bis <= von) bis += 1440; // über Mitternacht -> Ende am nächsten Tag
   return { von, bis };
+}
+
+// Endzeit lesbar: "24:00" für Mitternacht, "05:15 +1" für Folgetag.
+function ciFmtBis(bisMin) {
+  if (bisMin === 1440) return "24:00";
+  if (bisMin > 1440) return ciMinToTime(bisMin) + " +1";
+  return ciMinToTime(bisMin);
 }
 
 // Läuft an diesem Tag eine Schicht? (Zeiten hinterlegt)
 function ciOrtLaeuftAn(ort, iso) { return !!ciOrtFensterAn(ort, iso); }
 
-// Gezählte Dauer in Minuten – immer gecappt auf das geplante Fenster [von,bis] des Tages.
-// Nichts vor Start oder nach Ende zählt. ein/aus = Date/ISO, fenster = {von,bis} in Min.
+// Gezählte Dauer in Minuten – immer gecappt auf das geplante Fenster [von,bis].
+// Nichts vor Start oder nach Ende zählt. Rechnet in ABSOLUTER Zeit (ab Mitternacht des
+// Einchecktags), damit Schichten über Mitternacht korrekt zählen (bis kann > 1440 sein).
 function ciSchichtDauerMin(einTs, ausTs, fenster) {
   if (!einTs || !ausTs || !fenster) return 0;
   const ein = new Date(einTs), aus = new Date(ausTs);
-  const einMin = ein.getHours() * 60 + ein.getMinutes();
-  const ausMin = aus.getHours() * 60 + aus.getMinutes();
-  const start = Math.max(einMin, fenster.von);
-  const ende = Math.min(ausMin, fenster.bis);
-  return Math.max(0, ende - start);
+  const mitternacht = new Date(ein.getFullYear(), ein.getMonth(), ein.getDate()).getTime();
+  const winStart = mitternacht + fenster.von * 60000;
+  const winEnd = mitternacht + fenster.bis * 60000;
+  const einC = Math.max(ein.getTime(), winStart);
+  const ausC = Math.min(aus.getTime(), winEnd);
+  return Math.max(0, Math.round((ausC - einC) / 60000));
+}
+
+// Geplantes Ende einer Schicht als absoluter Zeitstempel (ms) – für Countdown & Auto-Schließen.
+function ciSchichtEndeMs(datum, fenster) {
+  const mitternacht = new Date(datum + "T00:00:00").getTime();
+  return mitternacht + (fenster ? fenster.bis : 1439) * 60000;
 }
 
 // Dauer schön formatiert: "8h 03m" bzw. "0h 45m".

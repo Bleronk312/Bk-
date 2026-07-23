@@ -279,14 +279,16 @@ function ciAddDays(iso, days) {
 // Eigene offene Schichten aus VERGANGENEN Tagen automatisch schließen (Auschecken
 // vergessen): auf das geplante Ende des jeweiligen Tages, als "automatisch beendet".
 async function ciAutoCloseOldShifts() {
-  const heute = ciTodayIso();
-  const offen = (ciData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.datum < heute);
+  const GRACE = 60 * 60000; // 1h Kulanz nach geplantem Ende (auch über Mitternacht)
+  const nowMs = Date.now();
+  const offen = (ciData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.ein_ts);
   for (const s of offen) {
     const ort = (ciData.orte || []).find((o) => o.id === s.ort_id);
     const fenster = ort ? ciOrtFensterAn(ort, s.datum) : null;
-    const endeMin = fenster ? fenster.bis : 23 * 60 + 59;
-    const ende = new Date(s.datum + "T00:00:00"); ende.setMinutes(endeMin);
-    const patch = { aus_ts: ende.toISOString(), dauer_min: ciSchichtDauerMin(s.ein_ts, ende.toISOString(), fenster || { von: 0, bis: 1439 }), auto_beendet: true };
+    const endeMs = ciSchichtEndeMs(s.datum, fenster);
+    if (nowMs <= endeMs + GRACE) continue; // noch innerhalb der Schicht -> offen lassen
+    const endeIso = new Date(endeMs).toISOString();
+    const patch = { aus_ts: endeIso, dauer_min: ciSchichtDauerMin(s.ein_ts, endeIso, fenster || { von: 0, bis: 1439 }), auto_beendet: true };
     Object.assign(s, patch);
     try { await sb.from("checkin_schichten").update(patch).eq("id", s.id); } catch (e) {}
   }
@@ -556,17 +558,19 @@ function ciRenderArbeit() {
   if (!orte.length) return `<div class="card-x"><p class="ci-empty">${t("keinArbeitsort")}</p></div>`;
   const now = ciNowMin();
   return `<div class="ci-stagger">` + orte.map((ort) => {
-    const fenster = ciOrtFensterAn(ort, heute);
+    const fensterHeute = ciOrtFensterAn(ort, heute);
     const puffer = parseInt(ort.puffer_min, 10) || 0;
     const open = ciMyOpenShift(ort.id);
     const done = ciMyTodayDone(ort.id);
-    const status = ciOrtStatus(fenster, now, puffer, !!open, !!done);
+    const status = ciOrtStatus(fensterHeute, now, puffer, !!open, !!done);
+    // Für laufende/erledigte Schicht das Fenster des jeweiligen Starttags nehmen (Mitternacht).
+    const fenster = open ? ciOrtFensterAn(ort, open.datum) : done ? ciOrtFensterAn(ort, done.datum) : fensterHeute;
     return ciRenderOrtKarte(ort, fenster, status, open, done);
   }).join("") + `</div>`;
 }
 
 function ciRenderOrtKarte(ort, fenster, status, open, done) {
-  const planned = fenster ? t("heuteSchicht")(ciMinToTime(fenster.von), ciMinToTime(fenster.bis)) : t("heuteFrei");
+  const planned = fenster ? t("heuteSchicht")(ciMinToTime(fenster.von), ciFmtBis(fenster.bis)) : t("heuteFrei");
   const adr = ort.adresse ? `<span class="pt-adr">${escapeHtml(ort.adresse)}</span>` : "";
   let body = "", cls = "";
   if (status === "laeuft") { cls = "az-run"; body = ciRenderLaeuft(ort, fenster, open); }
@@ -589,7 +593,7 @@ function ciRenderOrtKarte(ort, fenster, status, open, done) {
 
 function ciRenderLaeuft(ort, fenster, open) {
   const einZeit = ciUhrzeit(open.ein_ts);
-  const feierabend = fenster ? ciMinToTime(fenster.bis) : "";
+  const feierabend = fenster ? ciFmtBis(fenster.bis) : "";
   return `
     <div class="az-live">
       <div class="az-ring">
@@ -612,25 +616,26 @@ function ciRenderFertig(ort, fenster, done) {
 }
 
 // Live-Aktualisierung (jede Sekunde) für offene Schichten: Timer, Ring, Countdown.
+// Rechnet relativ zur Mitternacht des Einchecktags -> läuft korrekt über Mitternacht.
 function ciTick() {
-  const now = new Date();
+  const nowMs = Date.now();
   (ciData.orte || []).forEach((ort) => {
     const open = ciMyOpenShift(ort.id);
     const el = document.getElementById(`azel_${ort.id}`);
     if (!open || !el) return;
-    const elapsedMin = Math.max(0, (now.getTime() - new Date(open.ein_ts).getTime()) / 60000);
-    el.textContent = ciFmtDauer(elapsedMin);
+    el.textContent = ciFmtDauer(Math.max(0, (nowMs - new Date(open.ein_ts).getTime()) / 60000));
     const fenster = ciOrtFensterAn(ort, open.datum);
     if (!fenster) return;
-    const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const mitternacht = new Date(open.datum + "T00:00:00").getTime();
+    const nowRel = (nowMs - mitternacht) / 60000; // Minuten seit Mitternacht des Starttags
     const total = Math.max(1, fenster.bis - fenster.von);
-    const prog = Math.max(0, Math.min(1, (nowMin - fenster.von) / total));
+    const prog = Math.max(0, Math.min(1, (nowRel - fenster.von) / total));
     const ring = document.getElementById(`azring_${ort.id}`);
     if (ring) { const C = 2 * Math.PI * 52; ring.style.strokeDasharray = C; ring.style.strokeDashoffset = C * (1 - prog); }
     const count = document.getElementById(`azcount_${ort.id}`);
-    const rest = Math.round(fenster.bis - nowMin);
+    const rest = Math.round(fenster.bis - nowRel);
     if (count) {
-      if (rest > 0) { count.classList.remove("az-over"); count.innerHTML = `${t("feierabendUm")} ${ciMinToTime(fenster.bis)} · ${t("nochLabel")} <b>${ciFmtDauer(rest)}</b>`; }
+      if (rest > 0) { count.classList.remove("az-over"); count.innerHTML = `${t("feierabendUm")} ${ciFmtBis(fenster.bis)} · ${t("nochLabel")} <b>${ciFmtDauer(rest)}</b>`; }
       else { count.classList.add("az-over"); count.innerHTML = `⚠️ ${t("ueberFeierabend")}`; if (ring) ring.classList.add("az-over-ring"); }
     }
   });
