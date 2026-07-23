@@ -47,9 +47,10 @@ async function glasEnsureLoggedIn() {
   if (!stored || !stored.id || !stored.tok) { glasRenderLogin(); return false; }
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, login_aktiv").eq("id", stored.id).maybeSingle();
+      .select("id, name, username, pass_hash, login_aktiv, zugang_glas").eq("id", stored.id).maybeSingle();
     if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
     if (!data || data.login_aktiv === false || !data.username) { glasLogout(); return false; } // gesperrt/gelöscht
+    if (data.zugang_glas === false) { glasLogout(); return false; } // für Glas gesperrt (nur wenn ausdrücklich)
     const tok = await gekoSessionTok(data.id, data.pass_hash);
     if (tok !== stored.tok) { glasLogout(); return false; } // Passwort geändert -> neu anmelden
     glasCurrentUser = { id: data.id, name: data.name, username: data.username };
@@ -92,10 +93,11 @@ async function glasDoLogin() {
   if (btn) { btn.disabled = true; btn.textContent = "Prüfe…"; }
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, pass_salt, login_aktiv").eq("username", user).maybeSingle();
+      .select("id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas").eq("username", user).maybeSingle();
     if (error) throw error;
     if (!data || !data.username || !data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
     if (data.login_aktiv === false) { glasRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
+    if (data.zugang_glas === false) { glasRenderLogin("Für diesen Zugang ist die Glas-App nicht freigeschaltet. Bitte im Büro melden."); return; }
     const h = await gekoHashPw(pass, data.pass_salt || "");
     if (h !== data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
     const tok = await gekoSessionTok(data.id, data.pass_hash);

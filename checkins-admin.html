@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="GEKO Check-ins Admin" />
+<meta name="theme-color" content="#1f5d92" />
+<title>GEKO Check-ins – Admin</title>
+<link rel="stylesheet" href="css/checkins.css?v=86" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
+<link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+<script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
+</head>
+<body>
+
+  <!-- PIN-Sperre nur für den Check-ins-Admin-Bereich (Geräte-Schloss, clientseitig). -->
+  <div id="ciPinGate" style="display:none; position:fixed; inset:0; z-index:99999; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; align-items:center; justify-content:center; flex-direction:column; padding:24px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <div style="width:100%; max-width:300px; text-align:center;">
+      <div style="font-size:42px; margin-bottom:10px;">🔒</div>
+      <h1 style="font-size:20px; margin:0 0 4px; font-weight:800;">Check-ins · Admin</h1>
+      <p style="opacity:.75; font-size:14px; margin:0 0 22px;">Bitte PIN eingeben</p>
+      <input id="ciPinInput" type="password" inputmode="numeric" autocomplete="off" enterkeyhint="go" maxlength="16"
+        style="width:100%; box-sizing:border-box; text-align:center; font-size:22px; letter-spacing:6px; padding:14px; border-radius:14px; border:0; background:rgba(255,255,255,.16); color:#fff; outline:none;" placeholder="••••••••" />
+      <p id="ciPinErr" style="color:#ffd2ca; font-size:13px; min-height:18px; margin:10px 0 0;"></p>
+      <button id="ciPinBtn" style="margin-top:12px; width:100%; padding:14px; border-radius:14px; border:0; background:#fff; color:#1f5d92; font-size:16px; font-weight:700; cursor:pointer;">Entsperren</button>
+    </div>
+  </div>
+  <script>
+  (function(){
+    var KEY = "geko_ci_pin_ok";
+    try { if (localStorage.getItem(KEY) === "1") return; } catch(e){}
+    var gate = document.getElementById("ciPinGate");
+    var inp  = document.getElementById("ciPinInput");
+    var err  = document.getElementById("ciPinErr");
+    var btn  = document.getElementById("ciPinBtn");
+    if (!gate) return;
+    gate.style.display = "flex";
+    try { document.documentElement.style.overflow = "hidden"; } catch(e){}
+    setTimeout(function(){ try { inp.focus(); } catch(e){} }, 120);
+    function tryUnlock(){
+      if (inp.value === "19952000") {
+        try { localStorage.setItem(KEY, "1"); } catch(e){}
+        gate.style.display = "none";
+        try { document.documentElement.style.overflow = ""; } catch(e){}
+      } else {
+        err.textContent = "Falscher PIN – bitte erneut versuchen.";
+        inp.value = ""; try { inp.focus(); } catch(e){}
+      }
+    }
+    btn.addEventListener("click", tryUnlock);
+    inp.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); tryUnlock(); } });
+  })();
+  </script>
+
+  <div class="ci-head">
+    <div class="brand"><a href="hub.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:7px;"><span class="dot"></span>GEKO Check-ins · Admin</a></div>
+    <h1>📍 Check-ins</h1>
+    <div class="sub" id="ci_date">Heute</div>
+    <div class="who"><a href="hub.html">⌂ Hub</a></div>
+  </div>
+
+  <div class="ci-wrap admin">
+    <div class="ci-body">
+      <div id="view"><p class="ci-empty"><span class="spin spinner-dark"></span> Lade…</p></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="js/config.js?v=86"></script>
+  <script src="js/supabase-client.js?v=86"></script>
+  <script src="js/app-shared.js?v=86"></script>
+  <script src="js/glas-shared.js?v=86"></script>
+  <script src="js/checkins-shared.js?v=86"></script>
+  <script src="js/checkins-admin.js?v=86"></script>
+</body>
+</html>

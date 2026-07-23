@@ -1,0 +1,161 @@
+// ============================================================================
+// GEKO Check-ins – gemeinsame Logik (Admin + Mitarbeiter)
+// Reine Rechen-Helfer: Entfernung, Zeitfenster, Status eines Punkts/Rundgangs.
+// Absichtlich ohne DOM/Netz, damit beide Apps EXAKT gleich rechnen und leicht
+// testbar sind.
+// ============================================================================
+
+// ---- Wochentage: 1 = Montag … 7 = Sonntag (isoDay) --------------------------
+const CI_TAGE_KURZ = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const CI_TAGE_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
+// isoDay eines lokalen Datums (1=Mo … 7=So). getDay(): 0=So … 6=Sa.
+function ciIsoDay(date) {
+  const d = date.getDay();
+  return d === 0 ? 7 : d;
+}
+
+// Lokales Datum "YYYY-MM-DD" (nie toISOString – das wäre UTC und nachts daneben).
+function ciTodayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function ciIsoFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// "HH:MM" -> Minuten seit Mitternacht (oder null, wenn ungültig/leer).
+function ciTimeToMin(hhmm) {
+  const m = String(hhmm || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
+// Minuten seit Mitternacht -> "HH:MM".
+function ciMinToTime(min) {
+  min = ((min % 1440) + 1440) % 1440;
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+// Aktuelle Uhrzeit als Minuten seit Mitternacht (lokal).
+function ciNowMin(date) {
+  const d = date || new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+// Entfernung zweier Koordinaten in Metern (Haversine).
+function ciDistanzMeter(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+// Tage-String "1,3,5" -> Array [1,3,5] (nur gültige 1..7, sortiert, ohne Dubletten).
+function ciParseTage(tage) {
+  const set = new Set(
+    String(tage || "")
+      .split(",")
+      .map((t) => parseInt(t.trim(), 10))
+      .filter((t) => t >= 1 && t <= 7)
+  );
+  return [...set].sort((a, b) => a - b);
+}
+
+// Punkte eines Rundgangs als Array (jsonb kann String ODER Array sein).
+function ciRundgangPunkte(rg) {
+  if (!rg) return [];
+  let p = rg.punkte;
+  if (typeof p === "string") { try { p = JSON.parse(p || "[]"); } catch (e) { p = []; } }
+  return Array.isArray(p) ? p : [];
+}
+
+// Effektives Zeitfenster + Toleranz eines Punkts INNERHALB eines Rundgangs.
+// Reihenfolge: Punkt-im-Rundgang-Override -> Standard des Rundgangs -> Standard des Punkts.
+// Rückgabe { von, bis, tol } in Minuten (von/bis können null sein = kein Fenster).
+function ciEffFenster(rg, eintrag, punkt) {
+  const von = ciTimeToMin(eintrag && eintrag.fenster_von) ??
+    ciTimeToMin(rg && rg.fenster_von) ??
+    ciTimeToMin(punkt && punkt.fenster_von);
+  const bis = ciTimeToMin(eintrag && eintrag.fenster_bis) ??
+    ciTimeToMin(rg && rg.fenster_bis) ??
+    ciTimeToMin(punkt && punkt.fenster_bis);
+  let tol = eintrag && eintrag.toleranz_min;
+  if (tol == null || tol === "") tol = (rg && rg.toleranz_min);
+  if (tol == null || tol === "") tol = (punkt && punkt.toleranz_min);
+  tol = parseInt(tol, 10);
+  if (isNaN(tol)) tol = 0;
+  return { von, bis, tol };
+}
+
+// Läuft der Rundgang an diesem Datum? (Wochentag in tage enthalten)
+function ciRundgangLaeuftAn(rg, iso) {
+  const d = new Date(iso + "T00:00:00");
+  return ciParseTage(rg && rg.tage).includes(ciIsoDay(d));
+}
+
+// Status eines Punkts HEUTE für einen bestimmten Zeitpunkt.
+//   "done"  – es liegt ein Check-in für heute vor
+//   "now"   – Zeitfenster (inkl. Toleranz) läuft gerade -> fällig
+//   "later" – Fenster noch nicht offen
+//   "miss"  – Fenster (inkl. Toleranz) vorbei, kein Check-in
+//   "open"  – kein Zeitfenster hinterlegt (jederzeit möglich), noch nicht erledigt
+// nowMin = aktuelle Minute; hatCheckin = bool.
+function ciPunktStatus(fenster, nowMin, hatCheckin) {
+  if (hatCheckin) return "done";
+  const { von, bis, tol } = fenster;
+  if (von == null && bis == null) return "open";
+  const start = (von == null ? 0 : von) - tol;
+  const ende = (bis == null ? 1439 : bis) + tol;
+  if (nowMin < start) return "later";
+  if (nowMin > ende) return "miss";
+  return "now";
+}
+
+// Ergebnis-Status eines Punkts für einen VERGANGENEN Tag (Auswertung):
+// "ok" wenn Check-in vorhanden, sonst "miss".
+function ciPunktErgebnis(hatCheckin) {
+  return hatCheckin ? "ok" : "miss";
+}
+
+// Rundgang-Tagesstatus aus den Einzel-Ergebnissen.
+//   gesamt = Anzahl Punkte, erledigt = Anzahl mit Check-in
+//   "ok"   – alle erledigt
+//   "part" – teils erledigt
+//   "miss" – keiner erledigt
+function ciRundgangErgebnis(erledigt, gesamt) {
+  if (gesamt <= 0) return "off";
+  if (erledigt >= gesamt) return "ok";
+  if (erledigt <= 0) return "miss";
+  return "part";
+}
+
+// Menschliches Zeitfenster-Label, z.B. "08:00–08:30 ±15" oder "jederzeit".
+function ciFensterLabel(fenster) {
+  const { von, bis, tol } = fenster;
+  if (von == null && bis == null) return "jederzeit";
+  const v = von == null ? "" : ciMinToTime(von);
+  const b = bis == null ? "" : ciMinToTime(bis);
+  const range = v && b ? `${v}–${b}` : (v ? `ab ${v}` : `bis ${b}`);
+  return tol > 0 ? `${range} ±${tol}` : range;
+}
+
+// Uhrzeit "HH:MM" aus einem Zeitstempel (lokal).
+function ciUhrzeit(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Für Tabellen/CSV: sauberes Datum "DD.MM.YYYY".
+function ciFormatDatum(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}

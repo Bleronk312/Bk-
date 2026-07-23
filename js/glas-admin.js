@@ -4722,6 +4722,10 @@ function renderMaForm() {
         <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
           <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
         ${m.id ? `<label class="glas-aktiv-toggle"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt, kommt nicht mehr rein)</span></span></label>` : ""}
+        <p style="margin:12px 0 6px; font-weight:700; font-size:13px;">Anmelden erlaubt bei:</p>
+        <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren-App</span></label>
+        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_checkin" ${m.zugang_checkin === true ? "checked" : ""} /> <span>📍 Check-ins-App</span></label>
+        <p class="muted" style="margin:5px 0 0; font-size:12px;">Bestimmt, in welche App sich dieser Login einloggen darf. Dasselbe Konto, aber du wählst wo es funktioniert.</p>
       </div>
 
       <div class="field">
@@ -4770,10 +4774,23 @@ async function saveGlasMa() {
     payload.pass_klar = passRaw; // zum Nachschauen im Büro (Admin-only, hinter PIN)
   }
 
+  // Per-App-Zugang: bestimmt, WO sich dieser Login anmelden darf (Glas / Check-ins).
+  const zGlasEl = document.getElementById("ma_zugang_glas");
+  const zCheckinEl = document.getElementById("ma_zugang_checkin");
+  if (zGlasEl) payload.zugang_glas = zGlasEl.checked;
+  if (zCheckinEl) payload.zugang_checkin = zCheckinEl.checked;
+
   let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  if (error && /(zugang_glas|zugang_checkin)/i.test(error.message || "")) {
+    // Zugangs-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
+    delete payload.zugang_glas; delete payload.zugang_checkin;
+    showToast("Per-App-Zugang nicht gespeichert – bitte supabase_add_checkins.sql in Supabase ausführen");
+    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
+  }
   if (error && /(username|pass_hash|pass_salt|pass_klar|login_aktiv)/i.test(error.message || "")) {
     // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
     delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.pass_klar; delete payload.login_aktiv;
+    delete payload.zugang_glas; delete payload.zugang_checkin;
     showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
