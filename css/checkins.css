@@ -52,15 +52,22 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);
 .ci-wrap.admin{max-width:880px}
 
 /* ---- Kopf ---- */
+/* padding-top berücksichtigt die iPhone-Statusleiste (Notch/Standalone-Modus),
+   damit sich der Kopf nicht mit Uhrzeit/Akku überschneidet. */
 .ci-head{background:linear-gradient(160deg,var(--blue),var(--blue-600));color:#fff;
-  padding:14px 18px 18px;position:relative}
-.ci-head .brand{display:flex;align-items:center;gap:7px;font-size:12px;opacity:.92}
+  padding:calc(14px + env(safe-area-inset-top)) 18px 18px;position:relative}
+.ci-head .brand{display:flex;align-items:center;gap:7px;font-size:12px;opacity:.92;padding-right:150px}
 .ci-head .brand .dot{width:7px;height:7px;border-radius:50%;background:#fff}
 .ci-head h1{margin:6px 0 1px;font-size:20px;letter-spacing:-.01em}
 .ci-head .sub{font-size:12.5px;opacity:.9}
-.ci-head .who{position:absolute;right:16px;top:32px;font-size:11px;opacity:.95;text-align:right;line-height:1.4}
+.ci-head .who{position:absolute;right:16px;top:calc(env(safe-area-inset-top) + 12px);font-size:11px;opacity:.95;text-align:right;line-height:1.4}
+.ci-head .who .who-line{margin-top:8px}
 .ci-head .who a,.ci-head .who button{color:#fff;text-decoration:underline;background:none;border:0;
   font:inherit;cursor:pointer;padding:0}
+.ci-lang{display:inline-flex;gap:2px;background:rgba(255,255,255,.16);border-radius:999px;padding:2px}
+.ci-lang button{border:0;background:transparent;color:#fff;font:inherit;font-size:11.5px;font-weight:700;
+  padding:4px 8px;border-radius:999px;cursor:pointer;opacity:.72;text-decoration:none !important}
+.ci-lang button.on{background:#fff;color:var(--blue);opacity:1}
 .ci-body{padding:15px 0 0}
 
 /* ---- Segment-Reiter ---- */
@@ -220,22 +227,30 @@ select.f-in{appearance:auto}
 .map-btns{display:flex;gap:8px;margin-top:8px}
 
 /* ============================ MITARBEITER-APP ============================ */
+.rg-block{margin-bottom:12px}
 .rg{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;
-  box-shadow:var(--shadow);margin-bottom:12px}
-.rg .rg-t{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s}
+.rg.open{border-color:var(--blue);border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
+.rg .rg-t{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .rg .rg-name{font-weight:800;font-size:16px}
-.rg .rg-count{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.rg .rg-right{display:flex;align-items:center;gap:8px;flex:none}
+.rg .rg-count{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .rg .bar{height:7px;border-radius:99px;background:var(--line-2);margin:10px 0 7px;overflow:hidden}
 .rg .bar i{display:block;height:100%;border-radius:99px;background:var(--green);transition:width .5s cubic-bezier(.32,.72,0,1)}
 .rg .rg-sub{font-size:11.5px;color:var(--muted)}
+.chev{color:var(--muted);font-size:13px;transition:transform .2s;flex:none;line-height:1}
+.rg.open .chev,.pt.open .chev{transform:rotate(180deg)}
+.rg-stops{border:1px solid var(--blue);border-top:none;border-radius:0 0 16px 16px;background:var(--bg);
+  padding:9px 9px 4px;animation:ciFade .25s cubic-bezier(.32,.72,0,1)}
 
-.pt{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 14px;
-  margin-bottom:9px;position:relative;transition:border-color .2s,box-shadow .2s}
-.pt .head{display:flex;gap:10px;align-items:center}
+.pt{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 12px;
+  margin-bottom:7px;position:relative;transition:border-color .2s,box-shadow .2s}
+.pt .head{display:flex;gap:10px;align-items:center;cursor:pointer}
 .pt .ic{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:17px;background:var(--bg)}
 .pt .pm{flex:1;min-width:0}
 .pt .pn{font-weight:700;font-size:14.5px}
 .pt .ps{font-size:11.5px;color:var(--muted);margin-top:1px}
+.pt .ps .pt-adr{display:block;font-size:11px;opacity:.85;margin-top:1px}
 .pt .st{flex:none;font-size:10.5px;font-weight:800;padding:5px 10px;border-radius:999px;letter-spacing:.02em}
 .st-done{color:var(--green);background:var(--green-bg)}
 .st-now{color:#fff;background:var(--blue)}

@@ -114,7 +114,8 @@ function ciaRgTagesstatus(rg, logs, iso, nowMin) {
     if (!punkt) return;
     const fenster = ciEffFenster(rg, e, punkt);
     const done = !!ciaLogFor(logs, rg.id, e.punkt_id, iso);
-    const st = ciPunktStatus(fenster, nowMin, done);
+    let st = ciPunktStatus(fenster, nowMin, done);
+    if (st === "miss" && !ciZaehltAb(iso)) st = "now"; // vor Go-Live nichts als verpasst zeigen
     if (st === "done") erledigt++;
     else if (st === "miss") hatMiss = true;
     else if (st === "now" || st === "open") hatNow = true;
@@ -212,8 +213,8 @@ function ciaRenderMonat() {
   const tage = new Date(y, mo + 1, 0).getDate();
   const rgs = ciaData.rundgaenge;
 
-  // Erfüllung pro Rundgang + Gesamtzahlen
-  let totalCheckins = ciaMonthLogs.length;
+  // Erfüllung pro Rundgang + Gesamtzahlen (nur ab Go-Live-Datum zählen)
+  let totalCheckins = ciaMonthLogs.filter((l) => ciZaehltAb(l.datum)).length;
   let erfPunkte = 0, sollPunkte = 0;
   const verpasstTage = new Set();
   const quota = rgs.map((rg) => {
@@ -221,7 +222,7 @@ function ciaRenderMonat() {
     let soll = 0, ist = 0;
     for (let d = 1; d <= tage; d++) {
       const iso = `${y}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-      if (iso > heuteIso) continue;
+      if (iso > heuteIso || !ciZaehltAb(iso)) continue;
       if (!ciRundgangLaeuftAn(rg, iso)) continue;
       eintraege.forEach((e) => {
         soll++;
@@ -250,7 +251,7 @@ function ciaRenderMonat() {
     for (let d = 1; d <= tage; d++) {
       const iso = `${y}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       let cls = "off", txt = "";
-      if (!ciRundgangLaeuftAn(rg, iso)) cls = "off";
+      if (!ciRundgangLaeuftAn(rg, iso) || !ciZaehltAb(iso)) cls = "off"; // vor Go-Live: grau "nicht erfasst"
       else if (iso > heuteIso) cls = "fut";
       else {
         const done = eintraege.filter((e) => ciaLogFor(ciaMonthLogs, rg.id, e.punkt_id, iso)).length;
@@ -332,7 +333,7 @@ function ciaMonatSollIst() {
     const eintraege = ciRundgangPunkte(rg);
     for (let d = 1; d <= tage; d++) {
       const iso = `${y}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-      if (iso > heuteIso || !ciRundgangLaeuftAn(rg, iso)) continue;
+      if (iso > heuteIso || !ciZaehltAb(iso) || !ciRundgangLaeuftAn(rg, iso)) continue;
       eintraege.forEach((e) => {
         const punkt = ciaPunkt(e.punkt_id);
         const log = ciaLogFor(ciaMonthLogs, rg.id, e.punkt_id, iso);

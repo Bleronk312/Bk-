@@ -15,6 +15,12 @@ function ciIsoDay(date) {
   return d === 0 ? 7 : d;
 }
 
+// Ab DIESEM Datum wird ausgewertet. Alles davor gilt als "nicht erfasst" (grau) und
+// zählt nirgends als verpasst – so startet die App sauber am Go-Live-Tag. Zum
+// Verschieben einfach nur dieses eine Datum ändern (Format YYYY-MM-DD).
+const CI_START = "2026-07-24";
+function ciZaehltAb(iso) { return String(iso || "") >= CI_START; }
+
 // Lokales Datum "YYYY-MM-DD" (nie toISOString – das wäre UTC und nachts daneben).
 function ciTodayIso() {
   const d = new Date();
@@ -91,6 +97,18 @@ function ciEffFenster(rg, eintrag, punkt) {
   tol = parseInt(tol, 10);
   if (isNaN(tol)) tol = 0;
   return { von, bis, tol };
+}
+
+// Punkte eines Rundgangs nach effektiver Fenster-Startzeit sortiert (früh -> spät).
+// Punkte ohne Zeitfenster ("jederzeit") kommen ans Ende. punkteMap: {id: punkt}.
+function ciSortEintraege(rg, eintraege, punkteMap) {
+  return (eintraege || []).slice().sort((a, b) => {
+    const fa = ciEffFenster(rg, a, punkteMap[a.punkt_id]).von;
+    const fb = ciEffFenster(rg, b, punkteMap[b.punkt_id]).von;
+    const va = fa == null ? 100000 : fa;
+    const vb = fb == null ? 100000 : fb;
+    return va - vb;
+  });
 }
 
 // Läuft der Rundgang an diesem Datum? (Wochentag in tage enthalten)
