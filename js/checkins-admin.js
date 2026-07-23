@@ -196,15 +196,6 @@ function ciaRenderStart() {
     return `<div class="feed-row"><span class="t">${escapeHtml(ciUhrzeit(l.ts))}</span><span class="fdot" style="background:var(--green)"></span><span>${escapeHtml((p&&p.name)||"Punkt")}${escapeHtml(dist)} · ${escapeHtml(l.mitarbeiter_name||"")}</span></div>`;
   }).join("") : `<p class="ci-empty">Heute noch keine Check-ins.</p>`;
 
-  // Arbeitszeit: gerade eingecheckt (offene Schichten heute)
-  const offen = (ciaData.schichten || []).filter((s) => !s.aus_ts && s.datum === iso);
-  const nowMs = Date.now();
-  const offenHtml = offen.length ? offen.map((s) => {
-    const ort = (ciaData.orte || []).find((o) => o.id === s.ort_id);
-    const dauer = ciFmtDauer((nowMs - new Date(s.ein_ts).getTime()) / 60000);
-    return `<div class="feed-row"><span class="t">${escapeHtml(ciUhrzeit(s.ein_ts))}</span><span class="fdot" style="background:var(--blue)"></span><span><b>${escapeHtml(s.mitarbeiter_name||"")}</b> · ${escapeHtml((ort&&ort.name)||"Objekt")} · seit <b>${dauer}</b></span></div>`;
-  }).join("") : "";
-
   return `
     <div class="ci-stagger">
       <div class="tiles">
@@ -215,9 +206,59 @@ function ciaRenderStart() {
       </div>
       ${missNamen.length ? `<div class="card-x warncard"><h4>⚠️ Braucht deine Aufmerksamkeit</h4>
         <p>${missNamen.map((n)=>`<b>„${escapeHtml(n)}"</b>`).join(", ")} ${missNamen.length>1?"haben":"hat"} heute mindestens einen verpassten Punkt.</p></div>` : ""}
-      ${offenHtml ? `<div class="card-x"><h4>🏢 Gerade eingecheckt (Arbeitszeit)</h4>${offenHtml}</div>` : ""}
+      ${ciaRenderStartOrte(iso)}
       <div class="card-x"><h4>Letzte Check-ins</h4>${letzteHtml}</div>
     </div>`;
+}
+
+// ---- Arbeitsorte-Übersicht auf der Startseite (aufklappbar) ----
+let ciaOpenOrt = {}; // {ortId: true} aufgeklappte Arbeitsorte auf dem Dashboard
+function ciaToggleOrtStart(id) { ciaOpenOrt[id] = !ciaOpenOrt[id]; ciaRender(); }
+
+// Status eines zugewiesenen Mitarbeiters an einem Arbeitsort HEUTE.
+function ciaOrtMaStatus(ort, maId, iso) {
+  const mine = (ciaData.schichten || []).filter((s) => s.ort_id === ort.id && s.mitarbeiter_id === maId);
+  const open = mine.find((s) => !s.aus_ts);
+  if (open) return { key: "ein", label: `eingecheckt seit ${ciUhrzeit(open.ein_ts)}` };
+  const doneToday = mine.filter((s) => s.aus_ts && s.datum === iso);
+  if (doneToday.length) {
+    const tot = doneToday.reduce((a, s) => a + (s.dauer_min || 0), 0);
+    return { key: "fertig", label: `fertig · ${ciFmtDauer(tot)}` };
+  }
+  return { key: "offen", label: "noch nicht da" };
+}
+
+function ciaRenderStartOrte(iso) {
+  const orte = (ciaData.orte || []).filter((o) => o.aktiv !== false);
+  if (!orte.length) return "";
+  const cards = orte.map((ort) => {
+    const fenster = ciOrtFensterAn(ort, iso);
+    const maIds = ciOrtMitarbeiter(ort);
+    const statuses = maIds.map((id) => ({ name: ciaMaName(id) || "?", st: ciaOrtMaStatus(ort, id, iso) }));
+    const einN = statuses.filter((s) => s.st.key === "ein").length;
+    const fertigN = statuses.filter((s) => s.st.key === "fertig").length;
+    const offenN = statuses.filter((s) => s.st.key === "offen").length;
+    let pill;
+    if (!fenster) pill = `<span class="stpill sp-off">kein Dienst</span>`;
+    else if (einN > 0) pill = `<span class="stpill sp-run">${einN} da</span>`;
+    else if (maIds.length && fertigN >= maIds.length) pill = `<span class="stpill sp-ok">✓ fertig</span>`;
+    else pill = `<span class="stpill sp-off">${offenN} offen</span>`;
+    const open = !!ciaOpenOrt[ort.id];
+    const rows = statuses.length ? statuses.map((s) => {
+      const cls = !fenster ? "r-later" : s.st.key === "ein" ? "r-now" : s.st.key === "fertig" ? "r-ok" : "r-miss";
+      const txt = !fenster ? "heute kein Dienst" : s.st.label;
+      return `<div class="prow"><span class="nm2">👤 ${escapeHtml(s.name)}</span><span class="res ${cls}">${escapeHtml(txt)}</span></div>`;
+    }).join("") : `<div class="prow"><span class="nm2 muted">Niemand zugewiesen</span></div>`;
+    const zeit = fenster ? `${ciMinToTime(fenster.von)}–${ciFmtBis(fenster.bis)}` : "heute frei";
+    return `<div class="day-rg">
+      <div class="hd" onclick="ciaToggleOrtStart('${ort.id}')">
+        <div><div class="nm">🏢 ${escapeHtml(ort.name)}</div><div class="as">${zeit} · ${maIds.length} MA</div></div>
+        <span style="display:flex;align-items:center;gap:8px;">${pill}<span style="color:var(--muted);font-size:13px;">${open ? "▴" : "▾"}</span></span>
+      </div>
+      ${open ? `<div class="pts">${rows}</div>` : ""}
+    </div>`;
+  }).join("");
+  return `<div><h4 style="margin:16px 2px 8px;font-size:13.5px;">🏢 Arbeitsorte heute</h4>${cards}</div>`;
 }
 
 /* ---------------- HEUTE (Tagesansicht) ---------------- */
