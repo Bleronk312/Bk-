@@ -5539,7 +5539,8 @@ function renderKalenderMonat() {
   // innerhalb der Woche von seinem Start- bis Endtag (in %), der Text läuft über die
   // ganze Balkenbreite (nicht mehr auf eine Zelle gequetscht). Das Overlay ist an der
   // Wochenbreite abgeschnitten (overflow:hidden) -> kann NIE aus dem Bildschirm laufen.
-  const BAR_H = 19; // px Abstand pro Lane (Balken 13-15px + ~4px Lücke, damit sie nicht kleben)
+  // Lane-Abstand & Zeilenhöhe kommen komplett aus dem CSS (--barh/--barstop, je
+  // Bildschirmgröße verschieden) - das JS gibt nur Lane-Nummern weiter.
   const cellsHtml = weeks.map((week) => {
     const weekVon = week[0], weekBis = week[6];
     const inWeek = events.filter((e) => e.datum <= weekBis && (e.datum_bis || e.datum) >= weekVon);
@@ -5559,10 +5560,9 @@ function renderKalenderMonat() {
       if (e._lane > maxLane) maxLane = e._lane;
       const contLeft = e.datum < weekVon, contRight = eBis > weekBis;
       const left = (cStart / 7 * 100).toFixed(4), width = ((cEnd - cStart + 1) / 7 * 100).toFixed(4);
-      bars.push(`<div class="glas-cal-bar${contLeft ? " cont-left" : ""}${contRight ? " cont-right" : ""}${e.urlaub ? " is-urlaub" : ""}${e.done ? " is-done" : ""}" style="--c:${e.col}; left:${left}%; width:${width}%; top:${e._lane * BAR_H}px;">${escapeHtml(e.label)}</div>`);
+      bars.push(`<div class="glas-cal-bar${contLeft ? " cont-left" : ""}${contRight ? " cont-right" : ""}${e.urlaub ? " is-urlaub" : ""}${e.done ? " is-done" : ""}" style="--c:${e.col}; --lane:${e._lane}; left:${left}%; width:${width}%;">${escapeHtml(e.label)}</div>`);
     });
     const lanesShown = Math.max(1, Math.min(maxChips, maxLane + 1));
-    const minH = 30 + lanesShown * BAR_H + 8;
     const daysHtml = week.map((iso, ci) => {
       const d = parseInt(iso.slice(8, 10), 10);
       const isToday = iso === todayIso;
@@ -5575,7 +5575,7 @@ function renderKalenderMonat() {
     }).join("");
     return `<div class="glas-cal-wrow">
       <div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>
-      <div class="glas-cal-wcells" style="min-height:${minH}px;">
+      <div class="glas-cal-wcells" style="--lanes:${lanesShown};">
         ${daysHtml}
         <div class="glas-cal-bars">${bars.join("")}</div>
       </div>
