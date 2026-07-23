@@ -3093,10 +3093,14 @@ function renderTourDetailView() {
       <div class="glas-stop-list">${rows}</div>
       ${glasTourDetailStops.length ? `<button class="btn btn-sm" style="margin-top:12px;" onclick="downloadAlleGlasPdfs()">📄 Alle PDFs herunterladen (${glasTourDetailStops.length})</button>` : ""}
     </div>
-    ${t.archiviert_am
-      ? `<button class="btn btn-sm" onclick="restoreGlasTour('${t.id}')">↩️ Aus dem Archiv wiederherstellen</button>`
-      : `<button class="btn btn-sm" style="color:var(--danger); margin-top:10px;" onclick="deleteGlasTour('${t.id}')">Tour löschen (wandert ins Archiv)</button>`
-    }
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn btn-sm" onclick="toggleGlasTourKalender('${t.id}')">${t.kalender_versteckt ? "🗓️ Wieder im Kalender zeigen" : "🗓️ Aus Kalender ausblenden"}</button>
+      ${t.archiviert_am
+        ? `<button class="btn btn-sm" onclick="restoreGlasTour('${t.id}')">↩️ Aus dem Archiv wiederherstellen</button>`
+        : `<button class="btn btn-sm" style="color:var(--danger);" onclick="deleteGlasTour('${t.id}')">Tour löschen (wandert ins Archiv)</button>`
+      }
+    </div>
+    ${t.kalender_versteckt ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">🗓️ Aus dem Kalender ausgeblendet – Touren-Liste &amp; Statistik bleiben unberührt.</p>` : ""}
     ${glasMergePickerFor === t.id ? renderGlasMergePicker(t) : ""}
   `;
 }
@@ -3172,6 +3176,25 @@ async function toggleGlasTourMaSichtbar(tourId) {
   if (error) { showToast("Fehler: " + error.message); return; }
   t.ma_versteckt = neu; // optimistisch, damit der Button sofort umschaltet
   showToast(neu ? "Aus Mitarbeiter-Ansicht entfernt" : "Wieder in Mitarbeiter-Ansicht");
+  await loadGlasTouren();
+  renderGlasAdmin();
+}
+
+// Einzelne Tour aus dem Kalender aus-/einblenden (z.B. nicht geklappte Tour, doppelter
+// Blanko). Betrifft NUR den Kalender – Liste & Statistik bleiben unberührt.
+async function toggleGlasTourKalender(tourId) {
+  if (glasBusy) return;
+  const t = glasTouren.find((x) => x.id === tourId);
+  if (!t) return;
+  const neu = !t.kalender_versteckt;
+  const { error } = await sb.from("glas_touren").update({ kalender_versteckt: neu }).eq("id", tourId);
+  if (error && /kalender_versteckt/i.test(error.message || "")) {
+    showToast("Bitte supabase_add_kalender_versteckt.sql in Supabase ausführen");
+    return;
+  }
+  if (error) { showToast("Fehler: " + error.message); return; }
+  t.kalender_versteckt = neu; // optimistisch, damit der Button sofort umschaltet
+  showToast(neu ? "Aus dem Kalender ausgeblendet" : "Wieder im Kalender sichtbar");
   await loadGlasTouren();
   renderGlasAdmin();
 }
@@ -5342,8 +5365,9 @@ function glasTermineAmTag(iso) {
 
 function glasTourenAmTag(iso) {
   // Bewusst INKL. archivierter Touren: Archivieren ist nur eine Aufräum-Ansicht in der
-  // Touren-Liste und darf Touren nicht aus dem Kalender entfernen.
-  return glasTouren.filter((t) => t.datum && iso >= t.datum && iso <= (t.datum_bis || t.datum));
+  // Touren-Liste und darf Touren nicht aus dem Kalender entfernen. AUSGENOMMEN Touren,
+  // die der Admin bewusst aus dem Kalender ausgeblendet hat (kalender_versteckt).
+  return glasTouren.filter((t) => !t.kalender_versteckt && t.datum && iso >= t.datum && iso <= (t.datum_bis || t.datum));
 }
 
 // TimeTree-artige Ansicht: durchgehende Liste von Wochenzeilen, Touren als farbige Balken,
@@ -5434,7 +5458,8 @@ function renderKalenderMonat() {
   const rangeBis = weeks[weeks.length - 1][6];
   // INKL. archivierter Touren – der Kalender zeigt IMMER alle Touren (auch unterschriebene,
   // archivierte). Archivieren betrifft nur die Übersichts-Liste, nicht den Kalender.
-  const activeTouren = glasTouren.filter((t) => t.datum);
+  // Ausnahme: einzeln aus dem Kalender ausgeblendete Touren (kalender_versteckt).
+  const activeTouren = glasTouren.filter((t) => t.datum && !t.kalender_versteckt);
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
