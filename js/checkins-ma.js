@@ -56,7 +56,7 @@ const CI_T = {
     gezaehlt: "gezählt", heuteFertig: "Heute erledigt", keinArbeitsort: "Dir ist heute kein Arbeitsort zugewiesen.",
     tEin: "✓ Eingecheckt", tAus: "✓ Ausgecheckt – schönen Feierabend!",
     tGpsErmittelnAus: "Auschecken – GPS wird geprüft…",
-    bellHint: "Erinnerung ans Auschecken aufs Handy bekommen", bellOn: "Aktivieren", bellAktiv: "🔔 Erinnerungen sind aktiv",
+    bellHint: "Erinnerungen aufs Handy bekommen (Rundgänge & Auschecken)", bellOn: "Aktivieren", bellAktiv: "🔔 Erinnerungen sind aktiv",
     tageKurz: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
     tageLang: ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
     monate: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
@@ -97,7 +97,7 @@ const CI_T = {
     gezaehlt: "numëruar", heuteFertig: "Sot e kryer", keinArbeitsort: "Sot s'të është caktuar vend pune.",
     tEin: "✓ Hyre", tAus: "✓ Dole – ditë të mbarë!",
     tGpsErmittelnAus: "Dalje – po kontrollohet GPS…",
-    bellHint: "Merr kujtesë në telefon për t'u çkyçur", bellOn: "Aktivizo", bellAktiv: "🔔 Kujtesat janë aktive",
+    bellHint: "Merr kujtesa në telefon (turnet & çkyçja)", bellOn: "Aktivizo", bellAktiv: "🔔 Kujtesat janë aktive",
     tageKurz: ["Hën", "Mar", "Mër", "Enj", "Pre", "Sht", "Die"],
     tageLang: ["E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë", "E diel"],
     monate: ["janar", "shkurt", "mars", "prill", "maj", "qershor", "korrik", "gusht", "shtator", "tetor", "nëntor", "dhjetor"],
@@ -356,6 +356,9 @@ function ciRenderHeute() {
   const rgs = (ciData.rundgaenge || []).filter((r) => ciRundgangLaeuftAn(r, heute));
   let html = "";
   if (queued) html += `<div class="offline-chip">${t("offlineWartet")(queued)}</div>`;
+  // Glocken-Karte auch hier: Rundgang-MAs ohne Arbeitsort sehen den Arbeitszeit-Reiter
+  // nie und könnten Benachrichtigungen sonst nirgends einschalten.
+  html += ciPushBanner(true);
   if (!rgs.length) return html + `<div class="card-x"><p class="ci-empty">${t("keinRundgang")}</p></div>`;
 
   html += `<div class="ci-stagger">`;
@@ -769,9 +772,11 @@ async function ciEnablePush() {
   await enablePushNotifications("checkin_ma", ciUser && ciUser.id);
   ciRender();
 }
-function ciPushBanner() {
+// nurWennAus: im Heute-Reiter zeigen wir die Karte nur, solange noch nicht aktiviert
+// wurde (keine dauerhafte "ist aktiv"-Karte auf dem Haupt-Reiter).
+function ciPushBanner(nurWennAus) {
   if (typeof Notification === "undefined") return "";
-  if (Notification.permission === "granted") return `<div class="card-x" style="padding:11px 14px;font-size:12.5px;color:var(--green);font-weight:600;">${t("bellAktiv")}</div>`;
+  if (Notification.permission === "granted") return nurWennAus ? "" : `<div class="card-x" style="padding:11px 14px;font-size:12.5px;color:var(--green);font-weight:600;">${t("bellAktiv")}</div>`;
   return `<div class="card-x" style="display:flex;align-items:center;gap:11px;">
     <span style="font-size:22px;">🔔</span>
     <div style="flex:1;font-size:12.5px;">${t("bellHint")}</div>
