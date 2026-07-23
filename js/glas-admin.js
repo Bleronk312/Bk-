@@ -388,11 +388,24 @@ function glasDebugOverlay() {
 // bearbeitet wird in der Graffiti-App.)
 let glasGraffitiTermine = [];
 let glasKalGraffitiEinblenden = true;
-const GLAS_GRAFFITI_COL = "#b0308a";
+const GLAS_GRAFFITI_COL = "#b0308a";        // offen/geplant: Magenta
+const GLAS_GRAFFITI_DONE = "#7a2a6b";       // unterschrieben: dunkleres Magenta (klar anders als Glas-Grün)
 async function loadGlasGraffitiTermine() {
   const spalten = "id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, termin, kdnr, monat, unterschrift_name, signed_at";
-  const { data, error } = await sb.from("scheine").select(spalten).not("termin", "is", null).eq("archiviert", false);
+  // Scheine mit geplantem Termin ODER mit Unterschrift laden (letztere auch OHNE Termin ->
+  // erscheinen dann am Tag der Unterschrift im Kalender).
+  let { data, error } = await sb.from("scheine").select(spalten).or("termin.not.is.null,signed_at.not.is.null").eq("archiviert", false);
+  if (error) {
+    // Fallback auf das alte Verhalten (nur terminierte), falls die or-Abfrage nicht klappt
+    ({ data, error } = await sb.from("scheine").select(spalten).not("termin", "is", null).eq("archiviert", false));
+  }
   glasGraffitiTermine = error ? [] : (data || []);
+}
+
+// Tag, an dem ein Graffiti-Schein im Kalender steht: geplanter Termin, sonst der Tag der
+// Unterschrift (für Scheine ohne Termin).
+function glasGraffitiTag(g) {
+  return g.termin ? glasDatumVonTimestamp(g.termin) : glasDatumVonTimestamp(g.signed_at);
 }
 
 async function glasInit() {
@@ -5444,17 +5457,18 @@ function renderKalenderMonat() {
       }));
     }) : []),
     // 🎨 Graffiti-Termine aus der Graffiti-App (scheine.termin) - eigene Farbe.
-    ...(glasKalGraffitiEinblenden ? glasGraffitiTermine.filter((g) => g.termin).map((g) => {
-      const iso = glasDatumVonTimestamp(g.termin);
+    ...(glasKalGraffitiEinblenden ? glasGraffitiTermine.map((g) => {
+      const iso = glasGraffitiTag(g); // Termin-Tag oder (ohne Termin) Unterschrifts-Tag
       const gdone = !!(g.unterschrift_name || g.signed_at);
       return {
         datum: iso, datum_bis: iso,
-        // Unterschrieben -> grün + durchgestrichen (wie erledigte Touren), sonst Graffiti-Pink
-        col: gdone ? GLAS_TOUR_FARBE.fertig : GLAS_GRAFFITI_COL,
+        // Unterschrieben -> durchgestrichen in dunklem Magenta (eigene Graffiti-Farbe,
+        // klar anders als die grünen Glas-Touren); offen -> helles Magenta.
+        col: gdone ? GLAS_GRAFFITI_DONE : GLAS_GRAFFITI_COL,
         done: gdone,
         label: (g.kunde || "").split("\n")[0] || "Graffiti",
       };
-    }) : []),
+    }).filter((e) => e.datum) : []),
     // Urlaube (einblendbar über 🏖️): bewusst dezenter/transparenter gestylt als Touren/
     // Termine, damit man sie klar unterscheiden kann (is-urlaub)
     ...(glasKalUrlaubEinblenden ? glasUrlaub.filter((u) => u.von).map((u) => ({
@@ -5629,17 +5643,17 @@ function renderKalenderTagPanel(iso) {
 
   // 🎨 Graffiti-Termine dieses Tages (read-only Info + Sprung in die Graffiti-App)
   const graffitiAmTag = glasKalGraffitiEinblenden
-    ? glasGraffitiTermine.filter((g) => g.termin && glasDatumVonTimestamp(g.termin) === iso)
+    ? glasGraffitiTermine.filter((g) => glasGraffitiTag(g) === iso)
     : [];
   const graffitiRows = graffitiAmTag.map((g) => {
     const done = !!(g.unterschrift_name || g.signed_at);
-    const zeit = glasUhrzeitVonTimestamp(g.termin);
+    const zeit = glasUhrzeitVonTimestamp(g.termin || g.signed_at);
     const strasse = (g.adresse || "").split("\n")[0];
     return `
       <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasOpenGraffitiInfo('${g.id}')">
-        <span style="width:4px; align-self:stretch; border-radius:2px; background:${done ? GLAS_TOUR_FARBE.fertig : GLAS_GRAFFITI_COL};"></span>
+        <span style="width:4px; align-self:stretch; border-radius:2px; background:${done ? GLAS_GRAFFITI_DONE : GLAS_GRAFFITI_COL};"></span>
         <div style="flex:1; min-width:0;">
-          <p style="margin:0; font-weight:600; ${done ? "text-decoration:line-through; color:var(--success-text);" : ""}">🎨 ${escapeHtml((g.kunde || "").split("\n")[0] || "Graffiti")}${done ? " ✓" : ""}</p>
+          <p style="margin:0; font-weight:600; ${done ? `text-decoration:line-through; color:${GLAS_GRAFFITI_DONE};` : ""}">🎨 ${escapeHtml((g.kunde || "").split("\n")[0] || "Graffiti")}${done ? " ✓" : ""}</p>
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${zeit ? zeit + " Uhr · " : ""}${escapeHtml(g.kategorie || "Graffiti")}${strasse ? " · " + escapeHtml(strasse) : ""}</p>
         </div>
         <span style="color:var(--text-secondary);">›</span>
