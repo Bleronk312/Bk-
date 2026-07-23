@@ -270,3 +270,13 @@ function ciOrtStatus(fenster, nowMin, puffer, offen, fertig) {
   if (nowMin > fenster.bis + puffer) return "vorbei";
   return "ein";
 }
+
+// App-Version aus der eigenen Script-URL (?v=NN) lesen - wird klein im Kopf angezeigt,
+// damit man am Handy sofort sieht, welcher Stand wirklich läuft (Cache-Kontrolle).
+function ciAppVersion() {
+  try {
+    const s = document.querySelector('script[src*="checkins-shared.js"]');
+    const m = s && s.src.match(/[?&]v=(\d+)/);
+    return m ? "v" + m[1] : "";
+  } catch (e) { return ""; }
+}

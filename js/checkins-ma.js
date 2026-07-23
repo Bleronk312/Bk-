@@ -142,7 +142,8 @@ function ciSetHeaderDate() {
   const el = document.getElementById("ci_date");
   if (!el) return;
   const d = new Date();
-  el.textContent = t("datum")(t("tageLang")[ciIsoDay(d) - 1], d.getDate(), t("monate")[d.getMonth()]);
+  const ver = typeof ciAppVersion === "function" ? ciAppVersion() : "";
+  el.textContent = t("datum")(t("tageLang")[ciIsoDay(d) - 1], d.getDate(), t("monate")[d.getMonth()]) + (ver ? ` · ${ver}` : "");
 }
 
 /* ---------------- Login ---------------- */

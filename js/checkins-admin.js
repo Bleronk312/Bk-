@@ -42,7 +42,8 @@ function ciaSetHeaderDate() {
   const el = document.getElementById("ci_date");
   if (!el) return;
   const d = new Date();
-  el.textContent = `${CI_TAGE_LANG[ciIsoDay(d) - 1]}, ${d.getDate()}. ${CI_MONATE[d.getMonth()]} ${d.getFullYear()}`;
+  const ver = typeof ciAppVersion === "function" ? ciAppVersion() : "";
+  el.textContent = `${CI_TAGE_LANG[ciIsoDay(d) - 1]}, ${d.getDate()}. ${CI_MONATE[d.getMonth()]} ${d.getFullYear()}${ver ? ` · ${ver}` : ""}`;
 }
 
 /* ---------------- Daten laden ---------------- */
