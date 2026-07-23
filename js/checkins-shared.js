@@ -75,6 +75,15 @@ function ciParseTage(tage) {
   return [...set].sort((a, b) => a - b);
 }
 
+// Zugewiesene Mitarbeiter eines Rundgangs (Array von IDs). Leeres Array = "alle dürfen".
+// Fällt auf das alte Einzelfeld mitarbeiter_id zurück, solange noch nicht umgestellt.
+function ciRundgangMitarbeiter(rg) {
+  const a = ciJson(rg && rg.mitarbeiter_ids, null);
+  if (Array.isArray(a) && a.length) return a;
+  if (rg && rg.mitarbeiter_id) return [rg.mitarbeiter_id];
+  return [];
+}
+
 // Punkte eines Rundgangs als Array (jsonb kann String ODER Array sein).
 function ciRundgangPunkte(rg) {
   if (!rg) return [];

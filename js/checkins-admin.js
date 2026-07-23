@@ -234,7 +234,8 @@ function ciaRenderHeute() {
       : s.status === "miss" ? `<span class="stpill sp-miss">✗ ${s.erledigt}/${s.gesamt}</span>`
       : s.status === "run" ? `<span class="stpill sp-run">läuft · ${s.erledigt}/${s.gesamt}</span>`
       : `<span class="stpill sp-off">${s.erledigt}/${s.gesamt}</span>`;
-    const maName = rg.mitarbeiter_id ? ciaMaName(rg.mitarbeiter_id) : "alle";
+    const maNamen = ciRundgangMitarbeiter(rg).map((id) => ciaMaName(id)).filter(Boolean);
+    const maName = maNamen.length ? maNamen.join(", ") : "alle";
     const offen = idx === 0 ? "block" : "none";
     const rows = ciRundgangPunkte(rg).map((e) => {
       const punkt = ciaPunkt(e.punkt_id);
@@ -512,7 +513,7 @@ function ciaDownload(blob, name) {
 function ciaRenderRund() {
   if (ciaRgForm) return ciaRenderRgForm();
   const list = ciaData.rundgaenge.map((rg) => {
-    const maName = rg.mitarbeiter_id ? ciaMaName(rg.mitarbeiter_id) : null;
+    const maNamen = ciRundgangMitarbeiter(rg).map((id) => ciaMaName(id)).filter(Boolean);
     const eintraege = ciRundgangPunkte(rg);
     const chips = eintraege.map((e) => {
       const p = ciaPunkt(e.punkt_id);
@@ -525,7 +526,7 @@ function ciaRenderRund() {
       <div class="top"><span class="nm">${escapeHtml(rg.name)}</span>
         <label class="sw-t"><input type="checkbox" ${rg.aktiv!==false?"checked":""} onchange="ciaToggleRg('${rg.id}',this.checked)"><i></i></label></div>
       <div class="meta">${eintraege.length} Punkt${eintraege.length!==1?"e":""} · ${ciParseTage(rg.tage).map((t)=>CI_TAGE_KURZ[t-1]).join(", ")} · ${escapeHtml(rg.fenster_von||"")}–${escapeHtml(rg.fenster_bis||"")}${rg.aktiv===false?` · <b style="color:var(--red);">pausiert</b>`:""}</div>
-      ${maName?`<span class="ma-chip"><span class="av">${escapeHtml((maName[0]||"?").toUpperCase())}</span> ${escapeHtml(maName)}</span>`:`<span class="ma-chip"><span class="av">∀</span> alle</span>`}
+      ${maNamen.length ? maNamen.map((n) => `<span class="ma-chip"><span class="av">${escapeHtml((n[0] || "?").toUpperCase())}</span> ${escapeHtml(n)}</span>`).join(" ") : `<span class="ma-chip"><span class="av">∀</span> alle</span>`}
       ${chips?`<div class="chips">${chips}</div>`:""}
       <div class="rgc-actions">
         <button onclick="ciaEditRg('${rg.id}')">✏️ Bearbeiten</button>
@@ -538,7 +539,7 @@ function ciaRenderRund() {
 }
 
 function ciaNewRg() {
-  ciaRgForm = { id: null, name: "", mitarbeiter_id: "", tage: "1,2,3,4,5", fenster_von: "06:00", fenster_bis: "10:00", toleranz_min: 30, punkte: [], aktiv: true };
+  ciaRgForm = { id: null, name: "", mitarbeiter_ids: [], tage: "1,2,3,4,5", fenster_von: "06:00", fenster_bis: "10:00", toleranz_min: 30, punkte: [], aktiv: true };
   ciaRender();
 }
 function ciaEditRg(id) {
@@ -552,8 +553,10 @@ function ciaRenderRgForm() {
   const f = ciaRgForm;
   const tage = ciParseTage(f.tage);
   const gewaehlt = {}; (f.punkte || []).forEach((e) => { gewaehlt[e.punkt_id] = e; });
-  const maOpts = `<option value="">— alle dürfen —</option>` +
-    ciaData.mitarbeiter.map((m) => `<option value="${m.id}" ${f.mitarbeiter_id===m.id?"selected":""}>${escapeHtml(m.name)}</option>`).join("");
+  const zugeteilt = ciRundgangMitarbeiter(f);
+  const maList = ciaData.mitarbeiter.length ? ciaData.mitarbeiter.map((m) =>
+    `<label class="ort-ma"><input type="checkbox" id="rgma_${m.id}" ${zugeteilt.includes(m.id) ? "checked" : ""}> ${escapeHtml(m.name)}</label>`).join("")
+    : `<p class="ci-empty">Erst in „Mitarbeiter &amp; Zugänge" (Glas-Admin) Konten anlegen.</p>`;
 
   const punktRows = ciaData.punkte.length ? ciaData.punkte.map((p) => {
     const e = gewaehlt[p.id];
@@ -572,8 +575,8 @@ function ciaRenderRgForm() {
     <h5>${f.id?"Rundgang bearbeiten":"Neuer Rundgang"}</h5>
     <div class="f-lbl">Name</div>
     <input class="f-in" id="rg_name" value="${escapeHtml(f.name||"")}" placeholder="z.B. Innenstadt" />
-    <div class="f-lbl">Zugeteilt an</div>
-    <select class="f-in" id="rg_ma">${maOpts}</select>
+    <div class="f-lbl">Zugeteilt an (keiner angehakt = alle dürfen)</div>
+    <div class="ort-ma-list">${maList}</div>
     <div class="f-lbl">Tage</div>
     <div class="dayrow" id="rg_days">
       ${CI_TAGE_KURZ.map((t,i) => `<button type="button" class="dchip ${tage.includes(i+1)?"on":""}" data-d="${i+1}" onclick="this.classList.toggle('on')">${t}</button>`).join("")}
@@ -622,10 +625,12 @@ async function ciaSaveRg() {
   });
   if (!punkte.length) { showToast("Bitte mindestens einen Punkt auswählen"); return; }
 
+  const maIds = ciaData.mitarbeiter.filter((m) => document.getElementById(`rgma_${m.id}`)?.checked).map((m) => m.id);
   const payload = {
     id: ciaRgForm.id || genCode(),
     name,
-    mitarbeiter_id: document.getElementById("rg_ma").value || null,
+    mitarbeiter_ids: maIds,
+    mitarbeiter_id: null, // altes Einzelfeld leeren – Zuweisung läuft jetzt über mitarbeiter_ids
     tage: days.join(","),
     fenster_von: (document.getElementById("rg_von").value || "06:00").trim(),
     fenster_bis: (document.getElementById("rg_bis").value || "10:00").trim(),
@@ -633,7 +638,14 @@ async function ciaSaveRg() {
     punkte,
     aktiv: ciaRgForm.aktiv !== false,
   };
-  const { error } = await sb.from("checkin_rundgaenge").upsert(payload);
+  let { error } = await sb.from("checkin_rundgaenge").upsert(payload);
+  if (error && /mitarbeiter_ids/i.test(error.message || "")) {
+    // Spalte fehlt noch -> ersten MA ins alte Einzelfeld, Hinweis geben
+    delete payload.mitarbeiter_ids;
+    payload.mitarbeiter_id = maIds[0] || null;
+    showToast("Für mehrere MA bitte supabase_add_rundgang_mehrere_ma.sql ausführen");
+    ({ error } = await sb.from("checkin_rundgaenge").upsert(payload));
+  }
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Rundgang gespeichert ✓");
   ciaRgForm = null;

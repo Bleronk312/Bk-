@@ -262,7 +262,7 @@ async function ciLoadData() {
     ]);
     const punkte = {};
     (ptRes.data || []).forEach((p) => { punkte[p.id] = p; });
-    const rundgaenge = (rgRes.data || []).filter((r) => !r.mitarbeiter_id || r.mitarbeiter_id === ciUser.id);
+    const rundgaenge = (rgRes.data || []).filter((r) => { const ids = ciRundgangMitarbeiter(r); return ids.length === 0 || ids.includes(ciUser.id); });
     const orte = (orteRes.data || []).filter((o) => ciOrtMitarbeiter(o).includes(ciUser.id));
     // Standardmäßig ersten Rundgang aufklappen, wenn noch nichts gewählt wurde
     if (!Object.keys(ciOpenRg).length && rundgaenge.length) {

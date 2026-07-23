@@ -49,6 +49,15 @@ function timeToMin(s) {
   return h * 60 + mi;
 }
 
+// Zugewiesene Mitarbeiter eines Rundgangs (Array von IDs). Leer = "alle dürfen".
+function rgMitarbeiter(rg) {
+  let a = rg && rg.mitarbeiter_ids;
+  if (typeof a === "string") { try { a = JSON.parse(a || "[]"); } catch (_e) { a = []; } }
+  if (Array.isArray(a) && a.length) return a;
+  if (rg && rg.mitarbeiter_id) return [rg.mitarbeiter_id];
+  return [];
+}
+
 // Effektives Zeitfenster eines Punkts im Rundgang: Punkt-Override > Rundgang > Punkt-Standard.
 function effFenster(rg, e, p) {
   const von = timeToMin(e && e.fenster_von) ?? timeToMin(rg && rg.fenster_von) ?? timeToMin(p && p.fenster_von);
@@ -180,29 +189,34 @@ Deno.serve(async (_req) => {
           const startTol = f.von - f.tol, endTol = f.bis + f.tol;
           const sid = `${rg.id}__${e.punkt_id}__${berlinDate}`;
           const st = stMap[sid] || {};
+          const assigned = rgMitarbeiter(rg); // alle zugeteilten MA (leer = alle dürfen)
 
           // c) Verpasst -> Admin (nur frisch, bis 60 Min nach Ablauf, damit kein Nachholen)
           if (nowMin >= endTol && nowMin <= endTol + 60 && !st.verpasst) {
             if (adminSubs && adminSubs.length) {
-              const wem = rg.mitarbeiter_id ? ` · zugeteilt: ${maName[rg.mitarbeiter_id] || "?"}` : "";
+              const wem = assigned.length ? ` · zugeteilt: ${assigned.map((id) => maName[id] || "?").join(", ")}` : "";
               await sendPush(supabase, adminSubs, "⚠️ Punkt verpasst", `${p.name} · Rundgang ${rg.name}${wem}`, "/checkins-admin.html");
             }
             await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, verpasst: true });
             verpasstN++;
             continue;
           }
-          // b) Läuft in <=15 Min ab -> zugeteilter MA
+          // b) Läuft in <=15 Min ab -> an ALLE zugeteilten MA
           if (nowMin >= endTol - 15 && nowMin < endTol && !st.ablauf) {
-            const subs = await getMaSubs(rg.mitarbeiter_id);
-            if (subs.length) await sendPush(supabase, subs, "⏳ Fenster läuft ab", `${p.name} · noch ${endTol - nowMin} Min – bitte einchecken.`, "/checkins-ma.html");
+            for (const maId of assigned) {
+              const subs = await getMaSubs(maId);
+              if (subs.length) await sendPush(supabase, subs, "⏳ Fenster läuft ab", `${p.name} · noch ${endTol - nowMin} Min – bitte einchecken.`, "/checkins-ma.html");
+            }
             await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, ablauf: true });
             ablauf++;
             continue;
           }
-          // a) Jetzt fällig -> zugeteilter MA (bis 15 Min vor Ablauf, danach greift b)
+          // a) Jetzt fällig -> an ALLE zugeteilten MA (bis 15 Min vor Ablauf, danach greift b)
           if (nowMin >= startTol && nowMin < endTol - 15 && !st.faellig) {
-            const subs = await getMaSubs(rg.mitarbeiter_id);
-            if (subs.length) await sendPush(supabase, subs, "📍 Punkt jetzt fällig", `${p.name} · Rundgang ${rg.name}`, "/checkins-ma.html");
+            for (const maId of assigned) {
+              const subs = await getMaSubs(maId);
+              if (subs.length) await sendPush(supabase, subs, "📍 Punkt jetzt fällig", `${p.name} · Rundgang ${rg.name}`, "/checkins-ma.html");
+            }
             await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, faellig: true });
             faellig++;
           }
