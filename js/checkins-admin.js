@@ -5,11 +5,13 @@
 // ============================================================================
 
 let ciaTab = "start";
-let ciaData = { punkte: [], rundgaenge: [], mitarbeiter: [], todayLogs: [] };
+let ciaData = { punkte: [], rundgaenge: [], mitarbeiter: [], todayLogs: [], orte: [], schichten: [] };
 let ciaMonth = null;         // {year, month(0-11)} für die Matrix
 let ciaMonthLogs = [];       // Logs des angezeigten Matrix-Monats
+let ciaMonthSchichten = [];  // Schichten des angezeigten Monats (Stunden)
 let ciaRgForm = null;        // Rundgang-Bearbeitung (Objekt) oder null
 let ciaPtForm = null;        // Punkt-Bearbeitung (Objekt) oder null
+let ciaOrtForm = null;       // Arbeitsort-Bearbeitung (Objekt) oder null
 let ciaPin = null;           // {lat, lng} des aktuell gesetzten Punkt-Pins
 let ciaMap = null, ciaMarker = null, ciaCircle = null; // Leaflet
 let ciaSelDay = null;        // im Matrix-Detail ausgewählter Tag
@@ -38,18 +40,41 @@ function ciaSetHeaderDate() {
 async function ciaLoadBase() {
   try {
     const heute = ciTodayIso();
-    const [ptRes, rgRes, maRes, logRes] = await Promise.all([
+    const [ptRes, rgRes, maRes, logRes, orteRes, schichtRes] = await Promise.all([
       sb.from("checkin_punkte").select("*").order("created_at", { ascending: true }),
       sb.from("checkin_rundgaenge").select("*").order("created_at", { ascending: true }),
       sb.from("glas_mitarbeiter").select("id, name, username, login_aktiv").order("name", { ascending: true }),
       sb.from("checkin_logs").select("*").eq("datum", heute),
+      sb.from("checkin_orte").select("*").order("created_at", { ascending: true }),
+      sb.from("checkin_schichten").select("*").gte("datum", ciAddDaysA(heute, -10)),
     ]);
     ciaData.punkte = ptRes.data || [];
     ciaData.rundgaenge = rgRes.data || [];
     ciaData.mitarbeiter = (maRes.data || []).filter((m) => m.username); // nur Konten mit Login
     ciaData.todayLogs = logRes.data || [];
-    if (ptRes.error && /checkin_/i.test(ptRes.error.message || "")) ciaData._sqlFehlt = true;
+    ciaData.orte = orteRes.data || [];                 // Arbeitsorte (kann leer sein)
+    ciaData.schichten = schichtRes.data || [];         // letzte Schichten inkl. offener
+    if (ptRes.error && /checkin_punkte/i.test(ptRes.error.message || "")) ciaData._sqlFehlt = true;
+    await ciaAutoCloseOldShifts();
   } catch (e) { ciaData._sqlFehlt = true; }
+}
+
+function ciAddDaysA(iso, days) { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + days); return ciIsoFromDate(d); }
+
+// Offene Schichten aus VERGANGENEN Tagen automatisch auf das geplante Ende schließen und
+// als "auto_beendet" markieren (Auschecken vergessen). Läuft, wenn der Admin die Seite öffnet.
+async function ciaAutoCloseOldShifts() {
+  const heute = ciTodayIso();
+  const offen = (ciaData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.datum < heute);
+  for (const s of offen) {
+    const ort = (ciaData.orte || []).find((o) => o.id === s.ort_id);
+    const fenster = ort ? ciOrtFensterAn(ort, s.datum) : null;
+    const endeMin = fenster ? fenster.bis : 23 * 60 + 59;
+    const ende = new Date(s.datum + "T00:00:00"); ende.setMinutes(endeMin);
+    const patch = { aus_ts: ende.toISOString(), dauer_min: ciSchichtDauerMin(s.ein_ts, ende.toISOString(), fenster || { von: 0, bis: 1439 }), auto_beendet: true };
+    Object.assign(s, patch);
+    try { await sb.from("checkin_schichten").update(patch).eq("id", s.id); } catch (e) {}
+  }
 }
 
 async function ciaLoadMonthLogs() {
@@ -57,9 +82,13 @@ async function ciaLoadMonthLogs() {
     const von = `${ciaMonth.year}-${String(ciaMonth.month + 1).padStart(2, "0")}-01`;
     const bisD = new Date(ciaMonth.year, ciaMonth.month + 1, 0);
     const bis = ciIsoFromDate(bisD);
-    const { data } = await sb.from("checkin_logs").select("*").gte("datum", von).lte("datum", bis);
-    ciaMonthLogs = data || [];
-  } catch (e) { ciaMonthLogs = []; }
+    const [logRes, schRes] = await Promise.all([
+      sb.from("checkin_logs").select("*").gte("datum", von).lte("datum", bis),
+      sb.from("checkin_schichten").select("*").gte("datum", von).lte("datum", bis),
+    ]);
+    ciaMonthLogs = logRes.data || [];
+    ciaMonthSchichten = schRes.data || [];
+  } catch (e) { ciaMonthLogs = []; ciaMonthSchichten = []; }
 }
 
 function ciaMaName(id) {
@@ -82,17 +111,19 @@ function ciaRender() {
       <p>Bitte die Datei <b>supabase_add_checkins.sql</b> in Supabase ausführen. Danach diese Seite neu laden.</p></div>`;
     return;
   }
-  const tabs = [["start","🏠 Start"],["heute","📅 Heute"],["monat","📊 Monat"],["rund","🗺️ Rundgänge"],["punkte","📍 Punkte"]];
+  const tabs = [["start","🏠 Start"],["heute","📅 Heute"],["monat","📊 Monat"],["rund","🗺️ Rundgänge"],["punkte","📍 Punkte"],["orte","🏢 Arbeitsorte"]];
   view.innerHTML = `
     <div class="seg">${tabs.map(([k,l]) => `<button class="${ciaTab===k?"on":""}" onclick="ciaGo('${k}')">${l}</button>`).join("")}</div>
     <div class="view on" id="ciaView">${ciaRenderTab()}</div>`;
-  if (ciaTab === "punkte" && ciaPtForm) ciaInitMapSoon();
+  if ((ciaTab === "punkte" && ciaPtForm) || (ciaTab === "orte" && ciaOrtForm)) ciaInitMapSoon();
 }
 
 function ciaGo(tab) {
   ciaTab = tab;
   if (tab !== "rund") ciaRgForm = null;
-  if (tab !== "punkte") { ciaPtForm = null; ciaDestroyMap(); }
+  if (tab !== "punkte") { ciaPtForm = null; }
+  if (tab !== "orte") { ciaOrtForm = null; }
+  if (tab !== "punkte" && tab !== "orte") ciaDestroyMap();
   ciaRender();
 }
 
@@ -102,8 +133,10 @@ function ciaRenderTab() {
   if (ciaTab === "monat") return ciaRenderMonat();
   if (ciaTab === "rund") return ciaRenderRund();
   if (ciaTab === "punkte") return ciaRenderPunkte();
+  if (ciaTab === "orte") return ciaRenderOrte();
   return "";
 }
+function ciaActiveForm() { return ciaPtForm || ciaOrtForm; }
 
 // Tagesstatus eines Rundgangs (heute) -> {status, erledigt, gesamt, missPts}
 function ciaRgTagesstatus(rg, logs, iso, nowMin) {
@@ -152,6 +185,15 @@ function ciaRenderStart() {
     return `<div class="feed-row"><span class="t">${escapeHtml(ciUhrzeit(l.ts))}</span><span class="fdot" style="background:var(--green)"></span><span>${escapeHtml((p&&p.name)||"Punkt")}${escapeHtml(dist)} · ${escapeHtml(l.mitarbeiter_name||"")}</span></div>`;
   }).join("") : `<p class="ci-empty">Heute noch keine Check-ins.</p>`;
 
+  // Arbeitszeit: gerade eingecheckt (offene Schichten heute)
+  const offen = (ciaData.schichten || []).filter((s) => !s.aus_ts && s.datum === iso);
+  const nowMs = Date.now();
+  const offenHtml = offen.length ? offen.map((s) => {
+    const ort = (ciaData.orte || []).find((o) => o.id === s.ort_id);
+    const dauer = ciFmtDauer((nowMs - new Date(s.ein_ts).getTime()) / 60000);
+    return `<div class="feed-row"><span class="t">${escapeHtml(ciUhrzeit(s.ein_ts))}</span><span class="fdot" style="background:var(--blue)"></span><span><b>${escapeHtml(s.mitarbeiter_name||"")}</b> · ${escapeHtml((ort&&ort.name)||"Objekt")} · seit <b>${dauer}</b></span></div>`;
+  }).join("") : "";
+
   return `
     <div class="ci-stagger">
       <div class="tiles">
@@ -162,6 +204,7 @@ function ciaRenderStart() {
       </div>
       ${missNamen.length ? `<div class="card-x warncard"><h4>⚠️ Braucht deine Aufmerksamkeit</h4>
         <p>${missNamen.map((n)=>`<b>„${escapeHtml(n)}"</b>`).join(", ")} ${missNamen.length>1?"haben":"hat"} heute mindestens einen verpassten Punkt.</p></div>` : ""}
+      ${offenHtml ? `<div class="card-x"><h4>🏢 Gerade eingecheckt (Arbeitszeit)</h4>${offenHtml}</div>` : ""}
       <div class="card-x"><h4>Letzte Check-ins</h4>${letzteHtml}</div>
     </div>`;
 }
@@ -294,7 +337,48 @@ function ciaRenderMonat() {
         <span><i style="background:var(--line-2)"></i>kein Rundgang-Tag</span>
       </div>
       <div class="day-detail" id="ciaDayDetail"></div>` : `<p class="ci-empty">Noch keine Rundgänge angelegt.</p>`}
-    </div>`;
+    </div>
+    ${ciaRenderStundenCard()}`;
+}
+
+// Monats-Stunden je Mitarbeiter (Arbeitszeit). Nur ausgecheckte Schichten zählen.
+function ciaStundenProMa() {
+  const map = {}; // maId -> {name, min, tage:Set}
+  (ciaMonthSchichten || []).forEach((s) => {
+    if (!s.aus_ts) return;
+    const m = map[s.mitarbeiter_id] || (map[s.mitarbeiter_id] = { name: s.mitarbeiter_name || ciaMaName(s.mitarbeiter_id) || "?", min: 0, tage: new Set() });
+    m.min += s.dauer_min || 0;
+    m.tage.add(s.datum);
+  });
+  return Object.values(map).sort((a, b) => b.min - a.min);
+}
+
+function ciaRenderStundenCard() {
+  if (!(ciaData.orte || []).length && !(ciaMonthSchichten || []).length) return "";
+  const rows = ciaStundenProMa();
+  const gesamt = rows.reduce((a, r) => a + r.min, 0);
+  return `<div class="card-x">
+    <div class="list-head" style="margin-bottom:10px;"><h4>🏢 Arbeitszeit-Stunden</h4>
+      <button class="exp-btn" style="flex:0 0 auto;padding:8px 12px;" onclick="ciaExportStundenCsv()">📊 Stunden-CSV</button></div>
+    ${rows.length ? `<div class="quota">
+      ${rows.map((r) => `<div class="qrow" style="grid-template-columns:1fr auto;"><span>${escapeHtml(r.name)} <span class="muted" style="font-size:11px;">· ${r.tage.size} Tag${r.tage.size!==1?"e":""}</span></span><span class="qp">${ciFmtDauer(r.min)}</span></div>`).join("")}
+      <div class="qrow" style="grid-template-columns:1fr auto;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;"><span><b>Gesamt</b></span><span class="qp"><b>${ciFmtDauer(gesamt)}</b></span></div>
+    </div>` : `<p class="ci-empty">Diesen Monat noch keine erfassten Stunden.</p>`}
+  </div>`;
+}
+
+function ciaExportStundenCsv() {
+  const zeilen = (ciaMonthSchichten || []).filter((s) => s.aus_ts).slice().sort((a, b) => (a.datum + a.ein_ts).localeCompare(b.datum + b.ein_ts));
+  if (!zeilen.length) { showToast("Keine Stunden für diesen Monat"); return; }
+  const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const head = ["Datum", "Mitarbeiter", "Objekt", "Ein", "Aus", "Stunden", "Auto-beendet"];
+  const rows = zeilen.map((s) => {
+    const ort = (ciaData.orte || []).find((o) => o.id === s.ort_id);
+    return [ciFormatDatum(s.datum), s.mitarbeiter_name || "", (ort && ort.name) || s.ort_id, ciUhrzeit(s.ein_ts), ciUhrzeit(s.aus_ts), ciFmtDauer(s.dauer_min || 0), s.auto_beendet ? "ja" : ""].map(esc).join(";");
+  });
+  const csv = "﻿" + [head.map(esc).join(";"), ...rows].join("\r\n");
+  ciaDownload(new Blob([csv], { type: "text/csv;charset=utf-8;" }), `arbeitszeit_${CI_MONATE[ciaMonth.month].toLowerCase()}_${ciaMonth.year}.csv`);
+  showToast("📊 Stunden-CSV erstellt");
 }
 
 function ciaMonthStep(delta) {
@@ -634,8 +718,8 @@ function ciaRenderPtForm() {
 }
 
 function ciaSelRadius(r) {
-  ciaPtForm.radius = r;
-  document.querySelectorAll("#pt_radius .dchip").forEach((b) => b.classList.toggle("on", Number(b.dataset.r) === r));
+  const f = ciaActiveForm(); if (f) f.radius = r;
+  document.querySelectorAll("#pt_radius .dchip, #ort_radius .dchip").forEach((b) => b.classList.toggle("on", Number(b.dataset.r) === r));
   if (ciaCircle) ciaCircle.setRadius(r);
 }
 
@@ -661,8 +745,8 @@ function ciaDestroyMap() {
 
 function ciaSetPin(lat, lng, recenter) {
   ciaPin = { lat, lng };
-  if (ciaPtForm) { ciaPtForm.lat = lat; ciaPtForm.lng = lng; }
-  const radius = (ciaPtForm && parseInt(ciaPtForm.radius, 10)) || 100;
+  const f = ciaActiveForm(); if (f) { f.lat = lat; f.lng = lng; }
+  const radius = (f && parseInt(f.radius, 10)) || 100;
   if (ciaMap) {
     if (!ciaMarker) { ciaMarker = L.marker([lat, lng], { draggable: true }).addTo(ciaMap);
       ciaMarker.on("dragend", () => { const p = ciaMarker.getLatLng(); ciaSetPin(p.lat, p.lng, false); });
@@ -676,7 +760,8 @@ function ciaSetPin(lat, lng, recenter) {
 }
 
 async function ciaGeocode() {
-  const adr = (document.getElementById("pt_adresse").value || "").trim();
+  const el = document.getElementById("pt_adresse") || document.getElementById("ort_adresse");
+  const adr = ((el && el.value) || "").trim();
   if (!adr) { showToast("Bitte zuerst eine Adresse eintragen"); return; }
   showToast("Suche Adresse…");
   try {
@@ -729,6 +814,149 @@ async function ciaDeletePt(id) {
   if (error) { showToast("Fehler: " + error.message); return; }
   showToast("Punkt gelöscht");
   ciaPtForm = null; ciaDestroyMap();
+  await ciaLoadBase();
+  ciaRender();
+}
+
+/* ==================== ARBEITSORTE (Ein-/Auschecken) ==================== */
+function ciaRenderOrte() {
+  if (ciaOrtForm) return ciaRenderOrtForm();
+  const list = (ciaData.orte || []).map((o) => {
+    const maNamen = ciOrtMitarbeiter(o).map((id) => ciaMaName(id)).filter(Boolean);
+    const z = ciJson(o.zeiten, {});
+    const tage = Object.keys(z).map(Number).sort().map((wd) => `${CI_TAGE_KURZ[wd - 1]} ${z[wd].von}–${z[wd].bis}`);
+    return `<div class="rgc" style="${o.aktiv === false ? "opacity:.62;" : ""}">
+      <div class="top"><span class="nm">🏢 ${escapeHtml(o.name)}</span>
+        <label class="sw-t"><input type="checkbox" ${o.aktiv !== false ? "checked" : ""} onchange="ciaToggleOrt('${o.id}',this.checked)"><i></i></label></div>
+      <div class="meta">${escapeHtml(o.adresse || "ohne Adresse")} · ${o.radius || 100} m · Puffer ±${o.puffer_min != null ? o.puffer_min : 5} Min</div>
+      ${maNamen.length ? `<div class="chips">${maNamen.map((n) => `<span class="chip">${escapeHtml(n)}</span>`).join("")}</div>` : `<div class="meta" style="color:var(--red);">⚠️ noch niemand zugewiesen</div>`}
+      ${tage.length ? `<div class="chips">${tage.map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join("")}</div>` : `<div class="meta" style="color:var(--red);">⚠️ keine Zeiten hinterlegt</div>`}
+      <div class="rgc-actions">
+        <button onclick="ciaEditOrt('${o.id}')">✏️ Bearbeiten</button>
+        <button class="del" onclick="ciaDeleteOrt('${o.id}')">Löschen</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="list-head"><h4>Arbeitsorte</h4><button class="add-btn" onclick="ciaNewOrt()">＋ Neuer Arbeitsort</button></div>
+    <p class="muted" style="font-size:12px;margin:-4px 2px 12px;">Objekte zum Ein-/Auschecken. Nur zugewiesene Mitarbeiter sehen sie in ihrer App.</p>
+    ${(ciaData.orte || []).length ? `<div class="ci-stagger">${list}</div>` : `<div class="card-x"><p class="ci-empty">Noch kein Arbeitsort angelegt.</p></div>`}`;
+}
+
+function ciaNewOrt() {
+  ciaOrtForm = { id: null, name: "", adresse: "", lat: null, lng: null, radius: 100, zeiten: {}, puffer_min: 5, mitarbeiter_ids: [], aktiv: true };
+  ciaPin = null;
+  ciaRender();
+}
+function ciaEditOrt(id) {
+  const o = (ciaData.orte || []).find((x) => x.id === id);
+  if (!o) return;
+  ciaOrtForm = { id: o.id, name: o.name, adresse: o.adresse, lat: o.lat, lng: o.lng, radius: o.radius, zeiten: ciJson(o.zeiten, {}), puffer_min: o.puffer_min != null ? o.puffer_min : 5, mitarbeiter_ids: ciOrtMitarbeiter(o), aktiv: o.aktiv };
+  ciaPin = (o.lat != null && o.lng != null) ? { lat: o.lat, lng: o.lng } : null;
+  ciaRender();
+}
+
+function ciaRenderOrtForm() {
+  const f = ciaOrtForm;
+  const radien = [50, 100, 150, 250];
+  const assigned = f.mitarbeiter_ids || [];
+  const dayRows = CI_TAGE_KURZ.map((tg, i) => {
+    const wd = i + 1; const z = (f.zeiten && f.zeiten[wd]) || {}; const on = !!z.von;
+    return `<div class="az-dayrow">
+      <label class="az-daychk"><input type="checkbox" id="ortday_${wd}" ${on ? "checked" : ""} onchange="ciaOrtDayToggle(${wd})"> <b>${tg}</b></label>
+      <input class="f-mini" id="ortvon_${wd}" value="${escapeHtml(z.von || "")}" placeholder="07:00" />
+      <span class="muted">–</span>
+      <input class="f-mini" id="ortbis_${wd}" value="${escapeHtml(z.bis || "")}" placeholder="16:00" />
+    </div>`;
+  }).join("");
+  const maList = ciaData.mitarbeiter.length ? ciaData.mitarbeiter.map((m) =>
+    `<label class="ort-ma"><input type="checkbox" id="ortma_${m.id}" ${assigned.includes(m.id) ? "checked" : ""}> ${escapeHtml(m.name)}</label>`).join("")
+    : `<p class="ci-empty">Erst in „Mitarbeiter & Zugänge" (Glas-Admin) Konten anlegen.</p>`;
+
+  return `<div class="ci-form">
+    <h5>${f.id ? "Arbeitsort bearbeiten" : "Neuer Arbeitsort"}</h5>
+    <div class="f-lbl">Name</div>
+    <input class="f-in" id="ort_name" value="${escapeHtml(f.name || "")}" placeholder="z.B. Bürogebäude Hafenstraße" />
+    <div class="f-lbl">Adresse (oder direkt auf der Karte tippen)</div>
+    <input class="f-in" id="ort_adresse" value="${escapeHtml(f.adresse || "")}" placeholder="Straße Nr, PLZ Ort" />
+    <div class="map-btns">
+      <button class="btn-sec" style="flex:1;" onclick="ciaGeocode()">🔎 Adresse suchen</button>
+      <button class="btn-sec" style="flex:1;" onclick="ciaMeinePosition()">📱 Meine Position</button>
+    </div>
+    <div class="f-lbl">Karte – tippen, um den Pin exakt zu setzen</div>
+    <div class="ci-map" id="ciaMap"></div>
+    <div class="coords" id="ciaCoords">${f.lat != null ? `✓ Pin gesetzt: ${Number(f.lat).toFixed(5)}, ${Number(f.lng).toFixed(5)}` : "Noch kein Pin gesetzt."}</div>
+    <div class="f-lbl">Erlaubter Umkreis (für Ein- UND Auschecken)</div>
+    <div class="dayrow" id="ort_radius">
+      ${radien.map((r) => `<button type="button" class="dchip ${Number(f.radius) === r ? "on" : ""}" data-r="${r}" onclick="ciaSelRadius(${r})">${r} m</button>`).join("")}
+    </div>
+    <div class="f-lbl">Feste Zeiten je Wochentag (leer = an dem Tag kein Dienst)</div>
+    <div class="az-days">${dayRows}</div>
+    <div class="f-lbl">Puffer am Rand (Knopf früher/später nutzbar – zählt NICHT als Zeit)</div>
+    <select class="f-in" id="ort_puffer" style="width:auto;">
+      ${[0, 5, 10, 15, 30].map((p) => `<option value="${p}" ${Number(f.puffer_min) === p ? "selected" : ""}>± ${p} Min</option>`).join("")}
+    </select>
+    <div class="f-lbl">Zugewiesene Mitarbeiter (nur diese sehen den Arbeitsort)</div>
+    <div class="ort-ma-list">${maList}</div>
+    <div class="form-foot">
+      <button class="btn-sec" onclick="ciaOrtForm=null;ciaDestroyMap();ciaRender();">Abbrechen</button>
+      ${f.id ? `<button class="btn-sec" style="color:var(--red);" onclick="ciaDeleteOrt('${f.id}')">Löschen</button>` : ""}
+      <button class="btn-pri" onclick="ciaSaveOrt()">Arbeitsort speichern</button>
+    </div>
+  </div>`;
+}
+
+function ciaOrtDayToggle(wd) {
+  const on = document.getElementById(`ortday_${wd}`).checked;
+  const von = document.getElementById(`ortvon_${wd}`), bis = document.getElementById(`ortbis_${wd}`);
+  // Beim Anhaken sinnvolle Standardzeiten vorschlagen, wenn leer
+  if (on && von && !von.value) { von.value = "07:00"; if (bis) bis.value = "16:00"; }
+}
+
+async function ciaSaveOrt() {
+  const name = (document.getElementById("ort_name").value || "").trim();
+  if (!name) { showToast("Bitte einen Namen eintragen"); return; }
+  if (ciaOrtForm.lat == null || ciaOrtForm.lng == null) { showToast("Bitte einen Standort setzen (Adresse, Position oder Karte)"); return; }
+  const zeiten = {};
+  for (let wd = 1; wd <= 7; wd++) {
+    const cb = document.getElementById(`ortday_${wd}`);
+    if (!cb || !cb.checked) continue;
+    const von = (document.getElementById(`ortvon_${wd}`).value || "").trim();
+    const bis = (document.getElementById(`ortbis_${wd}`).value || "").trim();
+    if (ciTimeToMin(von) == null || ciTimeToMin(bis) == null) { showToast(`Bitte gültige Zeiten für ${CI_TAGE_KURZ[wd - 1]} (z.B. 07:00)`); return; }
+    if (ciTimeToMin(bis) <= ciTimeToMin(von)) { showToast(`${CI_TAGE_KURZ[wd - 1]}: Ende muss nach dem Start liegen`); return; }
+    zeiten[wd] = { von, bis };
+  }
+  if (!Object.keys(zeiten).length) { showToast("Bitte für mindestens einen Tag Zeiten eintragen"); return; }
+  const maIds = ciaData.mitarbeiter.filter((m) => document.getElementById(`ortma_${m.id}`)?.checked).map((m) => m.id);
+
+  const payload = {
+    id: ciaOrtForm.id || genCode(),
+    name, adresse: (document.getElementById("ort_adresse").value || "").trim(),
+    lat: ciaOrtForm.lat, lng: ciaOrtForm.lng, radius: parseInt(ciaOrtForm.radius, 10) || 100,
+    zeiten, puffer_min: parseInt(document.getElementById("ort_puffer").value, 10) || 0,
+    mitarbeiter_ids: maIds, aktiv: ciaOrtForm.aktiv !== false,
+  };
+  const { error } = await sb.from("checkin_orte").upsert(payload);
+  if (error) { showToast("Fehler: " + error.message + " (SQL supabase_add_arbeitszeit.sql ausgeführt?)"); return; }
+  showToast(maIds.length ? "Arbeitsort gespeichert ✓" : "Gespeichert – aber noch kein Mitarbeiter zugewiesen!");
+  ciaOrtForm = null; ciaDestroyMap();
+  await ciaLoadBase();
+  ciaRender();
+}
+
+async function ciaToggleOrt(id, aktiv) {
+  const { error } = await sb.from("checkin_orte").update({ aktiv }).eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  const o = (ciaData.orte || []).find((x) => x.id === id); if (o) o.aktiv = aktiv;
+  showToast(aktiv ? "Arbeitsort aktiv" : "Arbeitsort pausiert");
+}
+
+async function ciaDeleteOrt(id) {
+  if (!confirm("Diesen Arbeitsort wirklich löschen? Bereits erfasste Stunden bleiben in der Auswertung.")) return;
+  const { error } = await sb.from("checkin_orte").delete().eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  showToast("Arbeitsort gelöscht");
+  ciaOrtForm = null; ciaDestroyMap();
   await ciaLoadBase();
   ciaRender();
 }

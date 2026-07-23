@@ -209,6 +209,17 @@ select.f-in{appearance:auto}
 .btn-pri:active,.btn-sec:active{transform:translateY(1px)}
 .btn-pri[disabled]{opacity:.7}
 
+/* ---- Arbeitsort-Formular (Admin) ---- */
+.az-days{display:flex;flex-direction:column;gap:6px}
+.az-dayrow{display:flex;align-items:center;gap:8px}
+.az-daychk{flex:0 0 70px;display:flex;align-items:center;gap:7px;font-size:13.5px}
+.az-daychk input{width:17px;height:17px;flex:none}
+.az-dayrow .f-mini{flex:1;min-width:0;text-align:center}
+.ort-ma-list{display:flex;flex-direction:column;gap:0}
+.ort-ma{display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--line-2);font-size:13.5px;font-weight:600}
+.ort-ma:first-child{border-top:none}
+.ort-ma input{width:18px;height:18px;flex:none}
+
 /* ---- Punkt-Liste (Admin) ---- */
 .ptc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:9px;
   display:flex;gap:11px;align-items:center;box-shadow:var(--shadow);cursor:pointer}
@@ -250,7 +261,7 @@ select.f-in{appearance:auto}
 .pt .pm{flex:1;min-width:0}
 .pt .pn{font-weight:700;font-size:14.5px}
 .pt .ps{font-size:11.5px;color:var(--muted);margin-top:1px}
-.pt .ps .pt-adr{display:block;font-size:11px;opacity:.85;margin-top:1px}
+.pt-adr{display:block;font-size:11px;opacity:.85;margin-top:1px}
 .pt .st{flex:none;font-size:10.5px;font-weight:800;padding:5px 10px;border-radius:999px;letter-spacing:.02em}
 .st-done{color:var(--green);background:var(--green-bg)}
 .st-now{color:#fff;background:var(--blue)}
@@ -303,6 +314,33 @@ select.f-in{appearance:auto}
 .hist-row:first-of-type{border-top:none}
 .hist-row .t{font-variant-numeric:tabular-nums;color:var(--muted);flex:none;width:52px}
 .hist-row .dotc{width:8px;height:8px;border-radius:50%;flex:none}
+
+/* ---- Arbeitszeit (Ein-/Auschecken) ---- */
+.az{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;
+  box-shadow:var(--shadow);margin-bottom:12px}
+.az.az-run{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-050)}
+.az.az-done{border-color:var(--green)}
+.az.az-miss{border-color:var(--red)}
+.az-head{display:flex;gap:11px;align-items:center;margin-bottom:13px}
+.az-ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:19px;background:var(--bg)}
+.az-nm{flex:1;min-width:0}
+.az-nm .pn{font-weight:800;font-size:15.5px}
+.az-nm .ps{font-size:11.5px;color:var(--muted);margin-top:1px}
+.az-live{display:flex;flex-direction:column;align-items:center}
+.az-ring{position:relative;width:170px;height:170px;margin:2px auto 6px}
+.az-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.az-ring circle{fill:none;stroke-width:10;stroke-linecap:round}
+.az-ring-bg{stroke:var(--line-2)}
+.az-ring-fg{stroke:var(--blue);transition:stroke-dashoffset 1s linear}
+.az-ring-fg.az-over-ring{stroke:var(--red)}
+.az-ring-txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.az-ring-txt b{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.az-ring-txt span{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.3}
+.az-count{font-size:13.5px;font-weight:600;color:var(--ink);margin:2px 0 13px;text-align:center}
+.az-count.az-over{color:var(--red);font-weight:800}
+.ci-btn.danger{background:var(--red);box-shadow:0 4px 14px rgba(181,55,31,.28)}
+.az-fertig{background:var(--green-bg);color:var(--green);border-radius:12px;padding:12px 14px;font-size:13.5px;font-weight:700;text-align:center}
+.az-vorbei{background:var(--red-bg);color:var(--red);border-radius:12px;padding:12px 14px;font-size:13.5px;font-weight:700;text-align:center}
 
 /* ---- Login ---- */
 .ci-login{max-width:360px;margin:8vh auto 0;text-align:center;animation:ciFade .35s cubic-bezier(.32,.72,0,1)}

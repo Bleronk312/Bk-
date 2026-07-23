@@ -177,3 +177,67 @@ function ciFormatDatum(iso) {
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y}`;
 }
+
+/* ---------------- Arbeitszeit (Ein-/Auschecken an einem Objekt) ---------------- */
+
+// jsonb kann String ODER Objekt/Array sein – robust parsen.
+function ciJson(val, fallback) {
+  if (val == null) return fallback;
+  if (typeof val === "string") { try { return JSON.parse(val || "null") ?? fallback; } catch (e) { return fallback; } }
+  return val;
+}
+
+// Zugewiesene Mitarbeiter-IDs eines Arbeitsorts.
+function ciOrtMitarbeiter(ort) {
+  const a = ciJson(ort && ort.mitarbeiter_ids, []);
+  return Array.isArray(a) ? a : [];
+}
+
+// Geplantes Fenster eines Arbeitsorts an einem Datum -> {von, bis} in Minuten oder null.
+function ciOrtFensterAn(ort, iso) {
+  const z = ciJson(ort && ort.zeiten, {});
+  const d = new Date(iso + "T00:00:00");
+  const key = String(ciIsoDay(d));
+  const tag = z && z[key];
+  if (!tag) return null;
+  const von = ciTimeToMin(tag.von), bis = ciTimeToMin(tag.bis);
+  if (von == null || bis == null) return null;
+  return { von, bis };
+}
+
+// Läuft an diesem Tag eine Schicht? (Zeiten hinterlegt)
+function ciOrtLaeuftAn(ort, iso) { return !!ciOrtFensterAn(ort, iso); }
+
+// Gezählte Dauer in Minuten – immer gecappt auf das geplante Fenster [von,bis] des Tages.
+// Nichts vor Start oder nach Ende zählt. ein/aus = Date/ISO, fenster = {von,bis} in Min.
+function ciSchichtDauerMin(einTs, ausTs, fenster) {
+  if (!einTs || !ausTs || !fenster) return 0;
+  const ein = new Date(einTs), aus = new Date(ausTs);
+  const einMin = ein.getHours() * 60 + ein.getMinutes();
+  const ausMin = aus.getHours() * 60 + aus.getMinutes();
+  const start = Math.max(einMin, fenster.von);
+  const ende = Math.min(ausMin, fenster.bis);
+  return Math.max(0, ende - start);
+}
+
+// Dauer schön formatiert: "8h 03m" bzw. "0h 45m".
+function ciFmtDauer(min) {
+  min = Math.max(0, Math.round(min || 0));
+  return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
+}
+
+// Status eines Arbeitsorts HEUTE für den Mitarbeiter.
+//   "vor"    – noch vor dem erlaubten Einchecken-Fenster (Knopf gesperrt)
+//   "ein"    – Einchecken jetzt möglich
+//   "laeuft" – bereits eingecheckt (offene Schicht)
+//   "vorbei" – Fenster (inkl. Puffer) vorbei, nie eingecheckt = verpasst
+//   "fertig" – heute schon ein- UND ausgecheckt
+// nowMin=aktuelle Minute, puffer=Minuten, offen=bool (offene Schicht), fertig=bool.
+function ciOrtStatus(fenster, nowMin, puffer, offen, fertig) {
+  if (offen) return "laeuft";
+  if (fertig) return "fertig";
+  if (!fenster) return "vorbei";
+  if (nowMin < fenster.von - puffer) return "vor";
+  if (nowMin > fenster.bis + puffer) return "vorbei";
+  return "ein";
+}

@@ -10,11 +10,14 @@ const CI_QUEUE_KEY = "ci_pending_checkins";   // Offline-Warteschlange
 const CI_LANG_KEY = "geko_ci_lang";
 let ciUser = null;                             // {id, name, username}
 let ciSeg = "heute";                           // aktueller Reiter
-let ciData = { rundgaenge: [], punkte: {}, logs: [] };
+let ciData = { rundgaenge: [], punkte: {}, logs: [], orte: [], schichten: [] };
 let ciBusyPunkt = null;                         // Punkt-ID, für den gerade eingecheckt wird
+let ciBusyOrt = null;                           // Ort-ID, für den gerade gestempelt wird
 let ciLang = "de";
 let ciOpenRg = {};                              // {rundgangId: true} aufgeklappte Rundgänge
 let ciOpenStop = {};                            // {"rg__pt": true} aufgeklappte Stopps
+let ciTimer = null;                             // Intervall für den Live-Timer (Arbeitszeit)
+const CI_SHIFT_QUEUE_KEY = "ci_pending_shifts"; // Offline-Warteschlange für Schichten
 
 /* ---------------- Übersetzungen (Deutsch / Albanisch-Kosovo) ---------------- */
 const CI_T = {
@@ -43,6 +46,15 @@ const CI_T = {
     gpsTimeout: "❌ GPS hat zu lange gebraucht. Bitte an einem freieren Ort erneut versuchen.",
     angemeldet: "Angemeldet als", abmelden: "Abmelden",
     offlineWartet: (n) => `📴 ${n} Check-in${n > 1 ? "s warten" : " wartet"} aufs Senden – wird automatisch nachgeholt`,
+    // Arbeitszeit
+    arbeitszeit: "Arbeitszeit", einchecken2: "📍 Einchecken", auschecken: "📍 Auschecken",
+    eingecheckt: "Eingecheckt seit", feierabendUm: "Feierabend um", nochLabel: "noch",
+    ueberFeierabend: "über Feierabend – bitte auschecken!",
+    einAb: (h) => `Einchecken ab ${h}`, arbeitVorbei: "Arbeitszeit vorbei",
+    heuteFrei: "Heute kein Dienst", heuteSchicht: (v, b) => `Heute ${v}–${b}`,
+    gezaehlt: "gezählt", heuteFertig: "Heute erledigt", keinArbeitsort: "Dir ist heute kein Arbeitsort zugewiesen.",
+    tEin: "✓ Eingecheckt", tAus: "✓ Ausgecheckt – schönen Feierabend!",
+    tGpsErmittelnAus: "Auschecken – GPS wird geprüft…",
     tageKurz: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
     tageLang: ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
     monate: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
@@ -73,6 +85,15 @@ const CI_T = {
     gpsTimeout: "❌ GPS-i mori shumë kohë. Provo në një vend më të hapur.",
     angemeldet: "I kyçur si", abmelden: "Dil",
     offlineWartet: (n) => `📴 ${n} check-in po pret dërgimin – dërgohet automatikisht`,
+    // Arbeitszeit
+    arbeitszeit: "Orari i punës", einchecken2: "📍 Hyr", auschecken: "📍 Dil",
+    eingecheckt: "I kyçur që nga", feierabendUm: "Mbaron në", nochLabel: "edhe",
+    ueberFeierabend: "mbi orarin – dil tani!",
+    einAb: (h) => `Hyrja nga ${h}`, arbeitVorbei: "Orari ka mbaruar",
+    heuteFrei: "Sot pa turn", heuteSchicht: (v, b) => `Sot ${v}–${b}`,
+    gezaehlt: "numëruar", heuteFertig: "Sot e kryer", keinArbeitsort: "Sot s'të është caktuar vend pune.",
+    tEin: "✓ Hyre", tAus: "✓ Dole – ditë të mbarë!",
+    tGpsErmittelnAus: "Dalje – po kontrollohet GPS…",
     tageKurz: ["Hën", "Mar", "Mër", "Enj", "Pre", "Sht", "Die"],
     tageLang: ["E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë", "E diel"],
     monate: ["janar", "shkurt", "mars", "prill", "maj", "qershor", "korrik", "gusht", "shtator", "tetor", "nëntor", "dhjetor"],
@@ -91,9 +112,10 @@ async function ciInit() {
   if (!ok) return; // Login-Screen läuft
   ciRender();
   await ciFlushQueue();
+  await ciFlushShifts();
   await ciLoadData();
   ciRender();
-  window.addEventListener("online", () => ciFlushQueue().then(() => ciLoadData().then(ciRender)));
+  window.addEventListener("online", () => Promise.all([ciFlushQueue(), ciFlushShifts()]).then(() => ciLoadData()).then(ciRender));
 }
 
 function ciSetLang(l) {
@@ -227,21 +249,47 @@ async function ciLoadData() {
     const now = new Date();
     const montag = new Date(now); montag.setDate(now.getDate() - (ciIsoDay(now) - 1));
     const vonIso = ciIsoFromDate(montag);
-    const [rgRes, ptRes, logRes] = await Promise.all([
+    const [rgRes, ptRes, logRes, orteRes, schichtRes] = await Promise.all([
       sb.from("checkin_rundgaenge").select("*").eq("aktiv", true),
       sb.from("checkin_punkte").select("*"),
       sb.from("checkin_logs").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", vonIso),
+      sb.from("checkin_orte").select("*").eq("aktiv", true),
+      sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", ciAddDays(vonIso, -7)),
     ]);
     const punkte = {};
     (ptRes.data || []).forEach((p) => { punkte[p.id] = p; });
     const rundgaenge = (rgRes.data || []).filter((r) => !r.mitarbeiter_id || r.mitarbeiter_id === ciUser.id);
+    const orte = (orteRes.data || []).filter((o) => ciOrtMitarbeiter(o).includes(ciUser.id));
     // Standardmäßig ersten Rundgang aufklappen, wenn noch nichts gewählt wurde
     if (!Object.keys(ciOpenRg).length && rundgaenge.length) {
       const heuteRg = rundgaenge.filter((r) => ciRundgangLaeuftAn(r, heute));
       if (heuteRg[0]) ciOpenRg[heuteRg[0].id] = true;
     }
-    ciData = { rundgaenge, punkte, logs: (logRes.data || []), heute };
+    ciData = { rundgaenge, punkte, logs: (logRes.data || []), orte, schichten: (schichtRes.data || []), heute };
+    await ciAutoCloseOldShifts();
   } catch (e) { /* offline: alte ciData behalten */ }
+}
+
+// Kleiner Datums-Helfer (Tage addieren auf "YYYY-MM-DD").
+function ciAddDays(iso, days) {
+  const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + days);
+  return ciIsoFromDate(d);
+}
+
+// Eigene offene Schichten aus VERGANGENEN Tagen automatisch schließen (Auschecken
+// vergessen): auf das geplante Ende des jeweiligen Tages, als "automatisch beendet".
+async function ciAutoCloseOldShifts() {
+  const heute = ciTodayIso();
+  const offen = (ciData.schichten || []).filter((s) => !s.aus_ts && s.datum && s.datum < heute);
+  for (const s of offen) {
+    const ort = (ciData.orte || []).find((o) => o.id === s.ort_id);
+    const fenster = ort ? ciOrtFensterAn(ort, s.datum) : null;
+    const endeMin = fenster ? fenster.bis : 23 * 60 + 59;
+    const ende = new Date(s.datum + "T00:00:00"); ende.setMinutes(endeMin);
+    const patch = { aus_ts: ende.toISOString(), dauer_min: ciSchichtDauerMin(s.ein_ts, ende.toISOString(), fenster || { von: 0, bis: 1439 }), auto_beendet: true };
+    Object.assign(s, patch);
+    try { await sb.from("checkin_schichten").update(patch).eq("id", s.id); } catch (e) {}
+  }
 }
 
 function ciHatCheckin(rundgangId, punktId) {
@@ -268,12 +316,17 @@ function ciRender() {
   if (!ciUser) return;
   const view = document.getElementById("view");
   if (!view) return;
+  if (ciTimer) { clearInterval(ciTimer); ciTimer = null; }
+  const hasArbeit = (ciData.orte || []).length > 0;
+  if (ciSeg === "arbeit" && !hasArbeit) ciSeg = "heute";
+  const tabs = [["heute", t("heute")]];
+  if (hasArbeit) tabs.push(["arbeit", t("arbeitszeit")]);
+  tabs.push(["verlauf", t("verlauf")]);
+  const content = ciSeg === "heute" ? ciRenderHeute() : ciSeg === "arbeit" ? ciRenderArbeit() : ciRenderVerlauf();
   view.innerHTML = `
-    <div class="seg">
-      <button class="${ciSeg === "heute" ? "on" : ""}" onclick="ciSegTo('heute')">${t("heute")}</button>
-      <button class="${ciSeg === "verlauf" ? "on" : ""}" onclick="ciSegTo('verlauf')">${t("verlauf")}</button>
-    </div>
-    <div class="view on">${ciSeg === "heute" ? ciRenderHeute() : ciRenderVerlauf()}</div>`;
+    <div class="seg">${tabs.map(([k, l]) => `<button class="${ciSeg === k ? "on" : ""}" onclick="ciSegTo('${k}')">${l}</button>`).join("")}</div>
+    <div class="view on">${content}</div>`;
+  if (ciSeg === "arbeit") { ciTick(); ciTimer = setInterval(ciTick, 1000); }
 }
 function ciSegTo(s) { ciSeg = s; ciRender(); }
 
@@ -488,4 +541,205 @@ function ciRenderVerlauf() {
       <div class="week"><h4>${t("letzteCheckins")}</h4>${letzteHtml}</div>
     </div>
     <p class="muted" style="font-size:11.5px;margin:4px 4px 0;">${t("volleAuswertung")}</p>`;
+}
+
+/* ==================== ARBEITSZEIT (Ein-/Auschecken) ==================== */
+function ciMyOpenShift(ortId) { return (ciData.schichten || []).find((s) => s.ort_id === ortId && !s.aus_ts); }
+function ciMyTodayDone(ortId) {
+  const heute = ciTodayIso();
+  return (ciData.schichten || []).find((s) => s.ort_id === ortId && s.datum === heute && s.aus_ts);
+}
+
+function ciRenderArbeit() {
+  const heute = ciTodayIso();
+  const orte = ciData.orte || [];
+  if (!orte.length) return `<div class="card-x"><p class="ci-empty">${t("keinArbeitsort")}</p></div>`;
+  const now = ciNowMin();
+  return `<div class="ci-stagger">` + orte.map((ort) => {
+    const fenster = ciOrtFensterAn(ort, heute);
+    const puffer = parseInt(ort.puffer_min, 10) || 0;
+    const open = ciMyOpenShift(ort.id);
+    const done = ciMyTodayDone(ort.id);
+    const status = ciOrtStatus(fenster, now, puffer, !!open, !!done);
+    return ciRenderOrtKarte(ort, fenster, status, open, done);
+  }).join("") + `</div>`;
+}
+
+function ciRenderOrtKarte(ort, fenster, status, open, done) {
+  const planned = fenster ? t("heuteSchicht")(ciMinToTime(fenster.von), ciMinToTime(fenster.bis)) : t("heuteFrei");
+  const adr = ort.adresse ? `<span class="pt-adr">${escapeHtml(ort.adresse)}</span>` : "";
+  let body = "", cls = "";
+  if (status === "laeuft") { cls = "az-run"; body = ciRenderLaeuft(ort, fenster, open); }
+  else if (status === "ein") {
+    body = `<button class="ci-btn" id="azbtn_${ort.id}" onclick="ciDoEin('${ort.id}')">${t("einchecken2")}</button>
+            <div class="gps-err" id="azerr_${ort.id}"></div>`;
+  } else if (status === "vor") {
+    body = `<button class="ci-btn" disabled>${t("einAb")(ciMinToTime(fenster.von))}</button>`;
+  } else if (status === "fertig") { cls = "az-done"; body = ciRenderFertig(ort, fenster, done); }
+  else { cls = "az-miss"; body = `<div class="az-vorbei">⚠️ ${t("arbeitVorbei")}</div>`; }
+
+  return `<div class="az ${cls}">
+    <div class="az-head">
+      <div class="az-ic">🏢</div>
+      <div class="az-nm"><div class="pn">${escapeHtml(ort.name)}</div><div class="ps">${escapeHtml(planned)}${adr}</div></div>
+    </div>
+    ${body}
+  </div>`;
+}
+
+function ciRenderLaeuft(ort, fenster, open) {
+  const einZeit = ciUhrzeit(open.ein_ts);
+  const feierabend = fenster ? ciMinToTime(fenster.bis) : "";
+  return `
+    <div class="az-live">
+      <div class="az-ring">
+        <svg viewBox="0 0 120 120">
+          <circle class="az-ring-bg" cx="60" cy="60" r="52"></circle>
+          <circle class="az-ring-fg" id="azring_${ort.id}" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div class="az-ring-txt"><b id="azel_${ort.id}">0h 00m</b><span>${t("eingecheckt")}<br>${escapeHtml(einZeit)}</span></div>
+      </div>
+      <div class="az-count" id="azcount_${ort.id}">${feierabend ? `${t("feierabendUm")} ${escapeHtml(feierabend)}` : ""}</div>
+      <button class="ci-btn danger" id="azbtn_${ort.id}" onclick="ciDoAus('${ort.id}')">${t("auschecken")}</button>
+      <div class="gps-err" id="azerr_${ort.id}"></div>
+    </div>`;
+}
+
+function ciRenderFertig(ort, fenster, done) {
+  const von = ciUhrzeit(done.ein_ts), bis = ciUhrzeit(done.aus_ts);
+  const dauer = done.dauer_min != null ? done.dauer_min : ciSchichtDauerMin(done.ein_ts, done.aus_ts, fenster || { von: 0, bis: 1439 });
+  return `<div class="az-fertig">✓ ${escapeHtml(von)}–${escapeHtml(bis)} · ${t("gezaehlt")} <b>${ciFmtDauer(dauer)}</b>${done.auto_beendet ? " ⚠️" : ""}</div>`;
+}
+
+// Live-Aktualisierung (jede Sekunde) für offene Schichten: Timer, Ring, Countdown.
+function ciTick() {
+  const now = new Date();
+  (ciData.orte || []).forEach((ort) => {
+    const open = ciMyOpenShift(ort.id);
+    const el = document.getElementById(`azel_${ort.id}`);
+    if (!open || !el) return;
+    const elapsedMin = Math.max(0, (now.getTime() - new Date(open.ein_ts).getTime()) / 60000);
+    el.textContent = ciFmtDauer(elapsedMin);
+    const fenster = ciOrtFensterAn(ort, open.datum);
+    if (!fenster) return;
+    const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const total = Math.max(1, fenster.bis - fenster.von);
+    const prog = Math.max(0, Math.min(1, (nowMin - fenster.von) / total));
+    const ring = document.getElementById(`azring_${ort.id}`);
+    if (ring) { const C = 2 * Math.PI * 52; ring.style.strokeDasharray = C; ring.style.strokeDashoffset = C * (1 - prog); }
+    const count = document.getElementById(`azcount_${ort.id}`);
+    const rest = Math.round(fenster.bis - nowMin);
+    if (count) {
+      if (rest > 0) { count.classList.remove("az-over"); count.innerHTML = `${t("feierabendUm")} ${ciMinToTime(fenster.bis)} · ${t("nochLabel")} <b>${ciFmtDauer(rest)}</b>`; }
+      else { count.classList.add("az-over"); count.innerHTML = `⚠️ ${t("ueberFeierabend")}`; if (ring) ring.classList.add("az-over-ring"); }
+    }
+  });
+}
+
+/* ---- Stempeln (Ein/Aus) mit GPS ---- */
+function ciGps(onOk, onErr) {
+  if (!navigator.geolocation) { onErr({ code: 0 }); return; }
+  navigator.geolocation.getCurrentPosition(onOk, onErr, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+
+function ciDoEin(ortId) { ciStartStempel(ortId, "ein"); }
+function ciDoAus(ortId) { ciStartStempel(ortId, "aus"); }
+
+function ciStartStempel(ortId, art) {
+  if (ciBusyOrt) return;
+  const ort = (ciData.orte || []).find((o) => o.id === ortId);
+  if (!ort) return;
+  const btn = document.getElementById(`azbtn_${ortId}`), err = document.getElementById(`azerr_${ortId}`);
+  if (err) err.classList.remove("show");
+  ciBusyOrt = ortId;
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spin"></span> ${art === "aus" ? t("tGpsErmittelnAus") : t("gpsErmittelt")}`; }
+  ciGps((pos) => ciStempelSave(ort, art, pos), (e) => ciStempelGeoErr(ortId, art, e));
+}
+
+function ciResetAzBtn(ortId, art) {
+  ciBusyOrt = null;
+  const btn = document.getElementById(`azbtn_${ortId}`);
+  if (btn) { btn.disabled = false; btn.innerHTML = art === "aus" ? t("auschecken") : t("einchecken2"); }
+}
+
+function ciStempelGeoErr(ortId, art, geoErr) {
+  const err = document.getElementById(`azerr_${ortId}`);
+  let msg = t("gpsKein");
+  if (geoErr && geoErr.code === 1) msg = t("gpsBlock");
+  else if (geoErr && geoErr.code === 3) msg = t("gpsTimeout");
+  if (err) { err.innerHTML = msg; err.classList.add("show"); }
+  showToast(t("tNichtMoeglich"));
+  ciResetAzBtn(ortId, art);
+}
+
+async function ciStempelSave(ort, art, pos) {
+  const err = document.getElementById(`azerr_${ort.id}`);
+  const lat = pos.coords.latitude, lng = pos.coords.longitude;
+  let dist = null;
+  if (ort.lat != null && ort.lng != null) {
+    dist = ciDistanzMeter(lat, lng, ort.lat, ort.lng);
+    const radius = parseInt(ort.radius, 10) || 100;
+    if (dist > radius) {
+      if (err) { err.innerHTML = t("gpsWeit")(dist); err.classList.add("show"); }
+      showToast(t("tZuWeit"));
+      ciResetAzBtn(ort.id, art);
+      return;
+    }
+  }
+  const heute = ciTodayIso();
+  if (art === "ein") {
+    const row = {
+      id: genCode() + genCode(), ort_id: ort.id, mitarbeiter_id: ciUser.id,
+      mitarbeiter_name: ciUser.name || ciUser.username || "", datum: heute,
+      ein_ts: new Date().toISOString(), ein_lat: lat, ein_lng: lng, ein_dist: dist,
+      aus_ts: null, auto_beendet: false,
+    };
+    ciData.schichten = ciData.schichten || [];
+    ciData.schichten.push(row);
+    await ciShiftInsert(row);
+    showToast(t("tEin"));
+  } else {
+    const open = ciMyOpenShift(ort.id);
+    if (!open) { ciResetAzBtn(ort.id, art); return; }
+    const fenster = ciOrtFensterAn(ort, open.datum || heute);
+    const ausTs = new Date().toISOString();
+    const patch = {
+      aus_ts: ausTs, aus_lat: lat, aus_lng: lng, aus_dist: dist,
+      dauer_min: ciSchichtDauerMin(open.ein_ts, ausTs, fenster || { von: 0, bis: 1439 }),
+    };
+    Object.assign(open, patch);
+    await ciShiftUpdate(open.id, patch);
+    showToast(t("tAus"));
+  }
+  ciBusyOrt = null;
+  ciRender();
+}
+
+/* ---- Offline-Warteschlange für Schichten ---- */
+function ciLoadShiftQueue() { try { return JSON.parse(localStorage.getItem(CI_SHIFT_QUEUE_KEY) || "[]"); } catch (e) { return []; } }
+function ciSaveShiftQueue(q) { try { localStorage.setItem(CI_SHIFT_QUEUE_KEY, JSON.stringify(q)); } catch (e) {} }
+
+async function ciShiftInsert(row) {
+  try { const { error } = await sb.from("checkin_schichten").insert(row); if (error) ciQueueShift({ op: "insert", row }); }
+  catch (e) { ciQueueShift({ op: "insert", row }); }
+}
+async function ciShiftUpdate(id, patch) {
+  try { const { error } = await sb.from("checkin_schichten").update(patch).eq("id", id); if (error) ciQueueShift({ op: "update", id, patch }); }
+  catch (e) { ciQueueShift({ op: "update", id, patch }); }
+}
+function ciQueueShift(item) { const q = ciLoadShiftQueue(); q.push(item); ciSaveShiftQueue(q); }
+
+async function ciFlushShifts() {
+  let q = ciLoadShiftQueue();
+  if (!q.length) return;
+  const rest = [];
+  for (const it of q) {
+    try {
+      let error;
+      if (it.op === "insert") ({ error } = await sb.from("checkin_schichten").insert(it.row));
+      else ({ error } = await sb.from("checkin_schichten").update(it.patch).eq("id", it.id));
+      if (error) rest.push(it);
+    } catch (e) { rest.push(it); }
+  }
+  ciSaveShiftQueue(rest);
 }
