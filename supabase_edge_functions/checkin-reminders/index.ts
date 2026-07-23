@@ -39,6 +39,28 @@ function fmtDauer(min) {
   return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
 }
 
+// "HH:MM" -> Minuten (24:00 = 1440), sonst null.
+function timeToMin(s) {
+  const m = String(s || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = +m[1], mi = +m[2];
+  if (h === 24 && mi === 0) return 1440;
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
+// Effektives Zeitfenster eines Punkts im Rundgang: Punkt-Override > Rundgang > Punkt-Standard.
+function effFenster(rg, e, p) {
+  const von = timeToMin(e && e.fenster_von) ?? timeToMin(rg && rg.fenster_von) ?? timeToMin(p && p.fenster_von);
+  const bis = timeToMin(e && e.fenster_bis) ?? timeToMin(rg && rg.fenster_bis) ?? timeToMin(p && p.fenster_bis);
+  let tol = e && e.toleranz_min;
+  if (tol == null || tol === "") tol = rg && rg.toleranz_min;
+  if (tol == null || tol === "") tol = p && p.toleranz_min;
+  tol = parseInt(tol, 10);
+  if (isNaN(tol)) tol = 0;
+  return { von, bis, tol };
+}
+
 Deno.serve(async (_req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -111,7 +133,89 @@ Deno.serve(async (_req) => {
       }
     }
 
-    return new Response(JSON.stringify({ vor, nach, autoClosed }), {
+    // ============================================================================
+    // RUNDGÄNGE: fällig / läuft ab / verpasst
+    // ============================================================================
+    let faellig = 0, ablauf = 0, verpasstN = 0;
+    try {
+      // "Jetzt" in deutscher Zeit (die Zeitfenster sind in Ortszeit gemeint).
+      const berlinDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date());
+      const hm = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+      const nowMin = (+hm.split(":")[0]) * 60 + (+hm.split(":")[1]);
+      const heuteIsoDay = (() => { const x = new Date(berlinDate + "T12:00:00Z").getUTCDay(); return x === 0 ? 7 : x; })();
+
+      const [rgRes, ptRes, logRes, stRes, maRes] = await Promise.all([
+        supabase.from("checkin_rundgaenge").select("*").eq("aktiv", true),
+        supabase.from("checkin_punkte").select("*"),
+        supabase.from("checkin_logs").select("*").eq("datum", berlinDate),
+        supabase.from("checkin_erinnerungen").select("*").eq("datum", berlinDate),
+        supabase.from("glas_mitarbeiter").select("id, name"),
+      ]);
+      const ptMap = {}; (ptRes.data || []).forEach((p) => { ptMap[p.id] = p; });
+      const stMap = {}; (stRes.data || []).forEach((s) => { stMap[s.id] = s; });
+      const maName = {}; (maRes.data || []).forEach((m) => { maName[m.id] = m.name; });
+      const maSubCache = {};
+      const getMaSubs = async (id) => {
+        if (!id) return [];
+        if (maSubCache[id]) return maSubCache[id];
+        const { data } = await supabase.from("push_subscriptions").select("*").eq("mitarbeiter_id", id);
+        return (maSubCache[id] = data || []);
+      };
+
+      for (const rg of (rgRes.data || [])) {
+        const tage = String(rg.tage || "").split(",").map((x) => parseInt(x.trim(), 10)).filter((x) => x >= 1 && x <= 7);
+        if (!tage.includes(heuteIsoDay)) continue;
+        let punkte = rg.punkte;
+        if (typeof punkte === "string") { try { punkte = JSON.parse(punkte || "[]"); } catch (_e) { punkte = []; } }
+        if (!Array.isArray(punkte)) punkte = [];
+
+        for (const e of punkte) {
+          const p = ptMap[e.punkt_id];
+          if (!p) continue;
+          const f = effFenster(rg, e, p);
+          if (f.von == null || f.bis == null) continue; // nur Punkte mit Zeitfenster
+          const done = (logRes.data || []).some((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id && l.datum === berlinDate);
+          if (done) continue;
+
+          const startTol = f.von - f.tol, endTol = f.bis + f.tol;
+          const sid = `${rg.id}__${e.punkt_id}__${berlinDate}`;
+          const st = stMap[sid] || {};
+
+          // c) Verpasst -> Admin (nur frisch, bis 60 Min nach Ablauf, damit kein Nachholen)
+          if (nowMin >= endTol && nowMin <= endTol + 60 && !st.verpasst) {
+            if (adminSubs && adminSubs.length) {
+              const wem = rg.mitarbeiter_id ? ` · zugeteilt: ${maName[rg.mitarbeiter_id] || "?"}` : "";
+              await sendPush(supabase, adminSubs, "⚠️ Punkt verpasst", `${p.name} · Rundgang ${rg.name}${wem}`, "/checkins-admin.html");
+            }
+            await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, verpasst: true });
+            verpasstN++;
+            continue;
+          }
+          // b) Läuft in <=15 Min ab -> zugeteilter MA
+          if (nowMin >= endTol - 15 && nowMin < endTol && !st.ablauf) {
+            const subs = await getMaSubs(rg.mitarbeiter_id);
+            if (subs.length) await sendPush(supabase, subs, "⏳ Fenster läuft ab", `${p.name} · noch ${endTol - nowMin} Min – bitte einchecken.`, "/checkins-ma.html");
+            await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, ablauf: true });
+            ablauf++;
+            continue;
+          }
+          // a) Jetzt fällig -> zugeteilter MA (bis 15 Min vor Ablauf, danach greift b)
+          if (nowMin >= startTol && nowMin < endTol - 15 && !st.faellig) {
+            const subs = await getMaSubs(rg.mitarbeiter_id);
+            if (subs.length) await sendPush(supabase, subs, "📍 Punkt jetzt fällig", `${p.name} · Rundgang ${rg.name}`, "/checkins-ma.html");
+            await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, faellig: true });
+            faellig++;
+          }
+        }
+      }
+      // Alte Merker aufräumen (älter als 10 Tage)
+      const alt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date(now - 10 * 86400000));
+      await supabase.from("checkin_erinnerungen").delete().lt("datum", alt);
+    } catch (e) {
+      console.error("Rundgang-Erinnerungen fehlgeschlagen:", e);
+    }
+
+    return new Response(JSON.stringify({ vor, nach, autoClosed, faellig, ablauf, verpasst: verpasstN }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
