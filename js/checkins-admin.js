@@ -114,8 +114,7 @@ function ciaRgTagesstatus(rg, logs, iso, nowMin) {
     if (!punkt) return;
     const fenster = ciEffFenster(rg, e, punkt);
     const done = !!ciaLogFor(logs, rg.id, e.punkt_id, iso);
-    let st = ciPunktStatus(fenster, nowMin, done);
-    if (st === "miss" && !ciZaehltAb(iso)) st = "now"; // vor Go-Live nichts als verpasst zeigen
+    const st = ciPunktStatus(fenster, nowMin, done); // Live-Ansicht immer ehrlich nach Uhrzeit
     if (st === "done") erledigt++;
     else if (st === "miss") hatMiss = true;
     else if (st === "now" || st === "open") hatNow = true;

@@ -256,13 +256,11 @@ function ciCheckinInfo(rundgangId, punktId) {
     || null;
 }
 
-// Status eines Punkts HEUTE, inkl. Start-Gate: vor dem Go-Live-Tag wird nie "verpasst"
-// angezeigt, damit man testen kann, ohne dass alles rot/unfertig aussieht.
+// Status eines Punkts HEUTE – immer ehrlich nach Uhrzeit (später/JETZT/verpasst).
+// Das Go-Live-Datum gilt NUR für die Auswertung (Verlauf/Monat), nicht für die
+// Live-Ansicht: hier soll die Uhr immer stimmen.
 function ciStatusHeute(fenster, done) {
-  const heute = ciTodayIso();
-  let st = ciPunktStatus(fenster, ciNowMin(), done);
-  if (st === "miss" && !ciZaehltAb(heute)) st = "now"; // vor Start: als machbar zeigen, nicht verpasst
-  return st;
+  return ciPunktStatus(fenster, ciNowMin(), done);
 }
 
 /* ---------------- Rendern ---------------- */
