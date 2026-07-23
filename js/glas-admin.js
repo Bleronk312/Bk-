@@ -1701,7 +1701,7 @@ async function loadGlasKundeTermine(kundeId) {
     const { data } = await sb.from("glas_stopps").select(sel).eq("kunde_id", kundeId);
     (data || []).forEach((s) => { if (!s.objekt_id && !stops.some((x) => x.id === s.id)) stops.push(s); });
   } catch (e) { /* kunde_id-Spalte fehlt noch - dann nur Objekt-Termine */ }
-  glasKundeTermineCache[kundeId] = stops.filter((s) => s.glas_touren && !s.glas_touren.archiviert_am);
+  glasKundeTermineCache[kundeId] = stops.filter((s) => s.glas_touren); // inkl. archivierter Touren
   renderGlasAdmin();
 }
 
@@ -5328,7 +5328,9 @@ function glasTermineAmTag(iso) {
 }
 
 function glasTourenAmTag(iso) {
-  return glasTouren.filter((t) => !t.archiviert_am && t.datum && iso >= t.datum && iso <= (t.datum_bis || t.datum));
+  // Bewusst INKL. archivierter Touren: Archivieren ist nur eine Aufräum-Ansicht in der
+  // Touren-Liste und darf Touren nicht aus dem Kalender entfernen.
+  return glasTouren.filter((t) => t.datum && iso >= t.datum && iso <= (t.datum_bis || t.datum));
 }
 
 // TimeTree-artige Ansicht: durchgehende Liste von Wochenzeilen, Touren als farbige Balken,
@@ -5375,7 +5377,7 @@ function renderKalenderSuchErgebnisse() {
   const q = glasKalSearch.trim().toLowerCase();
   if (q.length < 2) return `<p class="muted" style="margin:8px 2px 2px;">Mindestens 2 Zeichen eingeben…</p>`;
   const termine = glasTermine.filter((t) => glasSearchMatch(t.titel, q)).slice(0, 8);
-  const touren = glasTouren.filter((t) => !t.archiviert_am && glasSearchMatch(t.name, q)).slice(0, 8);
+  const touren = glasTouren.filter((t) => glasSearchMatch(t.name, q)).slice(0, 8);
   const objekte = glasObjekte.filter((o) => glasSearchMatch(`${o.name} ${o.kunde_name} ${o.kdnr}`, q)).slice(0, 8);
   if (!termine.length && !touren.length && !objekte.length) return `<p class="muted" style="margin:8px 2px 2px;">Keine Treffer für „${escapeHtml(glasKalSearch)}".</p>`;
   const row = (onclick, farbe, titel, sub) => `
@@ -5417,7 +5419,9 @@ function renderKalenderMonat() {
   const weeks = glasWeeksInRange({ year, month }, { year, month });
   const rangeVon = weeks[0][0];
   const rangeBis = weeks[weeks.length - 1][6];
-  const activeTouren = glasTouren.filter((t) => !t.archiviert_am && t.datum);
+  // INKL. archivierter Touren – der Kalender zeigt IMMER alle Touren (auch unterschriebene,
+  // archivierte). Archivieren betrifft nur die Übersichts-Liste, nicht den Kalender.
+  const activeTouren = glasTouren.filter((t) => t.datum);
 
   // Touren und freie Termine werden gemeinsam als Balken einsortiert
   const events = [
@@ -6052,7 +6056,7 @@ async function loadGlasScheine() {
     ({ data, error } = await sb.from("glas_stopps").select(spalten).eq("status", "erledigt"));
   }
   glasScheineDaten = error ? [] : (data || [])
-    .filter((s) => s.glas_touren && !s.glas_touren.archiviert_am && glasSignaturDatum(s))
+    .filter((s) => s.glas_touren && glasSignaturDatum(s)) // inkl. archivierter Touren – unterschriebene Scheine bleiben immer sichtbar
     .map((s) => ({ ...s, __hatBild: !!s.unterschrift, unterschrift: undefined })); // Bild-Flag merken, Bild droppen
   glasScheineLaden = false;
   renderGlasAdmin();
