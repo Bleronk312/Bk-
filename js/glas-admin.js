@@ -5535,37 +5535,52 @@ function renderKalenderMonat() {
       laneEnds[lane] = it.en;
     });
 
-  const cellsHtml = weeks
-    .map((week) => `<div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>` + week.map((iso) => {
+  // TimeTree-Balken: pro WOCHE ein Overlay mit durchgehenden Balken. Jeder Balken spannt
+  // innerhalb der Woche von seinem Start- bis Endtag (in %), der Text läuft über die
+  // ganze Balkenbreite (nicht mehr auf eine Zelle gequetscht). Das Overlay ist an der
+  // Wochenbreite abgeschnitten (overflow:hidden) -> kann NIE aus dem Bildschirm laufen.
+  const BAR_H = 16; // px Abstand pro Lane (Balken 13-15px + Lücke)
+  const cellsHtml = weeks.map((week) => {
+    const weekVon = week[0], weekBis = week[6];
+    const inWeek = events.filter((e) => e.datum <= weekBis && (e.datum_bis || e.datum) >= weekVon);
+    let maxLane = -1;
+    const overflowPerDay = [0, 0, 0, 0, 0, 0, 0];
+    const bars = [];
+    inWeek.forEach((e) => {
+      const eBis = e.datum_bis || e.datum;
+      if (e._lane >= maxChips) {
+        week.forEach((iso, ci) => { if (iso >= e.datum && iso <= eBis) overflowPerDay[ci]++; });
+        return;
+      }
+      const segVon = e.datum > weekVon ? e.datum : weekVon;
+      const segBis = eBis < weekBis ? eBis : weekBis;
+      const cStart = week.indexOf(segVon), cEnd = week.indexOf(segBis);
+      if (cStart < 0 || cEnd < 0) return;
+      if (e._lane > maxLane) maxLane = e._lane;
+      const contLeft = e.datum < weekVon, contRight = eBis > weekBis;
+      const left = (cStart / 7 * 100).toFixed(4), width = ((cEnd - cStart + 1) / 7 * 100).toFixed(4);
+      bars.push(`<div class="glas-cal-bar${contLeft ? " cont-left" : ""}${contRight ? " cont-right" : ""}${e.urlaub ? " is-urlaub" : ""}${e.done ? " is-done" : ""}" style="--c:${e.col}; left:${left}%; width:${width}%; top:${e._lane * BAR_H}px;">${escapeHtml(e.label)}</div>`);
+    });
+    const lanesShown = Math.max(1, Math.min(maxChips, maxLane + 1));
+    const minH = 30 + lanesShown * BAR_H + 8;
+    const daysHtml = week.map((iso, ci) => {
       const d = parseInt(iso.slice(8, 10), 10);
       const isToday = iso === todayIso;
       const isSelected = iso === glasKalenderSelectedDay;
       const inMonth = parseInt(iso.slice(5, 7), 10) - 1 === month;
-      const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
-
-      // Termine an ihrer festen Lane platzieren; leere Lanes dazwischen als unsichtbarer
-      // Platzhalter (gleiche Höhe) -> die Balken bleiben Tag für Tag auf einer Linie.
-      const byLane = [];
-      let overflow = 0;
-      dayEvents.forEach((t) => { if (t._lane < maxChips) byLane[t._lane] = t; else overflow++; });
-      const chips = byLane.length
-        ? Array.from({ length: byLane.length }, (_, l) => {
-            const t = byLane[l];
-            if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
-            const contLeft = t.datum < iso;
-            const contRight = (t.datum_bis || t.datum) > iso;
-            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
-          }).join("")
-        : "";
-      const more = overflow ? `<div class="glas-cal-more">+${overflow}</div>` : "";
-
-      return `
-        <div class="glas-cal-cell${isSelected ? " is-selected" : ""}${inMonth ? "" : " out-month"}" onclick="glasKalenderSelectedDay = glasKalenderSelectedDay === '${iso}' ? null : '${iso}'; renderGlasAdmin();">
-          <span class="glas-cal-daynum${isToday ? " is-today" : ""}">${d}</span>
-          ${chips}${more}
-        </div>`;
-    }).join(""))
-    .join("");
+      const more = overflowPerDay[ci] ? `<div class="glas-cal-more">+${overflowPerDay[ci]}</div>` : "";
+      return `<div class="glas-cal-cell${isSelected ? " is-selected" : ""}${inMonth ? "" : " out-month"}" onclick="glasKalenderSelectedDay = glasKalenderSelectedDay === '${iso}' ? null : '${iso}'; renderGlasAdmin();">
+        <span class="glas-cal-daynum${isToday ? " is-today" : ""}">${d}</span>${more}
+      </div>`;
+    }).join("");
+    return `<div class="glas-cal-wrow">
+      <div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>
+      <div class="glas-cal-wcells" style="min-height:${minH}px;">
+        ${daysHtml}
+        <div class="glas-cal-bars">${bars.join("")}</div>
+      </div>
+    </div>`;
+  }).join("");
 
   const html = `
     <div class="card glas-cal-card">
@@ -5588,7 +5603,7 @@ function renderKalenderMonat() {
         <div></div>
         ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
       </div>
-      <div class="glas-cal-grid with-kw${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
+      <div class="glas-cal-weeks${glasCalAnimDir ? ` glas-cal-anim-${glasCalAnimDir}` : ""}">${cellsHtml}</div>
       <div class="muted" style="margin:8px 8px 0; font-size:11.5px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center;">
         <span>🚐 Tour:</span>
         <span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:${GLAS_TOUR_FARBE.geplant}; vertical-align:middle;"></span> geplant</span>

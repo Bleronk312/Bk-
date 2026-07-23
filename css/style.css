@@ -384,6 +384,50 @@ label {
 }
 .glas-cal-more { font-size: 8.5px; font-weight: 700; color: var(--text-secondary); padding: 0 4px; }
 
+/* ---- TimeTree-Wochenbalken: durchgehende Balken pro Woche, Text spannt über Tage ---- */
+.glas-cal-weeks { display: block; }
+.glas-cal-wrow { display: grid; grid-template-columns: 15px 1fr; }
+.glas-cal-wcells {
+  position: relative;               /* Positionierungs-Kontext für das Balken-Overlay */
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+/* Samstag/Sonntag einfärben (Zelle 6/7; das Balken-Overlay ist absolut = kein grid-child) */
+.glas-cal-wcells .glas-cal-cell:nth-child(6) .glas-cal-daynum { color: #2d7dc4; }
+.glas-cal-wcells .glas-cal-cell:nth-child(7) .glas-cal-daynum { color: #d6453b; }
+.glas-cal-wcells .glas-cal-cell { position: relative; }
+.glas-cal-wcells .glas-cal-more { position: absolute; right: 4px; bottom: 3px; }
+/* Balken-Overlay: startet unter der Tageszahl, ist an der Wochenbreite abgeschnitten. */
+.glas-cal-bars {
+  position: absolute;
+  left: 0; right: 0; top: 25px; bottom: 2px;
+  pointer-events: none;             /* Klicks gehen auf die Tageszelle darunter */
+  overflow: hidden;                 /* KEIN Überlauf aus der Woche/dem Bildschirm */
+}
+.glas-cal-bar {
+  position: absolute;
+  height: 13px; line-height: 13px;
+  box-sizing: border-box;
+  padding: 0 5px; margin: 0 1px;
+  border-radius: 3px;
+  background: var(--c, var(--blue));
+  color: #fff;
+  font-size: 9px; font-weight: 600; letter-spacing: -0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.glas-cal-bar.cont-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+.glas-cal-bar.cont-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+.glas-cal-bar.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
+.glas-cal-bar.is-urlaub {
+  background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
+  color: color-mix(in srgb, var(--c, var(--blue)) 82%, var(--text));
+  font-style: italic;
+}
+@media (min-width: 760px) {
+  .glas-cal-bars { top: 30px; }
+  .glas-cal-bar { font-size: 11px; height: 15px; line-height: 15px; }
+}
+
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
