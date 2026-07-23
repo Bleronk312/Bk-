@@ -5539,7 +5539,7 @@ function renderKalenderMonat() {
   // innerhalb der Woche von seinem Start- bis Endtag (in %), der Text läuft über die
   // ganze Balkenbreite (nicht mehr auf eine Zelle gequetscht). Das Overlay ist an der
   // Wochenbreite abgeschnitten (overflow:hidden) -> kann NIE aus dem Bildschirm laufen.
-  const BAR_H = 16; // px Abstand pro Lane (Balken 13-15px + Lücke)
+  const BAR_H = 19; // px Abstand pro Lane (Balken 13-15px + ~4px Lücke, damit sie nicht kleben)
   const cellsHtml = weeks.map((week) => {
     const weekVon = week[0], weekBis = week[6];
     const inWeek = events.filter((e) => e.datum <= weekBis && (e.datum_bis || e.datum) >= weekVon);
