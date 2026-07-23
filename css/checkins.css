@@ -396,6 +396,16 @@ select.f-in{appearance:auto}
 .ci-login-err{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:11px;
   padding:10px 13px;font-size:12.5px;font-weight:600;margin-bottom:14px}
 
+/* ---- Pull-to-Refresh (js/pull-refresh.js) – Spinner-Optik wie in den anderen Apps.
+   Eigene Kopie, weil checkins.css bewusst von style.css getrennt ist. ---- */
+.ptr-indicator{position:fixed;top:calc(-12px + env(safe-area-inset-top));left:50%;
+  transform:translateX(-50%) translateY(-56px);z-index:300;width:42px;height:42px;border-radius:50%;
+  background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.18);
+  display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none}
+.ptr-spinner{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--blue)}
+.ptr-indicator.ready .ptr-spinner{border-top-color:var(--green)}
+.ptr-indicator.refreshing .ptr-spinner{animation:ciSp .7s linear infinite}
+
 /* ---- Toast ---- */
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);opacity:0;
   background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-size:13.5px;font-weight:600;

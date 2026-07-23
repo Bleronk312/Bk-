@@ -27,6 +27,7 @@ const CI_T = {
     fenster: "Fenster", jederzeit: "jederzeit", uhr: " Uhr", vomPunkt: "m",
     einchecken: "📍 Jetzt einchecken", gpsErmittelt: "GPS wird ermittelt…", wirdGespeichert: "Wird gespeichert…",
     route: "🧭 Route", nichtOffen: "– noch nicht offen.",
+    verpasstInfo: "Zeitfenster vorbei – Einchecken ist nicht mehr möglich.",
     keinRundgang: "Heute ist kein Rundgang für dich geplant. 🎉",
     wirdGesendet: "· wird gesendet",
     meineWoche: "Meine Woche", letzteCheckins: "Letzte Check-ins",
@@ -67,6 +68,7 @@ const CI_T = {
     fenster: "Orari", jederzeit: "kurdo", uhr: "", vomPunkt: "m",
     einchecken: "📍 Bëj check-in", gpsErmittelt: "Po merret GPS…", wirdGespeichert: "Po ruhet…",
     route: "🧭 Rruga", nichtOffen: "– ende s'është hapur.",
+    verpasstInfo: "Orari kaloi – check-in s'është më i mundur.",
     keinRundgang: "Sot s'ke turne të planifikuar. 🎉",
     wirdGesendet: "· po dërgohet",
     meineWoche: "Java ime", letzteCheckins: "Check-in-et e fundit",
@@ -410,6 +412,10 @@ function ciRenderStop(rg, eintrag) {
       body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span class="meta-done">✓ ${escapeHtml(zeit)}${escapeHtml(dist)}${info && info.pending ? " " + t("wirdGesendet") : ""}</span></div>`;
     } else if (status === "later") {
       body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span class="muted" style="font-size:12.5px;">${escapeHtml(t("fenster") + " " + ciFensterLabel(fenster))} ${escapeHtml(t("nichtOffen"))}</span></div>`;
+    } else if (status === "miss") {
+      // Verpasst = vorbei. Bewusst KEIN Einchecken-Knopf mehr - nachträgliches
+      // Einchecken würde die Kontrolle aushebeln.
+      body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span style="font-size:12.5px;color:var(--red);font-weight:600;">⚠️ ${escapeHtml(t("verpasstInfo"))}</span></div>`;
     } else {
       const mapUrl = (punkt.lat != null && punkt.lng != null)
         ? `https://www.google.com/maps/dir/?api=1&destination=${punkt.lat},${punkt.lng}` : "";
@@ -441,6 +447,19 @@ function ciDoCheckin(rundgangId, punktId) {
   if (ciBusyPunkt) return;
   const punkt = ciData.punkte[punktId];
   if (!punkt) return;
+  // Sicherheits-Prüfung BEIM TIPPEN: Lag die Seite offen und das Zeitfenster ist
+  // inzwischen vorbei (oder noch nicht offen), wird NICHT eingecheckt - der alte
+  // Knopf auf dem Bildschirm zählt nicht. Ansicht danach auf den ehrlichen Stand.
+  const rgGuard = (ciData.rundgaenge || []).find((r) => r.id === rundgangId);
+  const egGuard = rgGuard ? ciRundgangPunkte(rgGuard).find((e) => e.punkt_id === punktId) : null;
+  if (rgGuard && egGuard) {
+    const stJetzt = ciStatusHeute(ciEffFenster(rgGuard, egGuard, punkt), ciHatCheckin(rundgangId, punktId));
+    if (stJetzt === "miss" || stJetzt === "later" || stJetzt === "done") {
+      showToast(t("tNichtMoeglich"));
+      ciRender();
+      return;
+    }
+  }
   const id = `${rundgangId}__${punktId}`;
   const btn = document.getElementById(`btn_${id}`);
   const err = document.getElementById(`err_${id}`);
