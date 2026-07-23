@@ -122,11 +122,24 @@ function ciaRender() {
       <p>Bitte die Datei <b>supabase_add_checkins.sql</b> in Supabase ausführen. Danach diese Seite neu laden.</p></div>`;
     return;
   }
-  const tabs = [["start","🏠 Start"],["heute","📅 Heute"],["monat","📊 Monat"],["rund","🗺️ Rundgänge"],["punkte","📍 Punkte"],["orte","🏢 Arbeitsorte"]];
   view.innerHTML = `
-    <div class="seg">${tabs.map(([k,l]) => `<button class="${ciaTab===k?"on":""}" onclick="ciaGo('${k}')">${l}</button>`).join("")}</div>
+    <div class="seg" id="ciaSeg">${CIA_TABS.map(([k,l]) => `<button data-tab="${k}" class="${ciaTab===k?"on":""}" onclick="ciaGo('${k}')">${l}</button>`).join("")}</div>
     <div class="view on" id="ciaView">${ciaRenderTab()}</div>`;
+  ciaCenterActiveTab();
   if ((ciaTab === "punkte" && ciaPtForm) || (ciaTab === "orte" && ciaOrtForm)) ciaInitMapSoon();
+}
+const CIA_TABS = [["start","🏠 Start"],["heute","📅 Heute"],["monat","📊 Monat"],["rund","🗺️ Rundgänge"],["punkte","📍 Punkte"],["orte","🏢 Arbeitsorte"]];
+
+// Aktiven Reiter mittig in die (scrollbare) Leiste schieben – aber NUR die Leiste
+// scrollen, nie die ganze Seite (sonst "springt" der Kopf).
+function ciaCenterActiveTab() {
+  const seg = document.getElementById("ciaSeg");
+  if (!seg) return;
+  const on = seg.querySelector("button.on");
+  if (!on) return;
+  const target = on.offsetLeft - (seg.clientWidth - on.offsetWidth) / 2;
+  try { seg.scrollTo({ left: Math.max(0, target), behavior: "smooth" }); }
+  catch (e) { seg.scrollLeft = Math.max(0, target); }
 }
 
 function ciaGo(tab) {
@@ -134,8 +147,18 @@ function ciaGo(tab) {
   if (tab !== "rund") ciaRgForm = null;
   if (tab !== "punkte") { ciaPtForm = null; }
   if (tab !== "orte") { ciaOrtForm = null; }
-  if (tab !== "punkte" && tab !== "orte") ciaDestroyMap();
-  ciaRender();
+  ciaDestroyMap(); // beim Reiterwechsel ist nie ein Formular offen -> keine Karte nötig
+  // Teil-Update: die Reiter-Leiste NICHT neu aufbauen, sonst verliert sie ihre
+  // Scroll-Position und "springt" auf dem Handy zurück. Nur aktive Markierung
+  // umschalten und den Inhaltsbereich austauschen.
+  const seg = document.getElementById("ciaSeg");
+  const box = document.getElementById("ciaView");
+  if (!seg || !box) { ciaRender(); return; }
+  seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  box.innerHTML = ciaRenderTab();
+  box.classList.remove("on"); void box.offsetWidth; box.classList.add("on"); // Fade-in erneut abspielen
+  ciaCenterActiveTab();
+  if ((tab === "punkte" && ciaPtForm) || (tab === "orte" && ciaOrtForm)) ciaInitMapSoon();
 }
 
 function ciaRenderTab() {
@@ -181,11 +204,10 @@ function ciaRenderStart() {
   const logs = ciaData.todayLogs;
   const laufend = ciaData.rundgaenge.filter((r) => r.aktiv !== false && ciRundgangLaeuftAn(r, iso));
   let fertig = 0, laeuft = 0, verpasst = 0;
-  const missNamen = [];
   laufend.forEach((rg) => {
     const s = ciaRgTagesstatus(rg, logs, iso, now);
     if (s.status === "ok") fertig++;
-    else if (s.status === "miss") { verpasst++; missNamen.push(rg.name); }
+    else if (s.status === "miss") verpasst++;
     else if (s.status === "run") laeuft++;
   });
 
@@ -196,16 +218,17 @@ function ciaRenderStart() {
     return `<div class="feed-row"><span class="t">${escapeHtml(ciUhrzeit(l.ts))}</span><span class="fdot" style="background:var(--green)"></span><span>${escapeHtml((p&&p.name)||"Punkt")}${escapeHtml(dist)} · ${escapeHtml(l.mitarbeiter_name||"")}</span></div>`;
   }).join("") : `<p class="ci-empty">Heute noch keine Check-ins.</p>`;
 
+  // Kacheln sind anklickbar und führen in den Heute-Reiter (dort stehen die Details je Rundgang).
+  const tile = (ic, k, v, cls) =>
+    `<button class="tile tile-btn" onclick="ciaGo('heute')"><div class="k"><span class="tile-ic">${ic}</span>${k}</div><div class="v ${cls}">${v}</div></button>`;
   return `
     <div class="ci-stagger">
       <div class="tiles">
-        <div class="tile"><div class="k">Heute fällig</div><div class="v b">${laufend.length}</div></div>
-        <div class="tile"><div class="k">Fertig</div><div class="v g">${fertig}</div></div>
-        <div class="tile"><div class="k">Läuft</div><div class="v a">${laeuft}</div></div>
-        <div class="tile"><div class="k">Verpasst</div><div class="v r">${verpasst}</div></div>
+        ${tile("🗺️", "Heute fällig", laufend.length, "b")}
+        ${tile("✅", "Fertig", fertig, "g")}
+        ${tile("⏱️", "Läuft", laeuft, "a")}
+        ${tile("⚠️", "Verpasst", verpasst, "r")}
       </div>
-      ${missNamen.length ? `<div class="card-x warncard"><h4>⚠️ Braucht deine Aufmerksamkeit</h4>
-        <p>${missNamen.map((n)=>`<b>„${escapeHtml(n)}"</b>`).join(", ")} ${missNamen.length>1?"haben":"hat"} heute mindestens einen verpassten Punkt.</p></div>` : ""}
       ${ciaRenderStartOrte(iso)}
       <div class="card-x"><h4>Letzte Check-ins</h4>${letzteHtml}</div>
     </div>`;
@@ -244,16 +267,23 @@ function ciaRenderStartOrte(iso) {
     else if (maIds.length && fertigN >= maIds.length) pill = `<span class="stpill sp-ok">✓ fertig</span>`;
     else pill = `<span class="stpill sp-off">${offenN} offen</span>`;
     const open = !!ciaOpenOrt[ort.id];
+    const live = einN > 0;
     const rows = statuses.length ? statuses.map((s) => {
-      const cls = !fenster ? "r-later" : s.st.key === "ein" ? "r-now" : s.st.key === "fertig" ? "r-ok" : "r-miss";
-      const txt = !fenster ? "heute kein Dienst" : s.st.label;
-      return `<div class="prow"><span class="nm2">👤 ${escapeHtml(s.name)}</span><span class="res ${cls}">${escapeHtml(txt)}</span></div>`;
-    }).join("") : `<div class="prow"><span class="nm2 muted">Niemand zugewiesen</span></div>`;
+      const k = !fenster ? "off" : s.st.key;
+      const av = escapeHtml((s.name.trim()[0] || "?").toUpperCase());
+      const avCls = k === "ein" ? "ein" : k === "fertig" ? "fertig" : "";
+      let badge;
+      if (!fenster) badge = `<span class="ort-badge off">heute frei</span>`;
+      else if (s.st.key === "ein") badge = `<span class="ort-badge live"><i class="pulse"></i>${escapeHtml(s.st.label)}</span>`;
+      else if (s.st.key === "fertig") badge = `<span class="ort-badge ok">✓ ${escapeHtml(s.st.label)}</span>`;
+      else badge = `<span class="ort-badge wait">${escapeHtml(s.st.label)}</span>`;
+      return `<div class="ort-row"><span class="ort-av ${avCls}">${av}</span><span class="ort-nm2">${escapeHtml(s.name)}</span>${badge}</div>`;
+    }).join("") : `<div class="ort-row"><span class="ort-av">–</span><span class="ort-nm2 muted">Niemand zugewiesen</span></div>`;
     const zeit = fenster ? `${ciMinToTime(fenster.von)}–${ciFmtBis(fenster.bis)}` : "heute frei";
-    return `<div class="day-rg">
+    return `<div class="day-rg${live ? " is-live" : ""}">
       <div class="hd" onclick="ciaToggleOrtStart('${ort.id}')">
-        <div><div class="nm">🏢 ${escapeHtml(ort.name)}</div><div class="as">${zeit} · ${maIds.length} MA</div></div>
-        <span style="display:flex;align-items:center;gap:8px;">${pill}<span style="color:var(--muted);font-size:13px;">${open ? "▴" : "▾"}</span></span>
+        <div class="nm-wrap"><span class="oic">🏢</span><div style="min-width:0;"><div class="nm">${escapeHtml(ort.name)}</div><div class="as">${zeit} · ${maIds.length} MA</div></div></div>
+        <span style="display:flex;align-items:center;gap:8px;flex:none;">${pill}<span style="color:var(--muted);font-size:13px;">${open ? "▴" : "▾"}</span></span>
       </div>
       ${open ? `<div class="pts">${rows}</div>` : ""}
     </div>`;

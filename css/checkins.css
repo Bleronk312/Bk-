@@ -58,6 +58,18 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);
   padding:calc(14px + env(safe-area-inset-top)) 18px 18px;position:relative}
 .ci-head .brand{display:flex;align-items:center;gap:7px;font-size:12px;opacity:.92;padding-right:150px}
 .ci-head .brand .dot{width:7px;height:7px;border-radius:50%;background:#fff}
+/* Admin-Kopf: Marke links, Aktions-Pillen (Hinweise/Hub) rechts – ruhig & sauber,
+   statt der alten unterstrichenen Text-Links (wirkten "verhauen"). */
+.ci-head.admin-head .brand{padding-right:0;flex:1;min-width:0}
+.ci-head-top{display:flex;align-items:center;gap:10px}
+.ci-head-actions{display:flex;gap:7px;flex:none}
+.ci-pill{display:inline-flex;align-items:center;gap:0;background:rgba(255,255,255,.15);
+  border:1px solid rgba(255,255,255,.28);color:#fff;text-decoration:none;font-family:var(--font);
+  font-size:12.5px;font-weight:700;line-height:1;padding:8px 12px;border-radius:999px;cursor:pointer;
+  transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
+.ci-pill:active{transform:translateY(1px);background:rgba(255,255,255,.28)}
+.ci-pill .ci-pill-t{white-space:nowrap}
+@media(max-width:400px){.ci-pill .ci-pill-t{display:none}.ci-pill{padding:8px 11px}}
 .ci-head h1{margin:6px 0 1px;font-size:20px;letter-spacing:-.01em}
 .ci-head .sub{font-size:12.5px;opacity:.9}
 .ci-head .who{position:absolute;right:16px;top:calc(env(safe-area-inset-top) + 12px);font-size:11px;opacity:.95;text-align:right;line-height:1.4}
@@ -87,9 +99,16 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}
 @media(max-width:560px){.tiles{grid-template-columns:1fr 1fr}}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;box-shadow:var(--shadow)}
-.tile .k{font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
-.tile .v{font-size:1.35rem;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .k{font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+  display:flex;align-items:center;gap:5px}
+.tile .k .tile-ic{font-size:12.5px;line-height:1}
+.tile .v{font-size:1.5rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1}
 .tile .v.g{color:var(--green)} .tile .v.r{color:var(--red)} .tile .v.b{color:var(--blue)} .tile .v.a{color:var(--amber)}
+/* Anklickbare Kacheln (führen in den passenden Reiter) */
+.tile-btn{appearance:none;width:100%;text-align:left;font-family:var(--font);cursor:pointer;
+  transition:transform .12s,box-shadow .15s;-webkit-tap-highlight-color:transparent}
+.tile-btn:hover{box-shadow:0 2px 4px rgba(20,32,48,.08),0 10px 26px rgba(20,32,48,.07)}
+.tile-btn:active{transform:translateY(1px) scale(.985)}
 
 .card-x{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px 15px;margin-bottom:12px;box-shadow:var(--shadow)}
 .card-x h4{margin:0 0 10px;font-size:13.5px}
@@ -121,6 +140,30 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);
 .prow .nm2{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .res{flex:none;font-size:11.5px;font-weight:700}
 .r-ok{color:var(--green)} .r-miss{color:var(--red)} .r-open,.r-now{color:var(--blue)} .r-later{color:var(--muted)}
+
+/* ---- Arbeitsorte-Übersicht auf der Startseite (lebendiger) ---- */
+.day-rg.is-live{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-050),var(--shadow)}
+.day-rg .oic{flex:none;width:34px;height:34px;border-radius:11px;background:var(--blue-050);color:var(--blue);
+  display:grid;place-items:center;font-size:16px}
+.day-rg.is-live .oic{background:var(--blue);color:#fff}
+.day-rg .hd .nm-wrap{display:flex;align-items:center;gap:10px;min-width:0}
+.ort-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line-2)}
+.ort-row:first-child{border-top:none}
+.ort-av{flex:none;width:28px;height:28px;border-radius:50%;background:var(--line-2);color:var(--muted);
+  display:grid;place-items:center;font-size:12px;font-weight:800}
+.ort-av.ein{background:var(--blue);color:#fff}
+.ort-av.fertig{background:var(--green-bg);color:var(--green)}
+.ort-nm2{flex:1;min-width:0;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ort-badge{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+  padding:5px 11px;border-radius:999px}
+.ort-badge.live{color:var(--blue);background:var(--blue-050)}
+.ort-badge.ok{color:var(--green);background:var(--green-bg)}
+.ort-badge.wait{color:var(--muted);background:var(--line-2)}
+.ort-badge.off{color:var(--muted);background:var(--line-2)}
+.ort-badge .pulse{width:7px;height:7px;border-radius:50%;background:var(--blue)}
+.ort-badge.live .pulse{animation:ciPulse 1.6s ease-out infinite}
+@keyframes ciPulse{0%{box-shadow:0 0 0 0 rgba(75,159,224,.55)}70%{box-shadow:0 0 0 7px rgba(75,159,224,0)}100%{box-shadow:0 0 0 0 rgba(75,159,224,0)}}
+@media (prefers-reduced-motion:reduce){.ort-badge.live .pulse{animation:none}}
 
 /* ---- Monat ---- */
 .quota .qrow{display:grid;grid-template-columns:130px 1fr 46px;gap:10px;align-items:center;margin-bottom:10px;font-size:12.5px}
