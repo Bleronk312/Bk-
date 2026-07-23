@@ -384,64 +384,6 @@ label {
 }
 .glas-cal-more { font-size: 8.5px; font-weight: 700; color: var(--text-secondary); padding: 0 4px; }
 
-/* ---- TimeTree-Wochenbalken: durchgehende Balken pro Woche, Text spannt über Tage ----
-   --barh = Zeilenabstand pro Lane (Balkenhöhe + Luft), --barstop = Start unter der
-   Tageszahl. Beides hier zentral, damit JS nichts in px rechnen muss. */
-.glas-cal-weeks { display: block; --barh: 18px; --barstop: 25px; }
-.glas-cal-wrow { display: grid; grid-template-columns: 15px 1fr; }
-.glas-cal-wcells {
-  position: relative;               /* Positionierungs-Kontext für das Balken-Overlay */
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  /* Zeilenhöhe aus der Lane-Anzahl (--lanes setzt das JS pro Woche) */
-  min-height: calc(var(--barstop) + var(--lanes, 1) * var(--barh) + 8px);
-}
-/* Samstag/Sonntag einfärben (Zelle 6/7; das Balken-Overlay ist absolut = kein grid-child) */
-.glas-cal-wcells .glas-cal-cell:nth-child(6) .glas-cal-daynum { color: #2d7dc4; }
-.glas-cal-wcells .glas-cal-cell:nth-child(7) .glas-cal-daynum { color: #d6453b; }
-.glas-cal-wcells .glas-cal-cell { position: relative; }
-.glas-cal-wcells .glas-cal-more { position: absolute; right: 4px; bottom: 3px; }
-/* Balken-Overlay: startet unter der Tageszahl, ist an der Wochenbreite abgeschnitten. */
-.glas-cal-bars {
-  position: absolute;
-  left: 0; right: 0; top: var(--barstop); bottom: 2px;
-  pointer-events: none;             /* Klicks gehen auf die Tageszelle darunter */
-  overflow: hidden;                 /* KEIN Überlauf aus der Woche/dem Bildschirm */
-}
-.glas-cal-bar {
-  position: absolute;
-  top: calc(var(--lane, 0) * var(--barh));
-  height: 13px; line-height: 13px;
-  box-sizing: border-box;
-  padding: 0 5px;
-  /* Sichtbare Lücke zwischen NEBENEINANDERLIEGENDEN Terminen: die Boxen stoßen
-     aneinander, aber links/rechts sind 2px Rand durchsichtig (background-clip).
-     margin funktioniert hier NICHT - bei position:absolute mit left+width ergibt
-     das 0px echte Lücke, die Balken kleben aneinander (der Bug). */
-  border-left: 2px solid transparent;
-  border-right: 2px solid transparent;
-  background-clip: padding-box;
-  border-radius: 5px;
-  background-color: var(--c, var(--blue));
-  color: #fff;
-  font-size: 9px; font-weight: 600; letter-spacing: -0.2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.glas-cal-bar.cont-left { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-width: 0; }
-.glas-cal-bar.cont-right { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right-width: 0; }
-.glas-cal-bar.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
-.glas-cal-bar.is-urlaub {
-  /* background-color (nicht background-Kurzform), sonst würde background-clip
-     zurückgesetzt und die transparente Rand-Lücke wieder gefüllt */
-  background-color: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
-  color: color-mix(in srgb, var(--c, var(--blue)) 82%, var(--text));
-  font-style: italic;
-}
-@media (min-width: 760px) {
-  .glas-cal-weeks { --barh: 21px; --barstop: 30px; }
-  .glas-cal-bar { font-size: 11px; height: 15px; line-height: 15px; }
-}
-
 /* Auf großen Screens dürfen die Kacheln deutlich höher werden -> echter Kalender-Look,
    der den Platz füllt statt in die Länge gezogen zu wirken */
 @media (min-width: 760px) {
