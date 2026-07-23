@@ -55,6 +55,7 @@ const CI_T = {
     gezaehlt: "gezählt", heuteFertig: "Heute erledigt", keinArbeitsort: "Dir ist heute kein Arbeitsort zugewiesen.",
     tEin: "✓ Eingecheckt", tAus: "✓ Ausgecheckt – schönen Feierabend!",
     tGpsErmittelnAus: "Auschecken – GPS wird geprüft…",
+    bellHint: "Erinnerung ans Auschecken aufs Handy bekommen", bellOn: "Aktivieren", bellAktiv: "🔔 Erinnerungen sind aktiv",
     tageKurz: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
     tageLang: ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
     monate: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
@@ -94,6 +95,7 @@ const CI_T = {
     gezaehlt: "numëruar", heuteFertig: "Sot e kryer", keinArbeitsort: "Sot s'të është caktuar vend pune.",
     tEin: "✓ Hyre", tAus: "✓ Dole – ditë të mbarë!",
     tGpsErmittelnAus: "Dalje – po kontrollohet GPS…",
+    bellHint: "Merr kujtesë në telefon për t'u çkyçur", bellOn: "Aktivizo", bellAktiv: "🔔 Kujtesat janë aktive",
     tageKurz: ["Hën", "Mar", "Mër", "Enj", "Pre", "Sht", "Die"],
     tageLang: ["E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë", "E diel"],
     monate: ["janar", "shkurt", "mars", "prill", "maj", "qershor", "korrik", "gusht", "shtator", "tetor", "nëntor", "dhjetor"],
@@ -110,6 +112,8 @@ async function ciInit() {
   ciSetHeaderWho();
   const ok = await ciEnsureLoggedIn();
   if (!ok) return; // Login-Screen läuft
+  // Benachrichtigungen still erneuern (falls schon erlaubt) – für die Auscheck-Erinnerungen
+  if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("checkin_ma", ciUser && ciUser.id);
   ciRender();
   await ciFlushQueue();
   await ciFlushShifts();
@@ -500,6 +504,7 @@ async function ciOnPosition(rundgangId, punkt, pos) {
     ciData.logs = ciData.logs || [];
     ciData.logs.push(eintrag);
     showToast(t("tGespeichert"));
+    ciNotifyAdmin(`📍 ${ciUser.name || ciUser.username} · Check-in`, `${punkt.name}${dist != null ? ` · ${dist} m` : ""}`);
   } else {
     showToast(t("tOffline"));
   }
@@ -557,7 +562,7 @@ function ciRenderArbeit() {
   const orte = ciData.orte || [];
   if (!orte.length) return `<div class="card-x"><p class="ci-empty">${t("keinArbeitsort")}</p></div>`;
   const now = ciNowMin();
-  return `<div class="ci-stagger">` + orte.map((ort) => {
+  return ciPushBanner() + `<div class="ci-stagger">` + orte.map((ort) => {
     const fensterHeute = ciOrtFensterAn(ort, heute);
     const puffer = parseInt(ort.puffer_min, 10) || 0;
     const open = ciMyOpenShift(ort.id);
@@ -692,17 +697,27 @@ async function ciStempelSave(ort, art, pos) {
     }
   }
   const heute = ciTodayIso();
+  const nm = ciUser.name || ciUser.username || "";
   if (art === "ein") {
+    // Geplanten Start/Ende fest mitspeichern -> die Erinnerungs-Funktion braucht dann
+    // keine Zeitzonen-Rechnung (funktioniert auch über Mitternacht).
+    const fenster = ciOrtFensterAn(ort, heute);
+    const mid = new Date(heute + "T00:00:00").getTime();
+    const einTs = new Date().toISOString();
     const row = {
       id: genCode() + genCode(), ort_id: ort.id, mitarbeiter_id: ciUser.id,
-      mitarbeiter_name: ciUser.name || ciUser.username || "", datum: heute,
-      ein_ts: new Date().toISOString(), ein_lat: lat, ein_lng: lng, ein_dist: dist,
+      mitarbeiter_name: nm, datum: heute,
+      ein_ts: einTs, ein_lat: lat, ein_lng: lng, ein_dist: dist,
       aus_ts: null, auto_beendet: false,
+      plan_start_ts: fenster ? new Date(mid + fenster.von * 60000).toISOString() : null,
+      plan_ende_ts: fenster ? new Date(ciSchichtEndeMs(heute, fenster)).toISOString() : null,
+      erinnert_vor: false,
     };
     ciData.schichten = ciData.schichten || [];
     ciData.schichten.push(row);
     await ciShiftInsert(row);
     showToast(t("tEin"));
+    ciNotifyAdmin(`🏢 ${nm} eingecheckt`, `${ort.name} · ${ciUhrzeit(einTs)} Uhr`);
   } else {
     const open = ciMyOpenShift(ort.id);
     if (!open) { ciResetAzBtn(ort.id, art); return; }
@@ -715,9 +730,33 @@ async function ciStempelSave(ort, art, pos) {
     Object.assign(open, patch);
     await ciShiftUpdate(open.id, patch);
     showToast(t("tAus"));
+    ciNotifyAdmin(`🏁 ${nm} ausgecheckt`, `${ort.name} · ${ciFmtDauer(patch.dauer_min)}`);
   }
   ciBusyOrt = null;
   ciRender();
+}
+
+// Fire-and-forget: Admin über einen Check-in/Stempel informieren (blockiert nie).
+function ciNotifyAdmin(title, body) {
+  try {
+    if (sb && sb.functions) sb.functions.invoke("send-push", { body: { role: "checkin_admin", title, body, url: "/checkins-admin.html" } }).catch(() => {});
+  } catch (e) {}
+}
+
+/* ---- Benachrichtigungen aktivieren (für Auscheck-Erinnerungen) ---- */
+async function ciEnablePush() {
+  if (typeof enablePushNotifications !== "function") { showToast("Benachrichtigungen nicht verfügbar"); return; }
+  await enablePushNotifications("checkin_ma", ciUser && ciUser.id);
+  ciRender();
+}
+function ciPushBanner() {
+  if (typeof Notification === "undefined") return "";
+  if (Notification.permission === "granted") return `<div class="card-x" style="padding:11px 14px;font-size:12.5px;color:var(--green);font-weight:600;">${t("bellAktiv")}</div>`;
+  return `<div class="card-x" style="display:flex;align-items:center;gap:11px;">
+    <span style="font-size:22px;">🔔</span>
+    <div style="flex:1;font-size:12.5px;">${t("bellHint")}</div>
+    <button class="btn-pri" style="flex:0 0 auto;padding:9px 14px;" onclick="ciEnablePush()">${t("bellOn")}</button>
+  </div>`;
 }
 
 /* ---- Offline-Warteschlange für Schichten ---- */

@@ -9,7 +9,7 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function enablePushNotifications(role) {
+async function enablePushNotifications(role, mitarbeiterId) {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     showToast("Push-Benachrichtigungen werden auf diesem Gerät/Browser nicht unterstützt");
     return;
@@ -34,7 +34,7 @@ async function enablePushNotifications(role) {
     }
 
     const subJson = sub.toJSON();
-    const error = await pushUpsertSubscription(role, subJson);
+    const error = await pushUpsertSubscription(role, subJson, mitarbeiterId);
 
     if (error) {
       showToast("Fehler beim Aktivieren: " + error.message);
@@ -54,10 +54,16 @@ async function enablePushNotifications(role) {
 // (Früher überschrieb der Wechsel zwischen den Seiten die Rolle - dadurch "gingen
 // Benachrichtigungen immer wieder aus".) Fallback auf das alte Verhalten, solange die
 // SQL-Migration noch nicht ausgeführt wurde.
-async function pushUpsertSubscription(role, subJson) {
+async function pushUpsertSubscription(role, subJson, mitarbeiterId) {
   const row = { role, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth };
+  if (mitarbeiterId) row.mitarbeiter_id = mitarbeiterId; // für gezielte MA-Erinnerungen
   // ERST die neue Rolle sicher speichern ...
   let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" });
+  // Spalte mitarbeiter_id fehlt evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut versuchen
+  if (error && /mitarbeiter_id/i.test(error.message || "")) {
+    delete row.mitarbeiter_id;
+    ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));
+  }
   if (error) ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint" }));
   // ... und NUR wenn das geklappt hat, alte Rollen desselben Geräts wegräumen (ein
   // Home-Bildschirm-App-Symbol = ein Endpoint = genau EINE Rolle). Reihenfolge wichtig:
@@ -69,7 +75,7 @@ async function pushUpsertSubscription(role, subJson) {
 
 // Hat der Nutzer Benachrichtigungen einmal erlaubt, erneuert jedes Öffnen der Seite die
 // Anmeldung still im Hintergrund - so bleiben sie dauerhaft an, ohne erneutes Antippen.
-async function autoRenewPushSubscription(role) {
+async function autoRenewPushSubscription(role, mitarbeiterId) {
   try {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -82,7 +88,7 @@ async function autoRenewPushSubscription(role) {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
     }
-    await pushUpsertSubscription(role, sub.toJSON());
+    await pushUpsertSubscription(role, sub.toJSON(), mitarbeiterId);
   } catch (e) { /* beim nächsten Öffnen erneut versuchen */ }
 }
 

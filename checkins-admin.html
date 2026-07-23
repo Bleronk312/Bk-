@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Check-ins Admin" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Check-ins – Admin</title>
-<link rel="stylesheet" href="css/checkins.css?v=90" />
+<link rel="stylesheet" href="css/checkins.css?v=91" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
@@ -62,7 +62,7 @@
     <div class="brand"><a href="hub.html" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:7px;"><span class="dot"></span>GEKO Check-ins · Admin</a></div>
     <h1>📍 Check-ins</h1>
     <div class="sub" id="ci_date">Heute</div>
-    <div class="who"><a href="hub.html">⌂ Hub</a></div>
+    <div class="who"><button id="pushBtn" onclick="ciaEnablePush()">🔔 Benachrichtigungen</button><br><a href="hub.html">⌂ Hub</a></div>
   </div>
 
   <div class="ci-wrap admin">
@@ -76,11 +76,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="js/config.js?v=90"></script>
-  <script src="js/supabase-client.js?v=90"></script>
-  <script src="js/app-shared.js?v=90"></script>
-  <script src="js/glas-shared.js?v=90"></script>
-  <script src="js/checkins-shared.js?v=90"></script>
-  <script src="js/checkins-admin.js?v=90"></script>
+  <script src="js/config.js?v=91"></script>
+  <script src="js/supabase-client.js?v=91"></script>
+  <script src="js/app-shared.js?v=91"></script>
+  <script src="js/glas-shared.js?v=91"></script>
+  <script src="js/checkins-shared.js?v=91"></script>
+  <script src="js/push.js?v=91"></script>
+  <script src="js/checkins-admin.js?v=91"></script>
 </body>
 </html>

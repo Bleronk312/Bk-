@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
     const roleUrls = {
       admin: "/admin.html", graffiti: "/admin.html", mitarbeiter: "/mitarbeiter.html",
       glas: "/glas-admin.html#/tab/touren", kalender: "/kalender.html#/tab/kalender",
+      checkin_admin: "/checkins-admin.html", checkin_ma: "/checkins-ma.html",
     };
     const fallbackUrl = roleUrls[role] || "/mitarbeiter.html";
     const payload = JSON.stringify({ title, body: body || "", url: url || fallbackUrl });

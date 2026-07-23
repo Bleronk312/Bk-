@@ -24,9 +24,18 @@ async function ciaInit() {
   const d = new Date();
   ciaMonth = { year: d.getFullYear(), month: d.getMonth() };
   ciaSetHeaderDate();
+  // Benachrichtigungen still erneuern (falls schon erlaubt), damit Admin Check-ins mitbekommt
+  if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("checkin_admin");
+  if (typeof checkPushStatus === "function") checkPushStatus();
   await ciaLoadBase();
   await ciaLoadMonthLogs();
   ciaRender();
+}
+
+// Admin-Benachrichtigungen aktivieren (Check-ins + Arbeitszeit).
+function ciaEnablePush() {
+  if (typeof enablePushNotifications !== "function") { showToast("Benachrichtigungen nicht verfügbar"); return; }
+  enablePushNotifications("checkin_admin");
 }
 
 function ciaSetHeaderDate() {
