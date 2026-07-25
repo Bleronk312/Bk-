@@ -126,7 +126,7 @@ function wazeLink(adresse) {
 
 const PHOTO_MAX_DIM = 900;
 const PHOTO_QUALITY = 0.65;
-const PHOTO_MAX_COUNT = 15;
+const PHOTO_MAX_COUNT = 30;
 const FOTO_BUCKET = "fotos";
 
 let vorherFotos = [];
@@ -273,7 +273,7 @@ function renderPhotoSection() {
     const arr = which === "vorher" ? vorherFotos : nachherFotos;
     const thumbs = arr.map((src, i) => `
       <div class="photo-thumb">
-        <img src="${src}" onclick="openPhotoViewer('${which}', ${i})" />
+        <img src="${src}" loading="lazy" decoding="async" onclick="openPhotoViewer('${which}', ${i})" />
         <button class="remove-btn" onclick="removePhoto('${which}', ${i})">&times;</button>
       </div>
     `).join("");
@@ -304,7 +304,7 @@ function renderPhotoGallery(label, jsonStr) {
   if (!arr.length) return "";
   const key = "galerie_" + label.replace(/[^a-z]/gi, "");
   photoViewerSets[key] = () => arr;
-  const thumbs = arr.map((src, i) => `<div class="photo-thumb"><img src="${src}" onclick="openPhotoViewer('${key}', ${i})" /></div>`).join("");
+  const thumbs = arr.map((src, i) => `<div class="photo-thumb"><img src="${src}" loading="lazy" decoding="async" onclick="openPhotoViewer('${key}', ${i})" /></div>`).join("");
   return `
     <div class="card">
       <div class="muted" style="margin-bottom:8px;">${label}</div>
