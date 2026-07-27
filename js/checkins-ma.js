@@ -30,7 +30,8 @@ const CI_T = {
     verpasstInfo: "Zeitfenster vorbei – Einchecken ist nicht mehr möglich.",
     keinRundgang: "Heute ist kein Rundgang für dich geplant. 🎉",
     wirdGesendet: "· wird gesendet",
-    meineWoche: "Meine Woche", letzteCheckins: "Letzte Check-ins",
+    meineWoche: "Rundgänge diese Woche", letzteCheckins: "Letzte Check-ins",
+    vonKollege: (n) => ` · von ${n}`,
     keineWoche: "Noch keine Check-ins diese Woche.", keinZugeteilt: "Dir ist noch kein Rundgang zugeteilt.",
     volleAuswertung: "Die volle Monats-Auswertung sieht das Büro im Admin-Bereich.",
     loginTitel: "Check-ins", loginSub: "Melde dich mit deinem Benutzernamen an.<br>Du bleibst danach angemeldet.",
@@ -71,7 +72,8 @@ const CI_T = {
     verpasstInfo: "Orari kaloi – check-in s'është më i mundur.",
     keinRundgang: "Sot s'ke turne të planifikuar. 🎉",
     wirdGesendet: "· po dërgohet",
-    meineWoche: "Java ime", letzteCheckins: "Check-in-et e fundit",
+    meineWoche: "Turnet këtë javë", letzteCheckins: "Check-in-et e fundit",
+    vonKollege: (n) => ` · nga ${n}`,
     keineWoche: "Ende s'ka check-in këtë javë.", keinZugeteilt: "S'të është caktuar ende turne.",
     volleAuswertung: "Vlerësimin e plotë mujor e sheh vetëm zyra.",
     loginTitel: "Check-ins", loginSub: "Kyçu me emrin tënd të përdoruesit.<br>Mbetesh i kyçur.",
@@ -122,6 +124,15 @@ async function ciInit() {
   await ciLoadData();
   ciRender();
   window.addEventListener("online", () => Promise.all([ciFlushQueue(), ciFlushShifts()]).then(() => ciLoadData()).then(ciRender));
+  // Beim Zurückkehren in die App frische Daten holen: Hat ein Kollege inzwischen einen
+  // Punkt eingecheckt, steht er sofort als erledigt da – ohne Runterziehen.
+  // Nur wenn gerade kein Check-in/Stempel läuft (sonst würde die Ansicht darunter wegspringen).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (!ciUser || ciBusyPunkt || ciBusyOrt) return;
+    ciSetHeaderDate();
+    ciLoadData().then(ciRender);
+  });
 }
 
 function ciSetLang(l) {
@@ -259,7 +270,10 @@ async function ciLoadData() {
     const [rgRes, ptRes, logRes, orteRes, schichtRes] = await Promise.all([
       sb.from("checkin_rundgaenge").select("*").eq("aktiv", true),
       sb.from("checkin_punkte").select("*"),
-      sb.from("checkin_logs").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", vonIso),
+      // BEWUSST ohne Mitarbeiter-Filter: Ein Rundgang ist eine GEMEINSAME Aufgabe.
+      // Checkt ein Kollege einen Punkt ein, gilt der für alle Zugeteilten als erledigt –
+      // niemand muss denselben Stopp ein zweites Mal abhaken.
+      sb.from("checkin_logs").select("*").gte("datum", vonIso),
       sb.from("checkin_orte").select("*").eq("aktiv", true),
       sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", ciAddDays(vonIso, -7)),
     ]);
@@ -272,7 +286,11 @@ async function ciLoadData() {
       const heuteRg = rundgaenge.filter((r) => ciRundgangLaeuftAn(r, heute));
       if (heuteRg[0]) ciOpenRg[heuteRg[0].id] = true;
     }
-    ciData = { rundgaenge, punkte, logs: (logRes.data || []), orte, schichten: (schichtRes.data || []), heute };
+    // Nur Check-ins der Rundgänge, denen dieser MA zugeteilt ist – fremde Touren
+    // gehen ihn nichts an (und würden den Verlauf zumüllen).
+    const rgIds = new Set(rundgaenge.map((r) => r.id));
+    const logs = (logRes.data || []).filter((l) => rgIds.has(l.rundgang_id));
+    ciData = { rundgaenge, punkte, logs, orte, schichten: (schichtRes.data || []), heute };
     await ciAutoCloseOldShifts();
   } catch (e) { /* offline: alte ciData behalten */ }
 }
@@ -413,7 +431,11 @@ function ciRenderStop(rg, eintrag) {
       const info = ciCheckinInfo(rg.id, punkt.id);
       const dist = info && info.distanz_m != null ? ` · ${info.distanz_m} ${t("vomPunkt")}` : "";
       const zeit = info && info.ts ? ciUhrzeit(info.ts) + t("uhr") : t("erledigt");
-      body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span class="meta-done">✓ ${escapeHtml(zeit)}${escapeHtml(dist)}${info && info.pending ? " " + t("wirdGesendet") : ""}</span></div>`;
+      // War es ein Kollege, den Namen dazuschreiben – sonst wirkt es, als hätte man
+      // selbst eingecheckt (der Rundgang ist eine gemeinsame Aufgabe).
+      const wer = info && info.mitarbeiter_id && ciUser && info.mitarbeiter_id !== ciUser.id
+        ? t("vonKollege")(info.mitarbeiter_name || "Kollege") : "";
+      body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span class="meta-done">✓ ${escapeHtml(zeit)}${escapeHtml(dist)}${escapeHtml(wer)}${info && info.pending ? " " + t("wirdGesendet") : ""}</span></div>`;
     } else if (status === "later") {
       body = `<div class="body" style="padding-top:9px;margin-top:9px;"><span class="muted" style="font-size:12.5px;">${escapeHtml(t("fenster") + " " + ciFensterLabel(fenster))} ${escapeHtml(t("nichtOffen"))}</span></div>`;
     } else if (status === "miss") {
@@ -563,7 +585,9 @@ function ciRenderVerlauf() {
   const letzteHtml = letzte.length ? letzte.map((l) => {
     const p = ciData.punkte[l.punkt_id];
     const dist = l.distanz_m != null ? ` · ${l.distanz_m} ${t("vomPunkt")}` : "";
-    return `<div class="hist-row"><span class="t">${escapeHtml(ciUhrzeit(l.ts))}</span><span class="dotc" style="background:var(--green)"></span><span>${escapeHtml((p && p.name) || "Punkt")}${escapeHtml(dist)}</span></div>`;
+    const wer = l.mitarbeiter_id && ciUser && l.mitarbeiter_id !== ciUser.id
+      ? t("vonKollege")(l.mitarbeiter_name || "Kollege") : "";
+    return `<div class="hist-row"><span class="t">${escapeHtml(ciUhrzeit(l.ts))}</span><span class="dotc" style="background:var(--green)"></span><span>${escapeHtml((p && p.name) || "Punkt")}${escapeHtml(dist)}${escapeHtml(wer)}</span></div>`;
   }).join("") : `<p class="ci-empty">${t("keineWoche")}</p>`;
   return `
     <div class="ci-stagger">
