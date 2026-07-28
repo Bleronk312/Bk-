@@ -85,15 +85,14 @@
   </div>
 
   <button class="btn" onclick="allesKopieren()" id="kopBtn">📋 Alles kopieren</button>
-  <button class="btn sec" onclick="problemMelden()">🚩 Problem melden</button>
   <button class="btn warn" onclick="lokalLoeschen()">Fehler auf diesem Gerät löschen</button>
   <textarea id="ta"></textarea>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/config.js?v=108"></script>
-<script src="js/supabase-client.js?v=108"></script>
-<script src="js/fehler.js?v=108"></script>
+<script src="js/config.js?v=109"></script>
+<script src="js/supabase-client.js?v=109"></script>
+<script src="js/fehler.js?v=109"></script>
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function zeile(k,v,cls){ return `<div class="r"><b>${esc(k)}</b><span class="${cls||""}">${esc(v)}</span></div>`; }
@@ -233,14 +232,6 @@ function notfall(txt,fertig){
   ta.style.position="static"; ta.style.opacity="1"; ta.style.width="100%"; ta.style.height="160px";
   ta.select(); try{ document.execCommand("copy"); fertig(); }catch(e){}
 }
-function problemMelden(){
-  const was=prompt("Was ist passiert? (kurz beschreiben)");
-  if(was===null) return;
-  if(typeof gekoFehlerMelden==="function") gekoFehlerMelden(was);
-  lokRender();
-  alert("Danke – das Problem wurde aufgezeichnet.");
-}
-function lokLoeschen(){}
 function lokalLoeschen(){
   if(!confirm("Alle auf diesem Gerät gespeicherten Fehler löschen?")) return;
   try{ localStorage.removeItem("geko_fehler"); }catch(e){}

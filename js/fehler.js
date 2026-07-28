@@ -168,10 +168,3 @@ async function gekoFehlerSenden() {
     document.addEventListener("DOMContentLoaded", () => setTimeout(gekoFehlerSenden, 2500));
   } catch (e) {}
 })();
-
-// Von Hand aufrufbar (z.B. in einem "Problem melden"-Knopf oder aus einem catch).
-function gekoFehlerMelden(text) {
-  gekoFehlerGezaehlt = 0; // gemeldete Probleme nie verschlucken
-  gekoFehlerMerken("[Gemeldet] " + (text || "Mitarbeiter meldet ein Problem"), "melden", "");
-  gekoFehlerSenden();
-}
