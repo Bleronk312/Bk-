@@ -12,16 +12,16 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v107";
+const GEKO_CACHE = "geko-cache-v108";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
 const GEKO_CORE = [
   "hub.html", "glas-admin.html", "kalender.html", "glas-mitarbeiter.html", "admin.html", "mitarbeiter.html", "schein.html",
-  "checkins-admin.html", "checkins-ma.html",
+  "checkins-admin.html", "checkins-ma.html", "diagnose.html",
   "manifest-kalender.json",
   "css/style.css", "css/checkins.css",
-  "js/config.js", "js/logo-asset.js", "js/pull-refresh.js", "js/supabase-client.js", "js/app-shared.js",
+  "js/config.js", "js/fehler.js", "js/logo-asset.js", "js/pull-refresh.js", "js/supabase-client.js", "js/app-shared.js",
   "js/glas-shared.js", "js/pdf-fonts.js", "js/pdf-template.js", "js/glas-logo-sub.js", "js/glas-pdf-template.js",
   "js/push.js", "js/glas-admin.js", "js/glas-mitarbeiter.js", "js/admin.js", "js/mitarbeiter.js", "js/ma-i18n.js", "js/schein.js",
   "js/checkins-shared.js", "js/checkins-admin.js", "js/checkins-ma.js",

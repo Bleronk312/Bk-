@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="GEKO Diagnose" />
+<meta name="theme-color" content="#1f5d92" />
+<title>GEKO Diagnose</title>
+<!-- Bewusst OHNE externe Stylesheets: Diese Seite muss auch dann noch
+     funktionieren, wenn an der App etwas kaputt ist. -->
+<style>
+  :root{--blue:#1f5d92;--bg:#f6f7f9;--card:#fff;--ink:#1c2530;--muted:#6b7683;
+    --line:#e6e9ee;--green:#1f7a4d;--green-bg:#e3f3ea;--red:#b5371f;--red-bg:#fbe6e2;
+    --amber:#b5730b;--amber-bg:#fbf1df;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  @media(prefers-color-scheme:dark){:root{--blue:#4b9fe0;--bg:#0f1620;--card:#18212d;
+    --ink:#e7edf4;--muted:#93a1b1;--line:#26313f;--green:#5cc48c;--green-bg:#123526;
+    --red:#e8735c;--red-bg:#3a1a14;--amber:#e0a94b;--amber-bg:#2e2614}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;line-height:1.45}
+  .head{background:linear-gradient(160deg,var(--blue),#1a527f);color:#fff;
+    padding:calc(15px + env(safe-area-inset-top)) 18px 17px}
+  .head h1{margin:3px 0 2px;font-size:20px}
+  .head .s{font-size:12.5px;opacity:.9}
+  .head a{color:#fff;font-size:12px;opacity:.9}
+  .wrap{max-width:680px;margin:0 auto;padding:14px 15px 40px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:13px 15px;margin-bottom:11px}
+  .card h2{margin:0 0 9px;font-size:13.5px}
+  .r{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+  .r:first-of-type{border-top:none}
+  .r b{flex:0 0 42%;font-weight:600;color:var(--muted)}
+  .r span{flex:1;min-width:0;word-break:break-word}
+  .ok{color:var(--green);font-weight:700}
+  .bad{color:var(--red);font-weight:700}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font-size:15px;
+    font-weight:700;cursor:pointer;font-family:var(--font);margin-bottom:9px;
+    background:var(--blue);color:#fff}
+  .btn.sec{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+  .btn.warn{background:var(--card);color:var(--red);border:1px solid var(--line)}
+  .btn:active{transform:translateY(1px)}
+  .f{border-top:1px solid var(--line);padding:10px 0;font-size:12.5px}
+  .f:first-of-type{border-top:none}
+  .f .t{display:flex;gap:8px;align-items:baseline}
+  .f .t b{font-size:12.5px;color:var(--red);flex:1;word-break:break-word}
+  .f .t span{font-size:11px;color:var(--muted);flex:none;font-variant-numeric:tabular-nums}
+  .f .m{color:var(--muted);font-size:11.5px;margin-top:3px;word-break:break-word}
+  .leer{color:var(--muted);text-align:center;padding:18px 6px;font-size:13px}
+  .pill{display:inline-block;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;
+    background:var(--amber-bg);color:var(--amber);margin-left:6px}
+  .hint{font-size:11.5px;color:var(--muted);margin:4px 2px 12px}
+  textarea{position:absolute;left:-9999px;opacity:0}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div><a href="hub.html">‹ Hub</a></div>
+  <h1>🩺 Diagnose</h1>
+  <div class="s">Zeigt, was gerade wirklich läuft</div>
+</div>
+
+<div class="wrap">
+  <p class="hint">Wenn etwas nicht funktioniert: Diese Seite auf dem betroffenen Handy öffnen,
+    unten auf <b>„Alles kopieren"</b> tippen und den Text schicken. Damit ist die Ursache meist
+    sofort klar.</p>
+
+  <div class="card"><h2>App</h2><div id="app"></div></div>
+  <div class="card"><h2>Gerät</h2><div id="ger"></div></div>
+  <div class="card"><h2>Angemeldet</h2><div id="usr"></div></div>
+
+  <div class="card">
+    <h2>Fehler auf diesem Gerät</h2>
+    <div id="lok"><p class="leer">Wird geladen…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Fehler aller Geräte</h2>
+    <p class="hint" style="margin:0 0 9px">Aus der Datenbank – zeigt auch Fehler von den Handys der Mitarbeiter.</p>
+    <button class="btn sec" onclick="ladeAlle()" id="alleBtn">Aus Datenbank laden</button>
+    <div id="alle"></div>
+  </div>
+
+  <button class="btn" onclick="allesKopieren()" id="kopBtn">📋 Alles kopieren</button>
+  <button class="btn sec" onclick="problemMelden()">🚩 Problem melden</button>
+  <button class="btn warn" onclick="lokalLoeschen()">Fehler auf diesem Gerät löschen</button>
+  <textarea id="ta"></textarea>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js?v=108"></script>
+<script src="js/supabase-client.js?v=108"></script>
+<script src="js/fehler.js?v=108"></script>
+<script>
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function zeile(k,v,cls){ return `<div class="r"><b>${esc(k)}</b><span class="${cls||""}">${esc(v)}</span></div>`; }
+function uhr(ts){ try{const d=new Date(ts);
+  return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+" "+
+         d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});}catch(e){return String(ts||"");} }
+
+/* ---------- App ---------- */
+let swInfo = "wird geprüft…";
+async function appInfo(){
+  const ver = (typeof gekoFehlerVersion==="function" && gekoFehlerVersion()) || "unbekannt";
+  let caches_ = "—";
+  try{
+    if (window.caches){ const k = await caches.keys();
+      caches_ = k.filter(x=>x.startsWith("geko-cache-")).join(", ") || "keiner"; }
+  }catch(e){ caches_="nicht verfügbar"; }
+  try{
+    if (navigator.serviceWorker){ const r = await navigator.serviceWorker.getRegistration();
+      swInfo = r ? (r.active ? "aktiv" : "registriert") : "keiner"; }
+    else swInfo = "nicht unterstützt";
+  }catch(e){ swInfo="Fehler"; }
+  let db = "wird geprüft…";
+  document.getElementById("app").innerHTML =
+    zeile("Version", ver, ver==="unbekannt"?"bad":"ok") +
+    zeile("Adresse", location.host) +
+    zeile("Zwischenspeicher", caches_) +
+    zeile("Hintergrund-Dienst", swInfo) +
+    zeile("Datenbank", db) +
+    zeile("Stand", uhr(new Date().toISOString()));
+  // Datenbank-Erreichbarkeit separat testen
+  let text="nicht erreichbar", cls="bad";
+  try{
+    if (typeof sb!=="undefined" && sb){
+      const { error } = await sb.from("glas_mitarbeiter").select("id").limit(1);
+      if (!error){ text="verbunden"; cls="ok"; } else { text="Fehler: "+(error.message||"?"); }
+    } else text="Client nicht geladen";
+  }catch(e){ text="Fehler: "+(e&&e.message); }
+  document.getElementById("app").innerHTML =
+    document.getElementById("app").innerHTML.replace(
+      /<div class="r"><b>Datenbank<\/b><span class="">wird geprüft…<\/span><\/div>/,
+      zeile("Datenbank", text, cls));
+}
+
+/* ---------- Gerät ---------- */
+function gerInfo(){
+  const standalone = (navigator.standalone===true) ||
+    (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  let benachr = "nicht unterstützt";
+  try{ if (typeof Notification!=="undefined") benachr =
+    Notification.permission==="granted" ? "erlaubt" :
+    Notification.permission==="denied" ? "blockiert" : "noch nicht gefragt"; }catch(e){}
+  document.getElementById("ger").innerHTML =
+    zeile("Gerät", (typeof gekoFehlerGeraet==="function"?gekoFehlerGeraet():navigator.userAgent)) +
+    zeile("Geöffnet als", standalone ? "App (Home-Bildschirm)" : "Browser") +
+    zeile("Verbindung", navigator.onLine!==false ? "online" : "offline",
+          navigator.onLine!==false ? "ok" : "bad") +
+    zeile("Benachrichtigungen", benachr, benachr==="erlaubt"?"ok":(benachr==="blockiert"?"bad":"")) +
+    zeile("Bildschirm", window.innerWidth+" × "+window.innerHeight) +
+    zeile("Sprache", navigator.language||"?");
+}
+
+/* ---------- Angemeldet ---------- */
+function usrInfo(){
+  const keys=[["geko_ci_auth","Check-ins"],["geko_ma_auth","Mitarbeiter"],["geko_glas_auth","Glas"]];
+  let h="";
+  keys.forEach(([k,label])=>{
+    try{ const raw=localStorage.getItem(k);
+      if(!raw){ h+=zeile(label,"nicht angemeldet"); return; }
+      const o=JSON.parse(raw);
+      h+=zeile(label,(o.name||o.username||"?"),"ok");
+    }catch(e){ h+=zeile(label,"unlesbar","bad"); }
+  });
+  try{ h+=zeile("Check-ins-PIN", localStorage.getItem("geko_ci_pin_ok")==="1"?"entsperrt":"gesperrt");
+       h+=zeile("Glas-PIN", localStorage.getItem("geko_glas_pin_ok")==="1"?"entsperrt":"gesperrt"); }catch(e){}
+  document.getElementById("usr").innerHTML=h;
+}
+
+/* ---------- Fehler ---------- */
+function fehlerHtml(liste, zeigeGeraet){
+  if(!liste.length) return `<p class="leer">Keine Fehler aufgezeichnet 🎉</p>`;
+  return liste.slice().reverse().map(f=>`
+    <div class="f">
+      <div class="t"><b>${esc(f.meldung)}${(f.anzahl>1)?`<span class="pill">${f.anzahl}×</span>`:""}</b>
+        <span>${esc(uhr(f.ts))}</span></div>
+      <div class="m">${esc(f.seite||"?")} · ${esc(f.version||"?")}${f.quelle?" · "+esc(f.quelle):""}${
+        zeigeGeraet?` · ${esc(f.geraet||"?")}${f.benutzer?" · "+esc(f.benutzer):""}`:""}${
+        f.gesendet===false?" · noch nicht übertragen":""}</div>
+    </div>`).join("");
+}
+function lokRender(){
+  const l = (typeof gekoFehlerListe==="function") ? gekoFehlerListe() : [];
+  document.getElementById("lok").innerHTML = fehlerHtml(l, false);
+}
+async function ladeAlle(){
+  const btn=document.getElementById("alleBtn"); btn.textContent="Lade…"; btn.disabled=true;
+  try{
+    if(typeof sb==="undefined"||!sb) throw new Error("Keine Verbindung");
+    const { data, error } = await sb.from("app_fehler").select("*").order("ts",{ascending:false}).limit(40);
+    if(error) throw error;
+    document.getElementById("alle").innerHTML = fehlerHtml((data||[]).slice().reverse(), true);
+    btn.textContent="Neu laden";
+  }catch(e){
+    document.getElementById("alle").innerHTML =
+      `<p class="leer">Konnte nicht laden.<br><b>${esc((e&&e.message)||"")}</b><br>
+       Falls die Tabelle fehlt: <b>supabase_add_fehler.sql</b> in Supabase ausführen.</p>`;
+    btn.textContent="Nochmal versuchen";
+  }
+  btn.disabled=false;
+}
+
+/* ---------- Aktionen ---------- */
+function allesKopieren(){
+  const t=[];
+  t.push("GEKO DIAGNOSE – "+new Date().toLocaleString("de-DE"));
+  document.querySelectorAll(".card").forEach(c=>{
+    const h=c.querySelector("h2"); if(!h) return;
+    t.push("\n== "+h.textContent+" ==");
+    c.querySelectorAll(".r").forEach(r=>
+      t.push(r.querySelector("b").textContent+": "+r.querySelector("span").textContent));
+    c.querySelectorAll(".f").forEach(f=>
+      t.push("- "+f.querySelector(".t b").textContent.trim()+"  ["+f.querySelector(".t span").textContent+"]\n  "+
+             f.querySelector(".m").textContent.trim()));
+    const leer=c.querySelector(".leer"); if(leer) t.push(leer.textContent.trim());
+  });
+  const txt=t.join("\n");
+  const btn=document.getElementById("kopBtn");
+  const fertig=()=>{ btn.textContent="✓ Kopiert – jetzt einfügen und schicken";
+    setTimeout(()=>btn.textContent="📋 Alles kopieren",2600); };
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(fertig,()=>notfall(txt,fertig)); }
+    else notfall(txt,fertig);
+  }catch(e){ notfall(txt,fertig); }
+}
+function notfall(txt,fertig){
+  const ta=document.getElementById("ta"); ta.value=txt;
+  ta.style.position="static"; ta.style.opacity="1"; ta.style.width="100%"; ta.style.height="160px";
+  ta.select(); try{ document.execCommand("copy"); fertig(); }catch(e){}
+}
+function problemMelden(){
+  const was=prompt("Was ist passiert? (kurz beschreiben)");
+  if(was===null) return;
+  if(typeof gekoFehlerMelden==="function") gekoFehlerMelden(was);
+  lokRender();
+  alert("Danke – das Problem wurde aufgezeichnet.");
+}
+function lokLoeschen(){}
+function lokalLoeschen(){
+  if(!confirm("Alle auf diesem Gerät gespeicherten Fehler löschen?")) return;
+  try{ localStorage.removeItem("geko_fehler"); }catch(e){}
+  lokRender();
+}
+
+appInfo(); gerInfo(); usrInfo(); lokRender();
+</script>
+</body>
+</html>
