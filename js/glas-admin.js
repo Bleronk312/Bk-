@@ -3045,6 +3045,7 @@ function renderTourDetailView() {
               <p class="muted" style="margin:8px 0 0; font-size:12px;">${(!s.unterschrift && s.manuell_erledigt_am)
                 ? `✔️ Als unterschrieben markiert am ${formatGlasDate(glasDatumVonTimestamp(s.manuell_erledigt_am))}${glasUhrzeitVonTimestamp(s.manuell_erledigt_am) ? ` um ${glasUhrzeitVonTimestamp(s.manuell_erledigt_am)} Uhr` : ""} (ohne Unterschrift)`
                 : `Unterschrieben von ${escapeHtml(s.name || "")} am ${formatGlasDate(glasSignaturDatum(s))}${glasUhrzeitVonTimestamp(s.signed_at) ? ` um ${glasUhrzeitVonTimestamp(s.signed_at)} Uhr` : ""}`}</p>
+              ${s.erfasst_von ? `<p style="margin:4px 0 0; font-size:12.5px; font-weight:600; color:var(--text);">👤 Vor Ort: ${escapeHtml(s.erfasst_von)}</p>` : ""}
             ` : isNg ? `
               <div class="glas-ng-box">🚫 <strong>Nicht geschafft:</strong> ${escapeHtml(s.ng_grund || "")}${s.ng_notiz ? ` – ${escapeHtml(s.ng_notiz)}` : ""}${s.ng_am ? ` <span class="muted">(${formatGlasDate(glasDatumVonTimestamp(s.ng_am))})</span>` : ""}<br><span class="muted">Das Objekt steht wieder unter „Fällige Objekte" und kann neu eingeplant werden.</span></div>
             ` : `
