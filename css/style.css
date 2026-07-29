@@ -2023,6 +2023,22 @@ html.app-mode body.glas-cal-pur .app-sheet-content {
 .glas-sheet-row input[type="date"], .glas-sheet-row select { font-size: 14px; padding: 6px 9px; }
 .glas-sheet-ico { flex: 0 0 22px; text-align: center; font-size: 15px; }
 
+/* Haupt-Kundennummer im Kunden-Kopf: klein, aber sofort auffindbar (und mit
+   Tabellenziffern, damit man sie gut ablesen und vergleichen kann). */
+.glas-kdnr {
+  display: inline-block;
+  background: var(--blue-050, #eaf1f8);
+  color: var(--blue);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  user-select: all;            /* ein Klick markiert die ganze Nummer zum Kopieren */
+}
+html.dark .glas-kdnr { background: #16283a; }
+
 /* ---- Uhrzeit beim Termin ----
    Bewusst gross, mit Tabellenziffern und ohne die winzigen Browser-Pfeilchen.
    Auf dem Handy oeffnet das Feld das native Uhrzeit-Rad, am Rechner tippt man

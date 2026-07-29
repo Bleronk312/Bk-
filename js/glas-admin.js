@@ -1761,6 +1761,9 @@ function renderKundeDetailPage(id) {
   const objekte = glasObjekte.filter((o) => o.kunde_id === id);
   let faelligeCount = 0;
   objekte.forEach((o) => { if (glasObjektStatus(o.id)) faelligeCount++; });
+  // Haupt-Kd.-Nr. des Kunden; hat er keine, die erste aus seinen Objekten
+  // (gleiche Regel wie in der Kundenliste, damit beide Ansichten dasselbe zeigen).
+  const kdnrAnzeige = (k.kdnr || "").trim() || (objekte.find((o) => (o.kdnr || "").trim())?.kdnr || "").trim();
 
   return `
     <button class="btn btn-sm" style="margin:16px 0;" onclick="goGlasTab('kunden')">&larr; Alle Kunden</button>
@@ -1768,6 +1771,7 @@ function renderKundeDetailPage(id) {
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
         <div>
           <p style="margin:0 0 4px; font-weight:700; font-size:19px;">${escapeHtml(k.name)}</p>
+          ${kdnrAnzeige ? `<p style="margin:0 0 6px;"><span class="glas-kdnr">Kd.-Nr. ${escapeHtml(kdnrAnzeige)}</span></p>` : ""}
           <p class="muted" style="margin:0; white-space:pre-line;">${escapeHtml(k.adresse || "")}</p>
         </div>
         <button class="btn btn-sm" onclick="editGlasKunde('${k.id}')">Bearbeiten</button>
