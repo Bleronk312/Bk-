@@ -4862,10 +4862,36 @@ async function deleteGlasMa(id) {
 // Ein bestehender Termin öffnet zunächst nur die Ansehen-Ansicht (renderTerminView) -
 // erst über den expliziten "Bearbeiten"-Button geht es in den Bearbeitungsmodus. Ein neuer
 // Termin (id === null) springt weiterhin direkt ins leere Formular.
+// Uhrzeit per Schnellwahl setzen ("ganztägig" = leeren). Nur das Zeitfeld und die
+// Chips werden angefasst – kein Neuzeichnen, damit die Tastatur/das Sheet ruhig bleibt.
+function glasSetTerminZeit(z) {
+  if (!glasTerminEditing) return;
+  glasTerminEditing.uhrzeit = z;
+  const inp = document.getElementById("tm_uhrzeit");
+  if (inp) inp.value = z;
+  glasSyncZeitChips();
+}
+function glasSyncZeitChips() {
+  const box = document.getElementById("tm_zeit_chips");
+  if (!box) return;
+  const jetzt = (glasTerminEditing && glasTerminEditing.uhrzeit) || "";
+  box.querySelectorAll(".glas-zeit-chip").forEach((b) => b.classList.toggle("on", b.dataset.z === jetzt));
+}
+
+// Uhrzeit lesbar machen: "08:40" -> "8:40 Uhr" (führende Null weg, wie man es sagt).
+function glasZeitLabel(z) {
+  if (!z) return "";
+  const m = String(z).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return "";
+  return `${parseInt(m[1], 10)}:${m[2]} Uhr`;
+}
+
 function openGlasTermin(id, presetDatum) {
   glasTerminMenuOpen = false;
   if (id === null) {
-    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", farbe: "tuerkis", erinnerung: "", notiz: "", adresse: "", wiederholung: glasWiederholungToObj(""), anhaenge: [] };
+    // Neue Termine bekommen die Erinnerung standardmäßig auf "Am selben Tag" –
+    // ohne Erinnerung geht ein Termin im Alltag zu leicht unter.
+    glasTerminEditing = { id: null, titel: "", datum: presetDatum || glasKalenderSelectedDay || glasTodayIso(), datum_bis: "", uhrzeit: "", farbe: "tuerkis", erinnerung: "same_day", notiz: "", adresse: "", wiederholung: glasWiederholungToObj(""), anhaenge: [] };
     glasTerminViewing = null;
   } else {
     const t = { ...glasTermine.find((x) => x.id === id) };
@@ -4918,6 +4944,7 @@ function syncTerminFormFromDom() {
   if (get("tm_titel") !== undefined) glasTerminEditing.titel = get("tm_titel");
   if (get("tm_datum") !== undefined) glasTerminEditing.datum = get("tm_datum");
   if (get("tm_datum_bis") !== undefined) glasTerminEditing.datum_bis = get("tm_datum_bis");
+  if (get("tm_uhrzeit") !== undefined) glasTerminEditing.uhrzeit = get("tm_uhrzeit");
   if (get("tm_erinnerung") !== undefined) glasTerminEditing.erinnerung = get("tm_erinnerung");
   if (get("tm_notiz") !== undefined) glasTerminEditing.notiz = get("tm_notiz");
   if (get("tm_adresse") !== undefined) glasTerminEditing.adresse = get("tm_adresse");
@@ -5004,6 +5031,22 @@ function renderTerminForm() {
         <span class="glas-sheet-ico"></span>
         <span class="muted">Ende <span style="font-size:11px;">(optional)</span></span>
         <input type="date" id="tm_datum_bis" value="${t.datum_bis || ""}" style="width:auto; margin-left:auto;" />
+      </div>
+      <div class="glas-sheet-row">
+        <span class="glas-sheet-ico">🕐</span>
+        <span>Uhrzeit <span style="font-size:11px;" class="muted">(optional)</span></span>
+        <input type="time" id="tm_uhrzeit" class="glas-time" value="${t.uhrzeit || ""}"
+          oninput="glasTerminEditing.uhrzeit=this.value; glasSyncZeitChips();" style="margin-left:auto;" />
+      </div>
+      <div class="glas-sheet-row" style="padding-top:0;">
+        <span class="glas-sheet-ico"></span>
+        <div class="glas-zeit-chips" id="tm_zeit_chips">
+          ${["07:00","08:00","09:00","10:00","13:00","14:00"].map((z) =>
+            `<button type="button" class="glas-zeit-chip${t.uhrzeit === z ? " on" : ""}" data-z="${z}"
+               onclick="glasSetTerminZeit('${z}')">${z}</button>`).join("")}
+          <button type="button" class="glas-zeit-chip glas-zeit-clear${!t.uhrzeit ? " on" : ""}" data-z=""
+            onclick="glasSetTerminZeit('')">ganztägig</button>
+        </div>
       </div>
       <div class="glas-sheet-row">
         <span class="glas-sheet-ico">🏷️</span>
@@ -5209,7 +5252,7 @@ function renderTerminView() {
       <div style="display:flex; align-items:center; gap:14px; margin:16px 0 4px; padding:0 2px;">
         <div>
           <p class="muted" style="margin:0; font-size:12px;">${t.datum ? t.datum.slice(0, 4) : ""}</p>
-          <p style="margin:0; font-weight:700; font-size:${mehrtaegig ? "16px" : "19px"};">${glasDatumGross(t.datum)}</p>
+          <p style="margin:0; font-weight:700; font-size:${mehrtaegig ? "16px" : "19px"};">${glasDatumGross(t.datum)}${t.uhrzeit && !mehrtaegig ? `<span style="color:${c.dot};"> · ${escapeHtml(glasZeitLabel(t.uhrzeit))}</span>` : ""}</p>
         </div>
         ${mehrtaegig ? `
         <span style="color:${c.dot}; font-size:18px;">›</span>
@@ -5253,6 +5296,7 @@ async function saveGlasTermin() {
     titel: t.titel.trim(),
     datum: t.datum,
     datum_bis: t.datum_bis || null,
+    uhrzeit: (t.uhrzeit || "").trim() || null,
     farbe: t.farbe || "tuerkis",
     erinnerung: t.erinnerung || "",
     notiz: t.notiz || "",
@@ -5263,13 +5307,14 @@ async function saveGlasTermin() {
   const warNeu = !t.id;
   gekoCleanPayload(payload);
   let { error } = await sb.from("glas_termine").upsert(payload);
-  if (error && /wiederholung|adresse/.test(error.message || "")) {
+  if (error && /wiederholung|adresse|uhrzeit/.test(error.message || "")) {
     // Spalten existieren noch nicht (neueste SQL-Datei nicht ausgeführt) - Termin
     // trotzdem ohne die neuen Felder speichern, statt komplett zu blockieren.
     delete payload.wiederholung;
     delete payload.adresse;
+    delete payload.uhrzeit;
     ({ error } = await sb.from("glas_termine").upsert(payload));
-    if (!error) showToast("Hinweis: Wiederholung/Adresse noch nicht gespeichert – bitte neueste SQL-Datei ausführen");
+    if (!error) showToast("Hinweis: Uhrzeit/Wiederholung/Adresse noch nicht gespeichert – bitte neueste SQL-Datei ausführen");
   }
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
@@ -5360,8 +5405,12 @@ function glasTerminVorkommen(t, von, bis) {
   return out;
 }
 
+// Termine eines Tages – nach Uhrzeit sortiert (ganztägige zuerst, dann chronologisch).
 function glasTermineAmTag(iso) {
-  return glasTermine.filter((t) => t.datum && glasTerminVorkommen(t, iso, iso).length);
+  return glasTermine
+    .filter((t) => t.datum && glasTerminVorkommen(t, iso, iso).length)
+    .slice()
+    .sort((a, b) => (a.uhrzeit || "").localeCompare(b.uhrzeit || ""));
 }
 
 function glasTourenAmTag(iso) {
@@ -5479,7 +5528,8 @@ function renderKalenderMonat() {
       // Wiederkehrende Termine erscheinen an jedem Vorkommen im sichtbaren Zeitraum
       return glasTerminVorkommen(t, rangeVon, rangeBis).map((occ) => ({
         datum: occ.datum, datum_bis: occ.datum_bis,
-        col: c.dot, label: t.titel || "Termin",
+        // Uhrzeit vor den Titel – im Monat sieht man so auf einen Blick, wann es losgeht
+        col: c.dot, label: (t.uhrzeit ? t.uhrzeit + " " : "") + (t.titel || "Termin"),
       }));
     }) : []),
     // 🎨 Graffiti-Termine aus der Graffiti-App (scheine.termin) - eigene Farbe.
@@ -5691,6 +5741,7 @@ function renderKalenderTagPanel(iso) {
     return `
       <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="openGlasTermin('${t.id}')">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${c.dot};"></span>
+        ${t.uhrzeit ? `<span style="flex:none; width:52px; font-weight:800; font-size:14px; color:${c.dot}; font-variant-numeric:tabular-nums; padding-top:1px;">${escapeHtml(t.uhrzeit)}</span>` : ""}
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600;">📌 ${escapeHtml(t.titel)}</p>
           ${t.datum_bis && t.datum_bis !== t.datum ? `<p class="muted" style="margin:2px 0 0; font-size:12.5px;">${formatGlasDateRange(t.datum, t.datum_bis)}</p>` : ""}

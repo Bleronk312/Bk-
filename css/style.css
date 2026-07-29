@@ -2022,6 +2022,49 @@ html.app-mode body.glas-cal-pur .app-sheet-content {
 .glas-sheet-row textarea { flex: 1; font-size: 14.5px; }
 .glas-sheet-row input[type="date"], .glas-sheet-row select { font-size: 14px; padding: 6px 9px; }
 .glas-sheet-ico { flex: 0 0 22px; text-align: center; font-size: 15px; }
+
+/* ---- Uhrzeit beim Termin ----
+   Bewusst gross, mit Tabellenziffern und ohne die winzigen Browser-Pfeilchen.
+   Auf dem Handy oeffnet das Feld das native Uhrzeit-Rad, am Rechner tippt man
+   einfach die Zahlen - darunter liegen zusaetzlich Schnellwahl-Knoepfe. */
+.glas-time {
+  font-size: 19px !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  padding: 7px 12px !important;
+  width: auto;
+  min-width: 104px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+}
+.glas-time:focus { outline: 2px solid var(--blue); outline-offset: -1px; background: var(--card); }
+.glas-time::-webkit-calendar-picker-indicator { opacity: 0.45; cursor: pointer; }
+.glas-time::-webkit-inner-spin-button, .glas-time::-webkit-outer-spin-button {
+  -webkit-appearance: none; display: none;
+}
+.glas-zeit-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.glas-zeit-chip {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s;
+}
+.glas-zeit-chip:active { transform: scale(0.95); }
+.glas-zeit-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.glas-zeit-chip.glas-zeit-clear { color: var(--text-secondary); }
+.glas-zeit-chip.glas-zeit-clear.on { background: var(--text-secondary); border-color: var(--text-secondary); color: #fff; }
 .glas-sheet-chips {
   display: flex;
   align-items: center;
