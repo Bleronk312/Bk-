@@ -61,7 +61,7 @@ function generatePdf(s) {
   doc.text("Abnahmebescheinigung", L.title.x, L.title.y);
 
   // Logo oben rechts
-  doc.addImage(GEKO_LOGO_B64, "PNG", L.logoTop.x, L.logoTop.y, L.logoTop.w, L.logoTop.h);
+  doc.addImage(GEKO_LOGO_B64, "PNG", L.logoTop.x, L.logoTop.y, L.logoTop.w, L.logoTop.h, "geko-logo", "MEDIUM");
 
   // Auftraggeber
   let y = L.auftraggeberLabel.y;
@@ -174,7 +174,9 @@ function generatePdf(s) {
   const sigH = 18;
   if (s.unterschrift) {
     try {
-      doc.addImage(s.unterschrift, "PNG", sigX, L.sigLineY - sigH - 2, sigW, sigH);
+      // alias bewusst undefined: jsPDF leitet sie aus den Bilddaten ab, sonst würden
+      // verschiedene Unterschriften in einer Sammel-PDF alle gleich aussehen.
+      doc.addImage(s.unterschrift, "PNG", sigX, L.sigLineY - sigH - 2, sigW, sigH, undefined, "MEDIUM");
     } catch (e) {}
   }
   if (s.unterschrift_name) {
@@ -197,8 +199,8 @@ function generatePdf(s) {
   doc.text("Unterschrift des Auftraggebers", L.unterschriftLabelX, L.sigLineY + L.sigLabelGap);
 
   // Footer-Logos
-  doc.addImage(ISO14001_LOGO_B64, "PNG", L.logoBottom.x1, L.logoBottom.y, L.logoBottom.w1, L.logoBottom.h);
-  doc.addImage(ISO9001_LOGO_B64, "PNG", L.logoBottom.x2, L.logoBottom.y, L.logoBottom.w2, L.logoBottom.h);
+  doc.addImage(ISO14001_LOGO_B64, "PNG", L.logoBottom.x1, L.logoBottom.y, L.logoBottom.w1, L.logoBottom.h, "iso14001", "MEDIUM");
+  doc.addImage(ISO9001_LOGO_B64, "PNG", L.logoBottom.x2, L.logoBottom.y, L.logoBottom.w2, L.logoBottom.h, "iso9001", "MEDIUM");
 
   return doc;
 }

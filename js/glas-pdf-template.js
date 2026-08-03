@@ -93,6 +93,9 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
   const doc = existingDoc || new jsPDF({ unit: "mm", format: "a4" });
   if (existingDoc) doc.addPage();
   const tpl = GLAS_TEMPLATES[templateKey] || GLAS_TEMPLATES.geko;
+  // Kennung fuer die Bild-Wiederverwendung im PDF: pro Vorlage eigene Namen, damit
+  // in einer Sammel-PDF nicht alle Scheine dasselbe Logo bekommen.
+  const tplKey = GLAS_TEMPLATES[templateKey] ? templateKey : "geko";
   const L = GLAS_LAYOUT;
 
   // Eingebettete Unicode-Schrift, damit Ä/Ö/Ü/ß im PDF korrekt erscheinen (die jsPDF-
@@ -109,7 +112,7 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
   // Logo oben rechts
   const logo = tpl.logo();
   if (logo) {
-    doc.addImage(logo, "PNG", L.right - tpl.logoTop.w, 12.9, tpl.logoTop.w, tpl.logoTop.h);
+    doc.addImage(logo, "PNG", L.right - tpl.logoTop.w, 12.9, tpl.logoTop.w, tpl.logoTop.h, "glas-logo-" + tplKey, "MEDIUM");
   }
 
   // Auftraggeber (Kunde, oben links)
@@ -264,7 +267,9 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
   const sigH = 18;
   if (s.unterschrift) {
     try {
-      doc.addImage(s.unterschrift, "PNG", sigX, L.sigLineY - sigH - 2, sigW, sigH);
+      // alias bewusst undefined: jsPDF leitet sie aus den Bilddaten ab, sonst wuerden
+      // verschiedene Unterschriften in einer Sammel-PDF alle gleich aussehen.
+      doc.addImage(s.unterschrift, "PNG", sigX, L.sigLineY - sigH - 2, sigW, sigH, undefined, "MEDIUM");
     } catch (e) {}
   }
   if (s.name) {
@@ -290,8 +295,8 @@ function generateGlasPdf(s, templateKey, tourDatum, existingDoc) {
   doc.text("Unterschrift des Auftraggebers", L.unterschriftLabelX, L.sigLineY + L.sigLabelGap);
 
   // Footer-Badges
-  (tpl.badges() || []).forEach((b) => {
-    doc.addImage(b.src, "PNG", b.x, L.badgeY, b.w, tpl.badgeH);
+  (tpl.badges() || []).forEach((b, i) => {
+    doc.addImage(b.src, "PNG", b.x, L.badgeY, b.w, tpl.badgeH, "badge-" + tplKey + "-" + i, "MEDIUM");
   });
 
   return doc;
