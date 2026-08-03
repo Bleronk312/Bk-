@@ -454,3 +454,15 @@ async function saveVorherNachherNow() {
   Object.assign(schein, payload);
   showToast("Fotos gespeichert");
 }
+
+// Monatsname aus einem Datum "YYYY-MM-DD" – für das Feld "Auszuführende Arbeiten Monat"
+// auf dem Abnahmeschein. Der Monat richtet sich nach dem Tag der Unterschrift, nicht
+// nach dem Tag, an dem der Schein angelegt wurde (der lag oft Wochen früher).
+// Bei unlesbarem Datum wird der aktuelle Monat genommen, damit nie etwas Leeres entsteht.
+const GEKO_MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember"];
+function gekoMonatVonDatum(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date();
+  return GEKO_MONATE[d.getMonth()];
+}

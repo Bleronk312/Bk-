@@ -302,6 +302,10 @@ async function saveSignature() {
     datum,
     unterschrift,
     unterschrift_name: name,
+    // "Auszuführende Arbeiten Monat" richtet sich nach dem Tag der Unterschrift.
+    // Vorher stand hier der Monat, in dem der Schein ANGELEGT wurde - lag der Termin
+    // im Folgemonat, stand auf dem Schein der falsche Monat.
+    monat: gekoMonatVonDatum(datum),
     signed_at: new Date().toISOString(),
   };
   if (vorherFotos.length) payload.vorher_fotos = JSON.stringify(vorherFotos);
