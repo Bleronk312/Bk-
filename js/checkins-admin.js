@@ -609,7 +609,7 @@ function ciaExportPdf() {
     const rgIst = rgZeilen.filter((z) => z.status === "erledigt").length;
     const proz = rgSoll ? Math.round((rgIst / rgSoll) * 100) : 0;
 
-    brauche(120);
+    brauche(130);
     doc.setFont(FONT, "bold"); doc.setFontSize(13); tc(DUNKEL);
     doc.text(rg.name, M, yy);
     if (rgSoll) {
@@ -636,45 +636,95 @@ function ciaExportPdf() {
       if (proz > 0) { fc(quoteFarbe(proz)); doc.roundedRect(M, yy, Math.max(10, CW * proz / 100), 5, 2.5, 2.5, "F"); }
       yy += 18;
 
-      tabellenKopf();
+      const punktNamen = ciRundgangPunkte(rg).map((e) => { const p = ciaPunkt(e.punkt_id); return (p && p.name) || e.punkt_id; });
+      const nP = punktNamen.length;
       const proTag = {};
       rgZeilen.forEach((z) => { (proTag[z.datum] = proTag[z.datum] || []).push(z); });
-      Object.keys(proTag).sort().forEach((iso) => {
-        const arr = proTag[iso];
-        const done = arr.filter((z) => z.status === "erledigt");
-        const ok = done.length >= arr.length;
-        const fehlend = arr.filter((z) => z.status !== "erledigt").map((z) => z.punkt);
-        const fehlLines = ok ? [] : doc.splitTextToSize(`Fehlend: ${fehlend.join(", ")}`, CW - (cDatum - M) - 14);
-        const rowH = 18 + fehlLines.length * 10;
-        if (yy + rowH > H - 58) { neueSeite(); tabellenKopf(); }
+      const tage = Object.keys(proTag).sort();
 
-        fc(ok ? ZEBRA : ROTBG);
-        doc.rect(M, yy - 4, CW, rowH, "F");
+      if (nP >= 1 && nP <= 8) {
+        /* Matrix: Zeilen = Tage, Spalten = Kontrollpunkte, Zelle = Uhrzeit des Checks */
+        const wDatum = 88, wMa = 66;
+        const wCol = (CW - wDatum - wMa) / nP;
+        const colX = (i) => M + wDatum + i * wCol + wCol / 2;
+        const kopfH = 26;
+        const matrixKopf = () => {
+          fc([236, 241, 247]); doc.roundedRect(M, yy, CW, kopfH, 4, 4, "F");
+          doc.setFont(FONT, "bold"); doc.setFontSize(6.8); tc(GRAU);
+          doc.text("DATUM", M + 8, yy + 16);
+          punktNamen.forEach((nm, i) => {
+            const lines = doc.splitTextToSize(String(nm).toUpperCase(), wCol - 6).slice(0, 2);
+            doc.text(lines, colX(i), yy + (lines.length > 1 ? 12 : 16), { align: "center" });
+          });
+          doc.text("MITARBEITER", W - M - 8, yy + 16, { align: "right" });
+          yy += kopfH + 6;
+        };
+        matrixKopf();
+        tage.forEach((iso) => {
+          const arr = proTag[iso];
+          const ok = arr.every((z) => z.status === "erledigt");
+          const rowH = 16;
+          if (yy + rowH > H - 58) { neueSeite(); matrixKopf(); }
+          fc(ok ? ZEBRA : ROTBG); doc.rect(M, yy - 4, CW, rowH, "F");
+          const d = new Date(iso + "T12:00:00");
+          doc.setFont(FONT, "normal"); doc.setFontSize(8); tc(DUNKEL);
+          doc.text(`${CI_TAGE_KURZ[(d.getDay() + 6) % 7]}, ${ciFormatDatum(iso).slice(0, 6)}`, M + 8, yy + 7);
+          arr.forEach((z, i) => {
+            if (i >= nP) return;
+            if (z.status === "erledigt") {
+              doc.setFont(FONT, "normal"); doc.setFontSize(8); tc(DUNKEL);
+              doc.text(z.uhrzeit || "OK", colX(i), yy + 7, { align: "center" });
+            } else {
+              doc.setFont(FONT, "bold"); doc.setFontSize(8); tc(ROT);
+              doc.text("—", colX(i), yy + 7, { align: "center" });
+            }
+          });
+          const tagMa = [...new Set(arr.filter((z) => z.status === "erledigt").map((z) => z.ma).filter(Boolean))].join(", ");
+          doc.setFont(FONT, "normal"); doc.setFontSize(7); tc(ok ? GRAU : ROT);
+          doc.text(doc.splitTextToSize(tagMa || "—", wMa)[0] || "—", W - M - 8, yy + 7, { align: "right" });
+          yy += rowH;
+        });
+        yy += 24;
+      } else {
+        /* Fallback bei sehr vielen Punkten: Tageszeilen mit Zeitspanne + Fehlend-Liste */
+        tabellenKopf();
+        tage.forEach((iso) => {
+          const arr = proTag[iso];
+          const done = arr.filter((z) => z.status === "erledigt");
+          const ok = done.length >= arr.length;
+          const fehlend = arr.filter((z) => z.status !== "erledigt").map((z) => z.punkt);
+          const fehlLines = ok ? [] : doc.splitTextToSize(`Fehlend: ${fehlend.join(", ")}`, CW - (cDatum - M) - 14);
+          const rowH = 18 + fehlLines.length * 10;
+          if (yy + rowH > H - 58) { neueSeite(); tabellenKopf(); }
 
-        const d = new Date(iso + "T12:00:00");
-        const wt = CI_TAGE_KURZ[(d.getDay() + 6) % 7];
-        doc.setFont(FONT, "normal"); doc.setFontSize(9); tc(DUNKEL);
-        doc.text(`${wt}, ${ciFormatDatum(iso)}`, cDatum, yy + 8);
-        doc.text(`${done.length} / ${arr.length}`, cPunkte, yy + 8);
-        const zeiten = done.map((z) => z.uhrzeit).filter(Boolean).sort();
-        const zeitTxt = zeiten.length ? (zeiten.length > 1 ? `${zeiten[0]} – ${zeiten[zeiten.length - 1]}` : zeiten[0]) : "—";
-        doc.text(zeitTxt, cZeit, yy + 8);
-        const tagMa = [...new Set(done.map((z) => z.ma).filter(Boolean))].join(", ");
-        doc.text(doc.splitTextToSize(tagMa || "—", cStatus - cMa - 84)[0] || "—", cMa, yy + 8);
+          fc(ok ? ZEBRA : ROTBG);
+          doc.rect(M, yy - 4, CW, rowH, "F");
 
-        const stTxt = ok ? "Vollständig" : `${fehlend.length} verpasst`;
-        doc.setFont(FONT, "bold"); tc(ok ? GRUEN : ROT);
-        doc.text(stTxt, cStatus, yy + 8, { align: "right" });
-        fc(ok ? GRUEN : ROT);
-        doc.circle(cStatus - doc.getTextWidth(stTxt) - 8, yy + 5, 2.6, "F");
+          const d = new Date(iso + "T12:00:00");
+          const wt = CI_TAGE_KURZ[(d.getDay() + 6) % 7];
+          doc.setFont(FONT, "normal"); doc.setFontSize(9); tc(DUNKEL);
+          doc.text(`${wt}, ${ciFormatDatum(iso)}`, cDatum, yy + 8);
+          doc.text(`${done.length} / ${arr.length}`, cPunkte, yy + 8);
+          const zeiten = done.map((z) => z.uhrzeit).filter(Boolean).sort();
+          const zeitTxt = zeiten.length ? (zeiten.length > 1 ? `${zeiten[0]} – ${zeiten[zeiten.length - 1]}` : zeiten[0]) : "—";
+          doc.text(zeitTxt, cZeit, yy + 8);
+          const tagMa = [...new Set(done.map((z) => z.ma).filter(Boolean))].join(", ");
+          doc.text(doc.splitTextToSize(tagMa || "—", cStatus - cMa - 84)[0] || "—", cMa, yy + 8);
 
-        if (!ok) {
-          doc.setFont(FONT, "normal"); doc.setFontSize(7.5); tc(ROT);
-          doc.text(fehlLines, cDatum, yy + 19);
-        }
-        yy += rowH;
-      });
-      yy += 24;
+          const stTxt = ok ? "Vollständig" : `${fehlend.length} verpasst`;
+          doc.setFont(FONT, "bold"); tc(ok ? GRUEN : ROT);
+          doc.text(stTxt, cStatus, yy + 8, { align: "right" });
+          fc(ok ? GRUEN : ROT);
+          doc.circle(cStatus - doc.getTextWidth(stTxt) - 8, yy + 5, 2.6, "F");
+
+          if (!ok) {
+            doc.setFont(FONT, "normal"); doc.setFontSize(7.5); tc(ROT);
+            doc.text(fehlLines, cDatum, yy + 19);
+          }
+          yy += rowH;
+        });
+        yy += 24;
+      }
     } else {
       yy += 16;
     }
