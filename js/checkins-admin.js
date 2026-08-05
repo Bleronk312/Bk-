@@ -533,44 +533,171 @@ function ciaExportPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
-  let yy = 54;
-  doc.setFont("helvetica", "bold"); doc.setFontSize(18);
-  doc.text("Bestreifungsnachweis", 40, yy);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(110);
-  yy += 20; doc.text(`GEKO Clean · ${CI_MONATE[ciaMonth.month]} ${ciaMonth.year}`, 40, yy);
-  doc.setTextColor(30); yy += 26;
+  const H = doc.internal.pageSize.getHeight();
+  const M = 46;
+  const CW = W - M * 2;
+  const FONT = (typeof glasRegisterPdfFont === "function" && glasRegisterPdfFont(doc)) ? "LibSans" : "helvetica";
+  const monatLabel = `${CI_MONATE[ciaMonth.month]} ${ciaMonth.year}`;
 
-  // Zusammenfassung pro Rundgang
+  const BLAU = [31, 93, 146], TIEF = [18, 48, 76], GRUEN = [31, 122, 77], ROT = [178, 52, 30],
+        AMBER = [172, 105, 10], GRAU = [112, 120, 130], DUNKEL = [28, 36, 46],
+        ZEBRA = [247, 249, 252], ROTBG = [253, 238, 235], LINIE = [225, 231, 238];
+  const quoteFarbe = (p) => (p >= 90 ? GRUEN : p >= 70 ? AMBER : ROT);
+  const fc = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  const tc = (c) => doc.setTextColor(c[0], c[1], c[2]);
+
+  /* ---- Kopfband (Seite 1) ---- */
+  fc(BLAU); doc.rect(0, 0, W, 118, "F");
+  fc(TIEF); doc.rect(0, 118, W, 5, "F");
+  doc.setFont(FONT, "bold"); doc.setFontSize(9); tc([167, 197, 224]);
+  doc.text("GEKO CLEAN   –   ELEKTRONISCHER KONTROLLNACHWEIS", M, 40);
+  doc.setFontSize(23); tc([255, 255, 255]);
+  doc.text("Wächterkontrollsystem", M, 70);
+  doc.setFont(FONT, "normal"); doc.setFontSize(11); tc([214, 228, 242]);
+  doc.text(`GPS-Kontrollrundgänge – ${monatLabel}`, M, 92);
+  if (typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined") {
+    fc([255, 255, 255]); doc.roundedRect(W - M - 58, 20, 58, 78, 9, 9, "F");
+    doc.addImage(GEKO_LOGO_TRANSPARENT_B64, "PNG", W - M - 58 + 11, 29, 36, 58, "geko-wks-logo", "MEDIUM");
+  }
+
+  /* ---- Zusammenfassung ---- */
+  const soll = zeilen.length;
+  const ist = zeilen.filter((z) => z.status === "erledigt").length;
+  const quote = soll ? Math.round((ist / soll) * 100) : 0;
+  const rgAktiv = ciaData.rundgaenge.filter((r) => zeilen.some((z) => z.rundgang === r.name)).length;
+  const boxW = (CW - 24) / 3;
+  [[`${ist} / ${soll}`, "KONTROLLPUNKTE ERFÜLLT"], [`${quote} %`, "ERFÜLLUNGSQUOTE"], [`${rgAktiv}`, rgAktiv === 1 ? "RUNDGANG" : "RUNDGÄNGE"]].forEach((b, i) => {
+    const bx = M + i * (boxW + 12);
+    fc([241, 245, 249]); doc.roundedRect(bx, 146, boxW, 54, 8, 8, "F");
+    doc.setFont(FONT, "bold"); doc.setFontSize(17);
+    tc(i === 1 ? quoteFarbe(quote) : BLAU);
+    doc.text(b[0], bx + 14, 172);
+    doc.setFontSize(7.5); tc(GRAU);
+    doc.text(b[1], bx + 14, 188);
+  });
+
+  /* ---- Folgeseiten-Kopf & Platz-Helfer ---- */
+  let yy = 236;
+  const neueSeite = () => {
+    doc.addPage(); yy = 66;
+    doc.setFont(FONT, "bold"); doc.setFontSize(9); tc(BLAU);
+    doc.text("Wächterkontrollsystem", M, 32);
+    doc.setFont(FONT, "normal"); tc(GRAU);
+    doc.text(`GEKO Clean – ${monatLabel}`, W - M, 32, { align: "right" });
+    doc.setDrawColor(LINIE[0], LINIE[1], LINIE[2]); doc.setLineWidth(1);
+    doc.line(M, 42, W - M, 42);
+  };
+  const brauche = (h) => { if (yy + h > H - 58) neueSeite(); };
+
+  /* ---- Tabellen-Spalten ---- */
+  const cDatum = M + 10, cPunkte = M + 128, cZeit = M + 196, cMa = M + 286, cStatus = W - M - 10;
+  const tabellenKopf = () => {
+    fc([236, 241, 247]); doc.roundedRect(M, yy, CW, 20, 4, 4, "F");
+    doc.setFont(FONT, "bold"); doc.setFontSize(7.5); tc(GRAU);
+    doc.text("DATUM", cDatum, yy + 13);
+    doc.text("PUNKTE", cPunkte, yy + 13);
+    doc.text("UHRZEIT", cZeit, yy + 13);
+    doc.text("MITARBEITER", cMa, yy + 13);
+    doc.text("STATUS", cStatus, yy + 13, { align: "right" });
+    yy += 24;
+  };
+
+  /* ---- Rundgänge ---- */
   ciaData.rundgaenge.forEach((rg) => {
     const rgZeilen = zeilen.filter((z) => z.rundgang === rg.name);
-    const soll = rgZeilen.length;
-    const ist = rgZeilen.filter((z) => z.status === "erledigt").length;
-    const proz = soll ? Math.round((ist / soll) * 100) : 0;
-    if (yy > 760) { doc.addPage(); yy = 54; }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-    doc.text(`${rg.name}`, 40, yy);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110);
-    doc.text(`${ist} / ${soll} Punkte erfüllt (${proz}%) · Tage: ${ciParseTage(rg.tage).map((t)=>CI_TAGE_KURZ[t-1]).join(", ")}`, 40, yy + 14);
-    doc.setTextColor(30); yy += 34;
+    const rgSoll = rgZeilen.length;
+    const rgIst = rgZeilen.filter((z) => z.status === "erledigt").length;
+    const proz = rgSoll ? Math.round((rgIst / rgSoll) * 100) : 0;
 
-    // Tageszeilen (nur verpasste explizit + Zusammenfassung je Tag)
-    const proTag = {};
-    rgZeilen.forEach((z) => { (proTag[z.datum] = proTag[z.datum] || []).push(z); });
-    Object.keys(proTag).sort().forEach((iso) => {
-      const arr = proTag[iso];
-      const done = arr.filter((z) => z.status === "erledigt").length;
-      const ok = done >= arr.length;
-      if (yy > 780) { doc.addPage(); yy = 54; }
-      doc.setFontSize(10);
-      doc.setTextColor(ok ? 31 : 181, ok ? 122 : 55, ok ? 77 : 31);
-      doc.text(`${ok ? "OK " : "!! "}${ciFormatDatum(iso)}  –  ${done}/${arr.length} Punkte`, 52, yy);
-      doc.setTextColor(30);
-      yy += 15;
-    });
-    yy += 12;
+    brauche(120);
+    doc.setFont(FONT, "bold"); doc.setFontSize(13); tc(DUNKEL);
+    doc.text(rg.name, M, yy);
+    if (rgSoll) {
+      const pillTxt = `${proz} % erfüllt`;
+      doc.setFontSize(9);
+      const ptw = doc.getTextWidth(pillTxt);
+      fc(quoteFarbe(proz));
+      doc.roundedRect(W - M - ptw - 20, yy - 12, ptw + 20, 17, 8.5, 8.5, "F");
+      tc([255, 255, 255]);
+      doc.text(pillTxt, W - M - 10, yy, { align: "right" });
+    }
+    doc.setFont(FONT, "normal"); doc.setFontSize(9); tc(GRAU);
+    const maNamen = [...new Set(rgZeilen.map((z) => z.ma).filter(Boolean))];
+    const meta = rgSoll
+      ? `${rgIst} / ${rgSoll} Kontrollpunkte erfüllt – Tage: ${ciParseTage(rg.tage).map((t) => CI_TAGE_KURZ[t - 1]).join(", ")}${maNamen.length ? ` – Kontrolliert durch: ${maNamen.join(", ")}` : ""}`
+      : "Keine aktiven Kontrolltage in diesem Monat.";
+    const metaLines = doc.splitTextToSize(meta, CW);
+    doc.text(metaLines, M, yy + 15);
+    yy += 15 + metaLines.length * 12;
+
+    if (rgSoll) {
+      /* Fortschrittsbalken */
+      fc([230, 235, 241]); doc.roundedRect(M, yy, CW, 5, 2.5, 2.5, "F");
+      if (proz > 0) { fc(quoteFarbe(proz)); doc.roundedRect(M, yy, Math.max(10, CW * proz / 100), 5, 2.5, 2.5, "F"); }
+      yy += 18;
+
+      tabellenKopf();
+      const proTag = {};
+      rgZeilen.forEach((z) => { (proTag[z.datum] = proTag[z.datum] || []).push(z); });
+      Object.keys(proTag).sort().forEach((iso) => {
+        const arr = proTag[iso];
+        const done = arr.filter((z) => z.status === "erledigt");
+        const ok = done.length >= arr.length;
+        const fehlend = arr.filter((z) => z.status !== "erledigt").map((z) => z.punkt);
+        const fehlLines = ok ? [] : doc.splitTextToSize(`Fehlend: ${fehlend.join(", ")}`, CW - (cDatum - M) - 14);
+        const rowH = 18 + fehlLines.length * 10;
+        if (yy + rowH > H - 58) { neueSeite(); tabellenKopf(); }
+
+        fc(ok ? ZEBRA : ROTBG);
+        doc.rect(M, yy - 4, CW, rowH, "F");
+
+        const d = new Date(iso + "T12:00:00");
+        const wt = CI_TAGE_KURZ[(d.getDay() + 6) % 7];
+        doc.setFont(FONT, "normal"); doc.setFontSize(9); tc(DUNKEL);
+        doc.text(`${wt}, ${ciFormatDatum(iso)}`, cDatum, yy + 8);
+        doc.text(`${done.length} / ${arr.length}`, cPunkte, yy + 8);
+        const zeiten = done.map((z) => z.uhrzeit).filter(Boolean).sort();
+        const zeitTxt = zeiten.length ? (zeiten.length > 1 ? `${zeiten[0]} – ${zeiten[zeiten.length - 1]}` : zeiten[0]) : "—";
+        doc.text(zeitTxt, cZeit, yy + 8);
+        const tagMa = [...new Set(done.map((z) => z.ma).filter(Boolean))].join(", ");
+        doc.text(doc.splitTextToSize(tagMa || "—", cStatus - cMa - 84)[0] || "—", cMa, yy + 8);
+
+        const stTxt = ok ? "Vollständig" : `${fehlend.length} verpasst`;
+        doc.setFont(FONT, "bold"); tc(ok ? GRUEN : ROT);
+        doc.text(stTxt, cStatus, yy + 8, { align: "right" });
+        fc(ok ? GRUEN : ROT);
+        doc.circle(cStatus - doc.getTextWidth(stTxt) - 8, yy + 5, 2.6, "F");
+
+        if (!ok) {
+          doc.setFont(FONT, "normal"); doc.setFontSize(7.5); tc(ROT);
+          doc.text(fehlLines, cDatum, yy + 19);
+        }
+        yy += rowH;
+      });
+      yy += 24;
+    } else {
+      yy += 16;
+    }
   });
-  if (!ciaData.rundgaenge.length) doc.text("Keine Rundgänge angelegt.", 40, yy);
-  doc.save(`bestreifungsnachweis_${CI_MONATE[ciaMonth.month].toLowerCase()}_${ciaMonth.year}.pdf`);
+  if (!ciaData.rundgaenge.length) {
+    doc.setFont(FONT, "normal"); doc.setFontSize(11); tc(GRAU);
+    doc.text("Keine Rundgänge angelegt.", M, yy);
+  }
+
+  /* ---- Fußzeile auf allen Seiten ---- */
+  const seiten = doc.getNumberOfPages();
+  const jetzt = new Date();
+  const stempel = `erstellt am ${String(jetzt.getDate()).padStart(2, "0")}.${String(jetzt.getMonth() + 1).padStart(2, "0")}.${jetzt.getFullYear()}`;
+  for (let i = 1; i <= seiten; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(LINIE[0], LINIE[1], LINIE[2]); doc.setLineWidth(1);
+    doc.line(M, H - 44, W - M, H - 44);
+    doc.setFont(FONT, "normal"); doc.setFontSize(8); tc(GRAU);
+    doc.text("GEKO Clean – Wächterkontrollsystem", M, H - 30);
+    doc.text(`Seite ${i} von ${seiten} – ${stempel}`, W - M, H - 30, { align: "right" });
+  }
+
+  doc.save(`waechterkontrollsystem_${CI_MONATE[ciaMonth.month].toLowerCase()}_${ciaMonth.year}.pdf`);
   showToast("📄 PDF erstellt");
 }
 
