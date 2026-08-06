@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Admin" />
 <meta name="theme-color" content="#1f5d92" />
 <title>Abnahmescheine - Verwaltung</title>
-<link rel="stylesheet" href="css/style.css?v=116" />
+<link rel="stylesheet" href="css/style.css?v=117" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
@@ -19,6 +19,48 @@
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
 <body>
+
+  <!-- PIN-Sperre nur für den Graffiti-Admin-Bereich. Einmal korrekt eingeben, danach merkt
+       sich das Gerät die Freischaltung dauerhaft (localStorage). Hinweis: rein clientseitig
+       - ein einfaches Geräte-Schloss, keine harte Zugriffssicherung. -->
+  <div id="grafPinGate" style="display:none; position:fixed; inset:0; z-index:99999; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; align-items:center; justify-content:center; flex-direction:column; padding:24px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <div style="width:100%; max-width:300px; text-align:center;">
+      <div style="font-size:42px; margin-bottom:10px;">🔒</div>
+      <h1 style="font-size:20px; margin:0 0 4px; font-weight:800;">Graffiti &amp; Sonderreinigung</h1>
+      <p style="opacity:.75; font-size:14px; margin:0 0 22px;">Bitte PIN eingeben</p>
+      <input id="grafPinInput" type="password" inputmode="numeric" autocomplete="off" enterkeyhint="go" maxlength="16"
+        style="width:100%; box-sizing:border-box; text-align:center; font-size:22px; letter-spacing:6px; padding:14px; border-radius:14px; border:0; background:rgba(255,255,255,.16); color:#fff; outline:none;" placeholder="••••••••" />
+      <p id="grafPinErr" style="color:#ffd2ca; font-size:13px; min-height:18px; margin:10px 0 0;"></p>
+      <button id="grafPinBtn" style="margin-top:12px; width:100%; padding:14px; border-radius:14px; border:0; background:#fff; color:#1f5d92; font-size:16px; font-weight:700; cursor:pointer;">Entsperren</button>
+    </div>
+  </div>
+  <script>
+  (function(){
+    var KEY = "geko_graffiti_pin_ok";
+    try { if (localStorage.getItem(KEY) === "1") return; } catch(e){}
+    var gate = document.getElementById("grafPinGate");
+    var inp  = document.getElementById("grafPinInput");
+    var err  = document.getElementById("grafPinErr");
+    var btn  = document.getElementById("grafPinBtn");
+    if (!gate) return;
+    gate.style.display = "flex";
+    try { document.documentElement.style.overflow = "hidden"; } catch(e){}
+    setTimeout(function(){ try { inp.focus(); } catch(e){} }, 120);
+    function tryUnlock(){
+      if (inp.value === "19952000") {
+        try { localStorage.setItem(KEY, "1"); } catch(e){}
+        gate.style.display = "none";
+        try { document.documentElement.style.overflow = ""; } catch(e){}
+      } else {
+        err.textContent = "Falscher PIN – bitte erneut versuchen.";
+        inp.value = "";
+        try { inp.focus(); } catch(e){}
+      }
+    }
+    btn.addEventListener("click", tryUnlock);
+    inp.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); tryUnlock(); } });
+  })();
+  </script>
 
   <div class="app-header">
     <div class="brand-row">
@@ -51,15 +93,15 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
-  <script src="js/config.js?v=116"></script>
-  <script src="js/fehler.js?v=116"></script>
-  <script src="js/logo-asset.js?v=116"></script>
-  <script src="js/pull-refresh.js?v=116"></script>
-  <script src="js/supabase-client.js?v=116"></script>
-  <script src="js/app-shared.js?v=116"></script>
-  <script src="js/push.js?v=116"></script>
-  <script defer src="js/pdf-fonts.js?v=116"></script>
-  <script defer src="js/pdf-template.js?v=116"></script>
-  <script src="js/admin.js?v=116"></script>
+  <script src="js/config.js?v=117"></script>
+  <script src="js/fehler.js?v=117"></script>
+  <script src="js/logo-asset.js?v=117"></script>
+  <script src="js/pull-refresh.js?v=117"></script>
+  <script src="js/supabase-client.js?v=117"></script>
+  <script src="js/app-shared.js?v=117"></script>
+  <script src="js/push.js?v=117"></script>
+  <script defer src="js/pdf-fonts.js?v=117"></script>
+  <script defer src="js/pdf-template.js?v=117"></script>
+  <script src="js/admin.js?v=117"></script>
 </body>
 </html>
