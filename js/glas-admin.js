@@ -4957,6 +4957,19 @@ function syncTerminFormFromDom() {
   if (get("tm_wieder_ende") !== undefined && glasTerminEditing.wiederholung) glasTerminEditing.wiederholung.ende = get("tm_wieder_ende");
 }
 
+// Wird der Beginn nach hinten geschoben, kann ein bereits gesetztes Ende davor liegen.
+// Das Ende wird dann sofort entfernt (statt den Termin still unsichtbar zu machen).
+function glasTerminBeginnGeaendert() {
+  syncTerminFormFromDom();
+  const t = glasTerminEditing;
+  if (!t) return;
+  if (t.datum_bis && t.datum && t.datum_bis < t.datum) {
+    t.datum_bis = "";
+    showToast("Ende lag vor dem Beginn – Ende wurde entfernt");
+  }
+  renderGlasAdmin();
+}
+
 function setGlasTerminFarbe(farbe) {
   syncTerminFormFromDom();
   glasTerminEditing.farbe = farbe;
@@ -5029,12 +5042,12 @@ function renderTerminForm() {
       <div class="glas-sheet-row">
         <span class="glas-sheet-ico">📅</span>
         <span>Beginn</span>
-        <input type="date" id="tm_datum" value="${t.datum || ""}" style="width:auto; margin-left:auto;" />
+        <input type="date" id="tm_datum" value="${t.datum || ""}" onchange="glasTerminBeginnGeaendert()" style="width:auto; margin-left:auto;" />
       </div>
       <div class="glas-sheet-row">
         <span class="glas-sheet-ico"></span>
         <span class="muted">Ende <span style="font-size:11px;">(optional)</span></span>
-        <input type="date" id="tm_datum_bis" value="${t.datum_bis || ""}" style="width:auto; margin-left:auto;" />
+        <input type="date" id="tm_datum_bis" value="${t.datum_bis || ""}" min="${t.datum || ""}" style="width:auto; margin-left:auto;" />
       </div>
       <div class="glas-sheet-row">
         <span class="glas-sheet-ico">🕐</span>
@@ -5308,6 +5321,14 @@ async function saveGlasTermin() {
     wiederholung: glasWiederholungToStr(t.wiederholung),
     anhaenge: JSON.stringify(t.anhaenge || []),
   };
+  // Ende vor dem Beginn kann nur ein Versehen sein (z.B. Beginn nachträglich verschoben).
+  // Statt es zu speichern - was den Termin unsichtbar machen würde - wird der Termin
+  // eintägig gespeichert und der Nutzer darauf hingewiesen.
+  let endeVerworfen = false;
+  if (payload.datum_bis && payload.datum_bis < payload.datum) {
+    payload.datum_bis = null;
+    endeVerworfen = true;
+  }
   const warNeu = !t.id;
   gekoCleanPayload(payload);
   let { error } = await sb.from("glas_termine").upsert(payload);
@@ -5322,7 +5343,7 @@ async function saveGlasTermin() {
   }
   glasBusy = false;
   if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
-  showToast("Termin gespeichert");
+  showToast(endeVerworfen ? "Termin gespeichert – das Ende lag vor dem Beginn und wurde entfernt" : "Termin gespeichert");
   glasPushSend("kalender", "push_kalender", "📅 Kalender", `${warNeu ? "Neuer Termin" : "Termin geändert"}: ${payload.titel} – ${formatGlasDate(payload.datum)}`);
   glasTerminEditing = null;
   glasKalenderSelectedDay = payload.datum;
@@ -5361,7 +5382,10 @@ function glasDaysBetween(a, b) {
 // Bei einmaligen Terminen ist das höchstens eines. Mehrtägige Termine behalten ihre Dauer.
 function glasTerminVorkommen(t, von, bis) {
   if (!t.datum) return [];
-  const dauer = t.datum_bis && t.datum_bis !== t.datum ? glasDaysBetween(t.datum, t.datum_bis) : 0;
+  // Ein Ende VOR dem Beginn (z.B. Beginn nachträglich nach hinten geschoben) ergibt eine
+  // negative Dauer - der Termin fiele dann aus jeder Ansicht heraus und wäre unsichtbar.
+  // Solche Termine werden als eintägig behandelt, damit sie nie verschwinden.
+  const dauer = t.datum_bis && t.datum_bis > t.datum ? glasDaysBetween(t.datum, t.datum_bis) : 0;
   const w = glasWiederholungToObj(t.wiederholung);
   const out = [];
   const addOcc = (startIso) => {
