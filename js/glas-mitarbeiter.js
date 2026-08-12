@@ -509,7 +509,9 @@ function renderGlasStopsList(t) {
 }
 
 // Mini-Vorschau der Positionen, damit der Mitarbeiter vor dem Unterschreiben sicher ist,
-// dass es der richtige Abnahmeschein ist (Nr · Leistung · qm).
+// dass es der richtige Abnahmeschein ist (Nr · Leistung · qm). Inklusive Positionstext
+// (z.B. "Eingangsbereich und Flure · 4x jährlich") - der Mitarbeiter muss ja wissen,
+// welche Bereiche zu der Position gehören, nicht nur die Quadratmeter.
 function renderMaStopPositionen(s) {
   const pos = glasStopPositionen(s);
   if (!pos.length) return "";
@@ -518,7 +520,7 @@ function renderMaStopPositionen(s) {
       <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
       <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
       ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
-    </div>`).join("")}
+    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="muted" style="margin:-1px 0 3px 0; font-size:11.5px; line-height:1.4; white-space:pre-line;">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
   </div>`;
 }
 
