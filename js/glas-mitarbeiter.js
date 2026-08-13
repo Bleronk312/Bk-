@@ -513,12 +513,12 @@ function renderGlasStopsList(t) {
           <div style="display:flex; align-items:center; gap:11px;">
             <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : isNg ? "var(--text-secondary)" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
-              <p style="margin:0; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
-              <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
+              <p style="margin:0; font-weight:600; font-size:14.5px;${isOpen ? "" : " white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"}">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
+              ${isOpen ? "" : `<p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>`}
             </div>
             <div style="flex-shrink:0; text-align:right;">
               ${qm ? `<p style="margin:0; font-weight:700; font-size:13.5px; white-space:nowrap;">${qm} qm</p>` : ""}
-              <p style="margin:2px 0 0; font-size:12px;">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}<span style="color:var(--text-secondary);"> ${isOpen ? "▲" : "▼"}</span></p>
+              <p style="margin:2px 0 0; font-size:12px;">${isOpen ? "" : `${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}`}<span style="color:var(--text-secondary);"> ${isOpen ? "▲" : "▼"}</span></p>
             </div>
           </div>
           ${isOpen ? renderGlasStopDetails(t, s, isDone, isNg) : ""}
@@ -534,21 +534,37 @@ function renderGlasStopsList(t) {
 function renderMaStopPositionen(s) {
   const pos = glasStopPositionen(s);
   if (!pos.length) return "";
-  return `<div style="margin-top:8px; border-left:2px solid var(--border); padding-left:9px; display:flex; flex-direction:column; gap:3px;">
-    ${pos.map((p) => `<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">
-      <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
-      <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
-      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
-    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="muted" style="margin:-1px 0 3px 0; font-size:11.5px; line-height:1.4; white-space:pre-line;">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
+  // Die Gesamtflaeche des Stopps ist die Summe aller Positionen. Gibt es nur EINE
+  // Position, ist deren Zahl zwangslaeufig dieselbe wie oben in der Kopfzeile - dann
+  // sparen wir sie hier, statt dieselben Quadratmeter zweimal untereinander zu zeigen.
+  const einzelnUndDoppelt = pos.length === 1 && !!glasStopQm(s);
+  return `<div class="gsd-block">
+    <p class="gsd-label">${pos.length === 1 ? "Leistung" : "Leistungen"}</p>
+    <div class="gsd-poslist">
+    ${pos.map((p) => `<div class="gsd-pos">
+      <span class="gsd-posnr">${escapeHtml(p.nr || "–")}</span>
+      <span class="gsd-posart">${escapeHtml(p.art || "")}</span>
+      ${p.qm && !einzelnUndDoppelt ? `<span class="gsd-posqm">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : !p.qm && glasIstStundenPos(p) ? `<span class="gsd-posqm">Std. vor Ort</span>` : ""}
+    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="gsd-postext">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
+    </div>
   </div>`;
 }
 
+// Aufgeklappter Stopp. Bewusst in klare Blöcke geteilt, damit man ihn im Stehen
+// ueberfliegen kann: WO (Adresse) - WAS (Leistungen) - ACHTUNG (Hinweis/Notiz) -
+// WER (Ansprechpartner) - und ganz unten die Knoepfe. Frueher standen die
+// Quadratmeter dreimal und die Adresse zweimal auf derselben Karte; die Kopfzeile
+// zeigt qm und Kurz-Adresse schon, hier steht deshalb jedes nur noch einmal.
 function renderGlasStopDetails(t, s, isDone, isNg) {
-  const qm = glasStopQm(s);
+  const telNr = s.telefon ? String(s.telefon).replace(/[^0-9+]/g, "") : "";
+  const kannNavi = !isDone && !!s.lat;
+  const kannAnrufen = !isDone && !!telNr;
   return `
-    <div style="margin-top:12px; border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
-      <p style="margin:0; font-weight:600; font-size:15px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
-      ${qm ? `<p class="muted" style="margin:6px 0 0;">Fläche: <b>${qm} qm</b></p>` : ""}
+    <div class="gsd" style="border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"};" onclick="event.stopPropagation();">
+      <div class="gsd-block">
+        <p class="gsd-label">Adresse</p>
+        <p class="gsd-adresse">${escapeHtml(s.adresse)}</p>
+      </div>
       ${renderMaStopPositionen(s)}
       ${s.hinweise ? `
       <div class="glas-hinweis-box">
@@ -560,15 +576,18 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
       </div>` : ""}
       ${s.notiz ? `<div class="glas-notiz-box">📝 ${escapeHtml(s.notiz)}</div>` : ""}
       ${(s.ansprechpartner || s.telefon) ? `
-      <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
-        ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
+      <div class="gsd-block">
+        <p class="gsd-label">Ansprechpartner vor Ort</p>
+        <p class="gsd-person">${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? `<span class="gsd-tel">${escapeHtml(s.telefon)}</span>` : ""}</p>
       </div>` : ""}
-      ${!isDone && s.lat ? `
-      <button class="btn btn-sm" style="width:100%; justify-content:center; margin-top:12px; padding:11px;" onclick="event.stopPropagation(); openGlasNaviSheet('${s.id}')">🧭 Navigation</button>` : ""}
+      ${(kannNavi || kannAnrufen) ? `
+      <div class="gsd-aktionen">
+        ${kannAnrufen ? `<a class="btn gsd-akt" href="tel:${escapeHtml(telNr)}">📞 Anrufen</a>` : ""}
+        ${kannNavi ? `<button class="btn gsd-akt" onclick="event.stopPropagation(); openGlasNaviSheet('${s.id}')">🧭 Navigation</button>` : ""}
+      </div>` : ""}
       ${isDone
         ? `
-      <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
+      <div class="gsd-abschluss">
         <p class="muted" style="margin:0 0 8px;">${!s.unterschrift && s.manuell_erledigt_am
           ? `✔️ Vom Büro als erledigt markiert am ${formatGlasDate(glasSignaturDatum(s))}`
           : `✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(glasSignaturDatum(s))}`}</p>
@@ -578,8 +597,8 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
         <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
       </div>`
         : isNg
-          ? `<div class="glas-notiz-box" style="margin-top:12px;">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
-          : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Abnahmeschein unterschreiben</button>`
+          ? `<div class="glas-notiz-box">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
+          : `<button class="btn btn-primary gsd-sign" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Abnahmeschein unterschreiben</button>`
       }
     </div>`;
 }

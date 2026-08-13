@@ -59,7 +59,10 @@ html.dark .ptr-indicator { background: var(--card); }
 html.dark .logo-watermark { opacity: 0.05; }
 html.dark .glas-hinweis-box { background: #322a10; border-color: #4d421f; border-left-color: #b98f1f; }
 html.dark .glas-hinweis-box .glas-hinweis-title { color: #e5b95e; }
-html.dark .glas-notiz-box { background: #18242f; border-color: #27394b; }
+/* Die Fliesstexte in Hinweis- und Notiz-Box hatten nur eine helle Fassung (dunkles
+   Braun bzw. dunkles Blau). Auf dem dunklen Kasten waren sie kaum zu lesen. */
+html.dark .glas-hinweis-box .glas-hinweis-text { color: #e6d3a4; }
+html.dark .glas-notiz-box { background: #18242f; border-color: #27394b; color: #bcd4ec; }
 html.dark .glas-cal-cell { border-top-color: var(--border); }
 html.dark .glas-cal-cell:hover { background: #1e2833; }
 html.dark .glas-cal-cell.is-selected { background: #1d3450; }
@@ -714,6 +717,44 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
 /* Bewusst KEIN 'overflow:hidden' mehr auf dem Body: das konnte auf manchen Handys
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
+
+/* Aufgeklappter Stopp in "Meine Touren": feste Abstaende zwischen den Bloecken statt
+   vieler einzelner margin-Angaben, damit die Karte immer denselben Rhythmus hat -
+   egal welche Bloecke (Hinweis, Notiz, Ansprechpartner) gerade vorhanden sind. */
+.gsd { margin-top: 12px; padding-top: 13px; display: flex; flex-direction: column; gap: 13px; }
+.gsd-block { display: flex; flex-direction: column; gap: 5px; }
+.gsd-label {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.gsd-adresse { margin: 0; font-weight: 600; font-size: 15px; line-height: 1.4; white-space: pre-line; }
+.gsd-person { margin: 0; font-size: 14.5px; font-weight: 600; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 9px; }
+.gsd-person .gsd-tel { font-weight: 500; font-size: 13.5px; color: var(--text-secondary); }
+.gsd-poslist { display: flex; flex-direction: column; gap: 3px; border-left: 2px solid var(--border); padding-left: 9px; }
+.gsd-pos { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; }
+.gsd-posnr {
+  flex-shrink: 0;
+  font-size: 10.5px; font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0 5px; line-height: 16px;
+}
+.gsd-posart { flex: 1; min-width: 0; }
+.gsd-posqm { flex-shrink: 0; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.gsd-postext { color: var(--text-secondary); font-size: 11.5px; line-height: 1.4; white-space: pre-line; margin: -1px 0 3px 0; }
+/* Anrufen + Navigation sind gleichwertig - nebeneinander, gleiche Groesse. Ist nur
+   einer davon moeglich, fuellt er die Zeile allein aus (1fr greift automatisch). */
+.gsd-aktionen { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.gsd-akt { justify-content: center; padding: 11px 8px; font-size: 14px; }
+.gsd-sign { width: 100%; justify-content: center; padding: 13px; font-size: 15.5px; }
+/* Diese Bloecke bringen von aussen eigene Abstaende mit. Innerhalb der Stopp-Karte
+   regelt das gap den Abstand - sonst addiert sich beides zu Luecken. */
+.gsd > .glas-hinweis-box, .gsd > .glas-notiz-box, .gsd > .gsd-sign, .gsd > .gsd-abschluss { margin-top: 0; }
+.gsd-abschluss { border-top: 1px solid var(--success-border); padding-top: 13px; }
 
 /* Auswahl der Navigations-App (ein Knopf "Navigation" statt drei kleiner Knoepfe) */
 .glas-navi-back {
