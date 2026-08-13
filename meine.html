@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="manifest" href="manifest-meine.json" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="GEKO One" />
+<meta name="theme-color" content="#1f5d92" />
+<title>GEKO One - Meine Übersicht</title>
+<link rel="stylesheet" href="css/style.css?v=131" />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
+<script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
+<script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
+<style>
+/* Nur die GEKO-One-eigenen Bausteine - alles andere kommt aus style.css,
+   damit die Seite exakt aussieht wie der Rest der App-Familie. */
+.one-raster { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.one-kachel {
+  display: block; text-align: left; text-decoration: none; font-family: inherit;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 15px 14px; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(16,42,67,.06);
+  transition: transform .12s ease;
+  opacity: 0; animation: oneRein .45s ease forwards;
+}
+.one-kachel:active { transform: scale(.96); }
+.one-kachel .k-ico {
+  width: 42px; height: 42px; border-radius: 13px; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 21px; margin-bottom: 10px;
+}
+.one-kachel b { display: block; font-size: 14.5px; color: var(--text); line-height: 1.25; }
+.one-kachel span { display: block; font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35; }
+.one-kachel.bald { opacity: 0; animation: oneReinHalb .45s ease forwards; cursor: default; }
+.one-kachel.bald .k-ico { background: var(--border) !important; color: var(--text-secondary); }
+.one-label { font-size: 11px; font-weight: 800; letter-spacing: .09em; color: var(--text-secondary); margin: 18px 2px 0; }
+@keyframes oneRein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes oneReinHalb { from { opacity: 0; transform: translateY(10px); } to { opacity: .62; transform: none; } }
+html.dark .one-kachel { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+</style>
+</head>
+<body class="glas-logo-left">
+
+  <div class="app-header">
+    <div class="brand-row"><span class="dot"></span>GEKO One</div>
+    <div class="greeting">Meine Übersicht</div>
+  </div>
+  <div class="app-sheet">
+    <img class="logo-watermark" id="watermarkImg" alt="" />
+    <div class="logo-badge" style="cursor:pointer;" title="Zur Startseite" onclick="oneGoHome()"><img id="badgeLogoImg" alt="Logo" /></div>
+    <div class="app-sheet-content glas-static">
+      <div class="wrap" style="max-width:560px; padding:0 18px 24px;">
+        <div id="view"><p class="muted"><span class="spinner"></span>Lade...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js?v=131"></script>
+  <script src="js/fehler.js?v=131"></script>
+  <script src="js/logo-asset.js?v=131"></script>
+  <script src="js/supabase-client.js?v=131"></script>
+  <script src="js/app-shared.js?v=131"></script>
+  <script src="js/glas-shared.js?v=131"></script>
+  <script src="js/meine.js?v=1"></script>
+</body>
+</html>

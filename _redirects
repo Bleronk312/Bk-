@@ -1,3 +1,6 @@
 # Kurzer Link zum Weitergeben an Mitarbeiter (z. B. per WhatsApp):
 # sunny-platypus-bce4eb.netlify.app/app  ->  Installations-Anleitung
 /app   /install.html   200
+
+# GEKO One - die Mitarbeiter-Übersicht (ein Login für alles)
+/start   /meine.html   200
