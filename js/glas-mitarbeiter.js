@@ -328,152 +328,13 @@ function glasSingleMapLinks(stop) {
   };
 }
 
-// ================= Karte auf der Startseite =================
-// Zeigt die Stopps der heutigen Tour(en) als Nadeln. Bewusst sparsam gebaut:
-//   - Die Karte laedt EINMAL beim Oeffnen. Hintergrund-Aktualisierungen bauen den
-//     Startbildschirm zwar neu auf, die Karte wird dabei aber nur umgehaengt statt
-//     neu erzeugt - sonst wuerden bei jedem Durchlauf erneut Kartenbilder geladen.
-//   - Nicht verschiebbar und nicht zoombar. Ein Tipp fuehrt in die Tour. Damit
-//     bleibt es bei einem Kartenausschnitt pro Oeffnen; das haelt die Zahl der
-//     Abrufe bei OpenStreetMap klein (deren Regeln verbieten starke Nutzung).
-//   - Faellt Leaflet aus (kein Netz, CDN nicht erreichbar), entfaellt die Karte
-//     stillschweigend. Der Rest der Seite funktioniert unveraendert weiter.
-
-let glasKarte = null;          // Leaflet-Instanz
-let glasKartenHost = null;     // der DIV, in dem die Karte lebt (ueberlebt Neuaufbauten)
-let glasKartenSignatur = "";   // welche Stopps gerade gezeichnet sind
-
-// Alle Stopps der heute laufenden Touren, die Koordinaten haben.
-function glasHeutigeKartenStopps() {
-  const heute = todayIso();
-  const raus = [];
-  glasTouren.forEach((t) => {
-    if (!t.datum || t.datum > heute || heute > (t.datum_bis || t.datum)) return;
-    (t.stopps || []).forEach((s, i) => {
-      const lat = parseFloat(s.lat), lng = parseFloat(s.lng);
-      if (!isFinite(lat) || !isFinite(lng)) return;
-      raus.push({ id: s.id, tourId: t.id, nr: i + 1, lat, lng,
-        objekt: s.objekt || "", adresse: s.adresse || "", status: s.status });
-    });
-  });
-  return raus;
-}
-
-function renderGlasStartKarte() {
-  if (typeof L === "undefined") return "";           // Leaflet nicht da -> keine Karte
-  const punkte = glasHeutigeKartenStopps();
-  if (punkte.length < 1) return "";                  // nichts zu zeigen
-  const offen = punkte.filter((p) => p.status === "offen");
-  const naechster = offen[0] || null;
-  const fertig = punkte.length - offen.length;
-  return `
-    <div class="glas-startkarte">
-      <div class="gsk-kopf">
-        <span class="gsk-titel">Deine Stopps heute</span>
-        <span class="gsk-zahl">${fertig}/${punkte.length}</span>
-      </div>
-      <div class="gsk-slot" id="glasKartenSlot"></div>
-      ${naechster ? `
-      <button class="gsk-naechst" onclick="glasSpringZuStopp('${naechster.tourId}','${naechster.id}')">
-        <span class="gsk-kg">${naechster.nr}</span>
-        <span class="gsk-tx">
-          <b>${escapeHtml(naechster.objekt || "Nächster Stopp")}</b>
-          <span>${escapeHtml(String(naechster.adresse).split("\n")[0])}</span>
-        </span>
-        <span class="gsk-pf">›</span>
-      </button>` : `
-      <p class="gsk-fertig">✓ Alle Stopps von heute sind erledigt</p>`}
-    </div>`;
-}
-
-// Oeffnet die Tour und klappt den gewaehlten Stopp auf.
-function glasSpringZuStopp(tourId, stopId) {
-  glasMaScreen = "touren";
-  glasOpenTourId = tourId;
-  glasOpenStopId = stopId;
-  glasSignStopId = null;
-  renderGlasMa();
-}
-
-// Haengt die (einmal erzeugte) Karte in den frisch gebauten Startbildschirm.
-function glasStartKarteEinsetzen() {
-  const slot = document.getElementById("glasKartenSlot");
-  if (!slot) return;                                  // Startseite ohne Karte
-  if (typeof L === "undefined") return;
-  const punkte = glasHeutigeKartenStopps();
-  if (!punkte.length) return;
-
-  if (!glasKartenHost) {
-    glasKartenHost = document.createElement("div");
-    glasKartenHost.className = "gsk-buehne";
-  }
-  slot.appendChild(glasKartenHost);                   // umhaengen statt neu bauen
-
-  const signatur = punkte.map((p) => `${p.id}:${p.status}`).join("|");
-  if (glasKarte && glasKartenSignatur === signatur) {
-    // Gleiche Stopps wie vorher: nur die Groesse neu berechnen, KEINE neuen Bilder.
-    setTimeout(() => { try { glasKarte.invalidateSize(); } catch (e) {} }, 60);
-    return;
-  }
-  glasKartenSignatur = signatur;
-  glasZeichneStartKarte(punkte);
-}
-
-function glasZeichneStartKarte(punkte) {
-  try {
-    if (!glasKarte) {
-      glasKarte = L.map(glasKartenHost, {
-        // bewusst unbeweglich: ein Ausschnitt pro Oeffnen, Tippen fuehrt in die Tour
-        dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false,
-        boxZoom: false, keyboard: false, zoomControl: false, attributionControl: true,
-        tap: false,
-      });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 18, attribution: "© OpenStreetMap",
-      }).addTo(glasKarte);
-    } else {
-      glasKarte.eachLayer((l) => { if (l instanceof L.Marker) glasKarte.removeLayer(l); });
-      if (glasKarte.__linie) { glasKarte.removeLayer(glasKarte.__linie); glasKarte.__linie = null; }
-    }
-
-    const offenIdx = punkte.findIndex((p) => p.status === "offen");
-    punkte.forEach((p, i) => {
-      const fertig = p.status === "erledigt";
-      const jetzt = i === offenIdx;
-      const farbe = fertig ? "#1e7a34" : jetzt ? "#2d7dc4" : "#8fa3b8";
-      const gr = jetzt ? 34 : 26;
-      const icon = L.divIcon({
-        className: "gsk-nadel",
-        html: `<span style="width:${gr}px;height:${gr}px;background:${farbe};font-size:${jetzt ? 14 : 12}px;">${fertig ? "✓" : p.nr}</span>`,
-        iconSize: [gr, gr], iconAnchor: [gr / 2, gr / 2],
-      });
-      // Liegen Stopps dicht beieinander, ueberdecken sich die Nadeln. Der naechste
-      // Stopp muss dabei IMMER obenauf liegen - er ist der wichtigste auf dem Schirm.
-      L.marker([p.lat, p.lng], {
-        icon, keyboard: false,
-        zIndexOffset: jetzt ? 1000 : fertig ? 0 : 500,
-      })
-        .addTo(glasKarte)
-        .on("click", () => glasSpringZuStopp(p.tourId, p.id));
-    });
-
-    if (punkte.length > 1) {
-      glasKarte.__linie = L.polyline(punkte.map((p) => [p.lat, p.lng]), {
-        color: "#2d7dc4", weight: 3, opacity: 0.75, dashArray: "1 8", lineCap: "round",
-      }).addTo(glasKarte);
-    }
-
-    const grenzen = L.latLngBounds(punkte.map((p) => [p.lat, p.lng]));
-    if (punkte.length === 1) glasKarte.setView([punkte[0].lat, punkte[0].lng], 15);
-    else glasKarte.fitBounds(grenzen, { padding: [34, 34], maxZoom: 15 });
-    setTimeout(() => { try { glasKarte.invalidateSize(); } catch (e) {} }, 60);
-  } catch (e) {
-    // Karte darf die Startseite niemals blockieren
-    if (glasKartenHost) glasKartenHost.style.display = "none";
-  }
-}
-
 let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen Doppel-Animation)
+let glasMaRenderedTiefe = 0;     // 0 Start, 1 Tourenliste, 2 offene Tour - gibt die Richtung vor
+let glasGeradeErledigt = null;   // Stopp, der eben unterschrieben wurde (einmaliger Jubel-Effekt)
+// Trennt "Nutzer hat getippt" von "Hintergrund-Aktualisierung". Beim Auf-/Zuklappen
+// eines Stopps bleibt der Bildschirm derselbe - ohne diese Unterscheidung wuerde die
+// Flacker-Bremse (glas-static) auch die gewollte Aufklapp-Animation verschlucken.
+let glasTippAnimation = false;
 
 function renderGlasMa() {
   const view = document.getElementById("view");
@@ -486,12 +347,26 @@ function renderGlasMa() {
   // Nur bei echtem Screen-Wechsel animieren. Hintergrund-Refreshes (Touren nachgeladen,
   // Offline-Sync, Intervall) bauen denselben Screen neu auf - dann NICHT erneut animieren,
   // sonst flackert/„ruckelt" die Ansicht (Animation lief scheinbar zweimal).
-  let screenKey;
-  if (glasMaScreen === "home") screenKey = "home";
-  else if (glasOpenTourId && glasTouren.find((x) => x.id === glasOpenTourId)) screenKey = "tour:" + glasOpenTourId;
-  else screenKey = "touren";
-  view.classList.toggle("glas-static", screenKey === glasMaRenderedScreen);
+  let screenKey, tiefe;
+  if (glasMaScreen === "home") { screenKey = "home"; tiefe = 0; }
+  else if (glasOpenTourId && glasTouren.find((x) => x.id === glasOpenTourId)) { screenKey = "tour:" + glasOpenTourId; tiefe = 2; }
+  else { screenKey = "touren"; tiefe = 1; }
+  const gleicherSchirm = screenKey === glasMaRenderedScreen;
+  view.classList.toggle("glas-static", gleicherSchirm);
+  view.classList.toggle("glas-tipp", glasTippAnimation);
+  glasTippAnimation = false;
+
+  // Richtung des Uebergangs wie in einer nativen App: tiefer hinein = von rechts
+  // herein, zurueck = von links. Bei einem Hintergrund-Neuaufbau (gleicher Schirm)
+  // laeuft bewusst gar nichts, sonst flackert die Seite bei jeder Kleinigkeit.
+  view.classList.remove("glas-vor", "glas-zurueck");
+  if (!gleicherSchirm && glasMaRenderedScreen !== null) {
+    view.classList.add(tiefe >= glasMaRenderedTiefe ? "glas-vor" : "glas-zurueck");
+    // Neustart der Animation erzwingen, auch wenn dieselbe Klasse erneut gesetzt wird
+    void view.offsetWidth;
+  }
   glasMaRenderedScreen = screenKey;
+  glasMaRenderedTiefe = tiefe;
 
   if (glasMaScreen === "home") {
     const heute = glasTouren.filter((t) => t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum)).length;
@@ -500,7 +375,6 @@ function renderGlasMa() {
         <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
         <p class="glas-welcome-title">Hallo GEKO Clean <span class="glas-welcome-heart">❤️</span></p>
         <p class="glas-welcome-sub">Schön, dass du da bist!</p>
-        ${renderGlasStartKarte()}
         <div class="glas-welcome-buttons">
           <button class="btn btn-primary glas-welcome-btn" style="animation-delay:0.35s;" onclick="glasMaScreen = 'touren'; renderGlasMa();">
             🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
@@ -509,7 +383,6 @@ function renderGlasMa() {
         ${glasAppLinkKarte()}
         ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
       </div>`;
-    glasStartKarteEinsetzen();
     return;
   }
 
@@ -673,6 +546,7 @@ function glasStopSchritt(richtung) {
   if (ziel < 0 || ziel >= t.stopps.length) return;
   glasOpenStopId = t.stopps[ziel].id;
   glasSignStopId = null;
+  glasTippAnimation = true;
   renderGlasMa();
   const el = document.getElementById("gstop-" + glasOpenStopId);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -699,8 +573,12 @@ function renderGlasStopsList(t) {
       const qm = glasStopQm(s);
       // Reihenfolge steht fest: erledigte Stopps bleiben an ihrem Platz und werden nur
       // gruen/kompakt. So findet man ein Objekt immer an derselben Stelle der Liste.
+      // Gestaffelter Eintritt: die Karten laufen nacheinander herein. Nach dem achten
+      // Stopp bleibt die Verzoegerung stehen - sonst wartet man bei langen Touren zu lang.
+      const verzug = Math.min(idx, 8) * 0.045;
+      const frisch = glasGeradeErledigt === s.id ? " frisch-fertig" : "";
       return `
-        <div class="gsm-stopp${isOpen ? " offen" : ""}${isDone ? " fertig" : ""}${isNg ? " ng" : ""}" id="gstop-${s.id}" onclick="toggleGlasStop('${s.id}')">
+        <div class="gsm-stopp${isOpen ? " offen" : ""}${isDone ? " fertig" : ""}${isNg ? " ng" : ""}${frisch}" id="gstop-${s.id}" style="animation-delay:${verzug}s;" onclick="toggleGlasStop('${s.id}')">
           <div class="gsm-z1">
             <div class="gsm-kugel">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
@@ -930,6 +808,7 @@ function glasZusatzAddField() {
 function toggleGlasStop(id) {
   glasOpenStopId = glasOpenStopId === id ? null : id;
   glasSignStopId = null;
+  glasTippAnimation = true; // bewusste Aktion -> Aufklapp-Animation darf laufen
   renderGlasMa();
 }
 
@@ -1014,7 +893,12 @@ async function saveGlasSignature(stopId) {
   const tourJetzt = glasTouren.find((x) => x.id === glasOpenTourId);
   const naechster = tourJetzt ? tourJetzt.stopps.find((s) => s.status === "offen") : null;
   glasOpenStopId = naechster ? naechster.id : stopId;
+  // Der eben unterschriebene Stopp bekommt EINMAL den gruenen Jubel-Effekt. Danach
+  // zuruecksetzen, damit er bei Hintergrund-Neuaufbauten nicht erneut losgeht.
+  glasGeradeErledigt = stopId;
+  glasTippAnimation = true;
   renderGlasMa();
+  setTimeout(() => { glasGeradeErledigt = null; }, 1200);
   if (naechster) {
     const el = document.getElementById("gstop-" + naechster.id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });

@@ -718,64 +718,69 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
 
-/* ================= Karte auf der MA-Startseite ================= */
-.glas-startkarte {
-  max-width: 340px;
-  margin: 18px auto 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 15px;
-  overflow: hidden;
-  text-align: left;
-  box-shadow: 0 2px 10px rgba(16, 42, 67, 0.07);
+/* ================= Bewegung in der MA-Touren-App =================
+   Grundregel: es werden ausschliesslich transform und opacity bewegt. Beides
+   rechnet die Grafikeinheit des Handys - dadurch laeuft alles fluessig, ohne dass
+   der Browser die Seite neu vermessen muss. Hoehen, Abstaende oder Farben zu
+   animieren waere sichtbar ruckelig.
+   Alle Effekte haengen an der Eintritts-Situation: bei einem Hintergrund-Neuaufbau
+   setzt das JS die Klasse .glas-static und es laeuft bewusst gar nichts. */
+
+/* --- Seitenwechsel: tiefer hinein von rechts, zurueck von links --- */
+@keyframes glasVor    { from { opacity: 0; transform: translate3d(26px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes glasZurueck{ from { opacity: 0; transform: translate3d(-26px, 0, 0); } to { opacity: 1; transform: none; } }
+/* Doppelte Klasse, um das generelle "#view { animation: none }" zu uebertreffen */
+body.glas-logo-left #view.glas-vor { animation: glasVor 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
+body.glas-logo-left #view.glas-zurueck { animation: glasZurueck 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* --- Stopp-Karten laufen nacheinander herein --- */
+@keyframes gsmKarteRein { from { opacity: 0; transform: translate3d(0, 12px, 0); } to { opacity: 1; transform: none; } }
+.gsm-stopp { animation: gsmKarteRein 0.4s cubic-bezier(0.32, 0.72, 0, 1) both; }
+/* Hintergrund-Neuaufbau: nichts bewegen, sonst flackert die Liste staendig.
+   WICHTIG: nur #view.glas-static - die Klasse steht ausserdem FEST im HTML auf
+   .app-sheet-content (schaltet dort die alte Karten-Animation ab). Ohne das
+   #view davor waeren die Regeln hier dauerhaft aktiv und nichts wuerde laufen. */
+#view.glas-static .gsm-stopp { animation: none !important; }
+
+/* --- Aufgeklappter Bereich gleitet heraus --- */
+@keyframes gsmAufRein { from { opacity: 0; transform: translate3d(0, -7px, 0); } to { opacity: 1; transform: none; } }
+.gsm-auf { animation: gsmAufRein 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
+#view.glas-static:not(.glas-tipp) .gsm-auf { animation: none !important; }
+/* Der Pfeil dreht sich beim Aufklappen mit */
+@keyframes gsmPfeilDreh { from { transform: rotate(-180deg); } to { transform: rotate(0); } }
+.gsm-stopp.offen .gsm-pfeil { display: inline-block; animation: gsmPfeilDreh 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
+#view.glas-static:not(.glas-tipp) .gsm-pfeil { animation: none !important; }
+
+/* --- Nach dem Unterschreiben: einmal kurz gruen aufleuchten --- */
+@keyframes gsmJubel {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(30, 122, 52, 0.42); }
+  38%  { transform: scale(1.022); box-shadow: 0 0 0 9px rgba(30, 122, 52, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(30, 122, 52, 0); }
 }
-html.dark .glas-startkarte { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
-.gsk-kopf {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 11px 13px 9px;
+@keyframes gsmHakenPop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  55%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
-.gsk-titel { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
-.gsk-zahl { font-size: 12px; font-weight: 800; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.gsk-slot { position: relative; }
-.gsk-buehne { height: 190px; width: 100%; background: var(--bg); }
-/* Leaflet bringt eigene Schriften/Farben mit - hier an die App angleichen */
-/* Leaflet vergibt .leaflet-container AM Element selbst, nicht an ein Kind. */
-.gsk-buehne.leaflet-container { font-family: inherit; background: var(--bg); }
-.gsk-buehne .leaflet-control-attribution {
-  font-size: 8.5px; background: rgba(255, 255, 255, 0.72); padding: 0 4px;
-}
-html.dark .gsk-buehne .leaflet-control-attribution { background: rgba(0, 0, 0, 0.55); color: #b9c4d0; }
-html.dark .gsk-buehne .leaflet-control-attribution a { color: #8fb6d8; }
-/* Nadeln: runder Punkt mit Nummer - dieselbe Sprache wie in der Stopp-Liste */
-.gsk-nadel span {
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; color: #fff; font-weight: 800;
-  border: 3px solid var(--card);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  font-family: inherit;
-}
-.gsk-naechst {
-  display: flex; align-items: center; gap: 11px; width: 100%;
-  padding: 12px 13px; border: 0; border-top: 1px solid var(--border);
-  background: var(--card); color: var(--text);
-  font-family: inherit; text-align: left; cursor: pointer;
-}
-.gsk-naechst:hover { background: var(--bg); }
-.gsk-kg {
-  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
-  background: #2d7dc4; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 12px;
-}
-.gsk-tx { flex: 1; min-width: 0; }
-.gsk-tx b { display: block; font-size: 14px; font-weight: 700; line-height: 1.3;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gsk-tx span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 1px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gsk-pf { flex: 0 0 auto; color: var(--text-secondary); font-size: 17px; }
-.gsk-fertig {
-  margin: 0; padding: 12px 13px; border-top: 1px solid var(--border);
-  font-size: 13px; font-weight: 600; color: var(--success-text); text-align: center;
+.gsm-stopp.frisch-fertig { animation: gsmJubel 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+/* Der Jubel muss die Karten-Bremse uebertreffen - er gehoert zu einer bewussten Aktion. */
+#view.glas-static.glas-tipp .gsm-stopp.frisch-fertig { animation: gsmJubel 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both !important; }
+#view.glas-static.glas-tipp .gsm-stopp.frisch-fertig .gsm-kugel { animation: gsmHakenPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both !important; }
+.gsm-stopp.frisch-fertig .gsm-kugel { animation: gsmHakenPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both; }
+
+/* --- Knopf-Rueckmeldung beim Antippen: kurz nachgeben --- */
+.gsm-abtn, .gsm-ahaupt, .glas-navi-opt { transition: transform 0.11s ease, background 0.14s ease; }
+.gsm-abtn:active, .gsm-ahaupt:active, .glas-navi-opt:active { transform: scale(0.972); }
+/* Die aufgeklappte Karte hebt sich weich hervor, statt hart umzuspringen */
+.gsm-stopp { transition: border-color 0.2s ease, box-shadow 0.24s ease, background 0.2s ease; }
+
+/* Wer im Handy "Bewegung reduzieren" eingestellt hat, bekommt gar keine Animation. */
+@media (prefers-reduced-motion: reduce) {
+  body.glas-logo-left #view.glas-vor,
+  body.glas-logo-left #view.glas-zurueck,
+  .gsm-stopp, .gsm-auf, .gsm-stopp.offen .gsm-pfeil,
+  .gsm-stopp.frisch-fertig, .gsm-stopp.frisch-fertig .gsm-kugel { animation: none !important; }
+  .gsm-abtn, .gsm-ahaupt, .glas-navi-opt, .gsm-stopp { transition: none !important; }
 }
 
 /* ================= MA-Touren: geoeffnete Tour =================
