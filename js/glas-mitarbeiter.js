@@ -23,6 +23,24 @@ let glasCurrentUser = null; // {id, name, username} des angemeldeten Mitarbeiter
 
 
 
+// Link zur Installations-Anleitung – nur im Browser sichtbar. Wer die App schon vom
+// Home-Bildschirm nutzt, sieht ihn nie. Spart im Büro das ständige "kannst du mir das
+// aufs neue Handy machen?".
+function glasAppLinkKarte() {
+  const alsApp = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  if (alsApp) return "";
+  return `<a href="install.html" style="display:flex; align-items:center; gap:11px; text-decoration:none;
+      max-width:340px; margin:16px auto 0; background:#fff; border:1px solid var(--border); border-radius:14px;
+      padding:13px 15px; box-shadow:0 2px 10px rgba(16,42,67,.07); text-align:left;">
+    <span style="font-size:24px; flex:none;">📲</span>
+    <span style="flex:1; min-width:0;">
+      <span style="display:block; font-size:14.5px; font-weight:700; color:var(--text);">App aufs Handy holen</span>
+      <span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">Eigenes Symbol statt Browser · 1 Minute</span>
+    </span>
+    <span style="font-size:18px; color:var(--text-secondary); flex:none;">›</span>
+  </a>`;
+}
+
 function todayIso() {
   const d = new Date(); // lokale Zeit - toISOString() wäre UTC und nachts einen Tag daneben
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -342,6 +360,7 @@ function renderGlasMa() {
             🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
           </button>
         </div>
+        ${glasAppLinkKarte()}
         ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
       </div>`;
     return;

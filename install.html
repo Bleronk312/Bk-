@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>GEKO Touren aufs Handy</title>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-glas.png" />
+<link rel="manifest" href="manifest-glas-ma.json" />
+<meta name="theme-color" content="#1f5d92" />
+<style>
+  :root{ --blau:#1f5d92; --tief:#143c5e; --tinte:#1c242e; --grau:#6b7480; --linie:#e4eaf0; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#eef2f6;color:var(--tinte);-webkit-font-smoothing:antialiased;padding-bottom:40px}
+  .kopf{background:linear-gradient(150deg,var(--blau),var(--tief));color:#fff;
+    padding:30px 20px 34px;text-align:center;border-radius:0 0 26px 26px}
+  .kopf img{height:64px;background:#fff;border-radius:16px;padding:8px 10px;box-shadow:0 8px 22px rgba(0,0,0,.22)}
+  .kopf h1{font-size:23px;font-weight:800;margin-top:14px}
+  .kopf p{font-size:14.5px;color:#c6dcee;margin-top:7px;line-height:1.5}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 0}
+  .karte{background:#fff;border-radius:18px;padding:18px;box-shadow:0 3px 14px rgba(16,42,67,.08);margin-bottom:14px}
+  .schritt{display:flex;gap:14px;align-items:flex-start;margin-bottom:20px}
+  .schritt:last-child{margin-bottom:0}
+  .nr{width:34px;height:34px;border-radius:50%;background:var(--blau);color:#fff;font-size:16px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .txt{flex:1;min-width:0;padding-top:4px}
+  .txt b{display:block;font-size:16.5px;line-height:1.35}
+  .txt span{display:block;font-size:14px;color:var(--grau);margin-top:5px;line-height:1.5}
+  .bild{margin-top:11px;border:1px solid var(--linie);border-radius:12px;overflow:hidden;background:#f7f9fb}
+  .bild svg{display:block;width:100%;height:auto}
+  .hinweis{background:#fff5e0;border:1px solid #f3ddab;border-radius:14px;padding:14px 16px;margin-bottom:14px}
+  .hinweis > b{display:block;font-size:15.5px;color:#7a5606}
+  .hinweis span b{color:#7a5606}
+  .hinweis span{display:block;font-size:14px;color:#8a6712;margin-top:5px;line-height:1.55}
+  .btn{display:block;width:100%;border:0;border-radius:14px;padding:16px;text-align:center;font-size:16.5px;
+    font-weight:800;background:var(--blau);color:#fff;cursor:pointer;font-family:inherit;text-decoration:none}
+  .btn:active{transform:scale(.98)}
+  .btn.hell{background:#fff;color:var(--blau);border:1.5px solid #cddced;margin-top:10px}
+  .fertig{text-align:center;padding:8px 0 4px}
+  .fertig .hak{width:62px;height:62px;border-radius:50%;background:#e6f3ec;color:#1f7a4d;font-size:32px;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+  .fertig b{font-size:18px;display:block}
+  .fertig span{font-size:14.5px;color:var(--grau);display:block;margin-top:6px;line-height:1.5}
+  .fuss{text-align:center;font-size:13px;color:var(--grau);margin-top:18px;line-height:1.6}
+  .fuss code{background:#e3e9ef;border-radius:6px;padding:2px 7px;font-size:12.5px;user-select:all}
+  @keyframes pulsPfeil{0%,100%{transform:translateY(0);opacity:.9}50%{transform:translateY(-6px);opacity:1}}
+  .pfeil{animation:pulsPfeil 1.4s ease-in-out infinite}
+</style>
+</head>
+<body>
+
+<div class="kopf">
+  <img id="logo" alt="GEKO Clean" />
+  <h1>GEKO Touren aufs Handy</h1>
+  <p id="kopfSub">Einmal einrichten – danach hast du die App wie jede andere auf dem Startbildschirm.</p>
+</div>
+
+<div class="wrap" id="inhalt"></div>
+
+<script src="js/logo-asset.js?v=122"></script>
+<script>
+(function () {
+  var logo = document.getElementById("logo");
+  if (logo && typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined") logo.src = GEKO_LOGO_TRANSPARENT_B64;
+
+  var ua = navigator.userAgent || "";
+  var istIos = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var istAndroid = /android/i.test(ua);
+  var schonApp = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  // Auf dem iPhone kann NUR Safari zum Home-Bildschirm hinzufügen. Wer den Link aus
+  // WhatsApp o.ä. öffnet, sitzt in einem eingebauten Browser ohne diese Funktion.
+  var istFremdBrowser = istIos && (/CriOS|FxiOS|EdgiOS|OPT\//i.test(ua) || /WhatsApp|Instagram|FBAN|FBAV|Line|Snapchat/i.test(ua));
+  var box = document.getElementById("inhalt");
+
+  var safariLeiste =
+    '<svg viewBox="0 0 320 92" role="img" aria-label="Untere Safari-Leiste mit Teilen-Symbol">' +
+      '<rect x="0" y="0" width="320" height="92" fill="#f2f2f4"/>' +
+      '<rect x="14" y="14" width="292" height="30" rx="9" fill="#fff" stroke="#dcdce0"/>' +
+      '<text x="160" y="34" font-size="13" fill="#8b8b90" text-anchor="middle" font-family="-apple-system,Arial">sunny-platypus-bce4eb.netlify.app</text>' +
+      '<g fill="none" stroke="#9a9aa0" stroke-width="2" stroke-linecap="round"><path d="M28 68l-8 -6 8 -6"/><path d="M70 62h12"/></g>' +
+      '<g transform="translate(150 52)">' +
+        '<circle cx="10" cy="10" r="19" fill="#1f5d92" opacity=".14"/>' +
+        '<g fill="none" stroke="#1f5d92" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M10 2v13"/><path d="M5.5 6.2L10 2l4.5 4.2"/>' +
+          '<path d="M4.6 9.5H3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.6"/>' +
+        '</g>' +
+      '</g>' +
+      '<g class="pfeil" transform="translate(152 22)"><path d="M8 22 L8 8 M3 13 L8 8 L13 13" fill="none" stroke="#e0682f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<g fill="none" stroke="#9a9aa0" stroke-width="2" stroke-linecap="round"><rect x="232" y="54" width="16" height="16" rx="3"/><path d="M284 54v16M276 62h16"/></g>' +
+    '</svg>';
+
+  var menuAusschnitt =
+    '<svg viewBox="0 0 320 132" role="img" aria-label="Teilen-Menü mit Eintrag Zum Home-Bildschirm">' +
+      '<rect width="320" height="132" fill="#f7f7f9"/>' +
+      '<rect x="12" y="10" width="296" height="36" rx="10" fill="#fff"/>' +
+      '<text x="30" y="33" font-size="14" fill="#3a3a3e" font-family="-apple-system,Arial">Zur Leseliste hinzufügen</text>' +
+      '<rect x="12" y="52" width="296" height="40" rx="10" fill="#fff" stroke="#e0682f" stroke-width="2.4"/>' +
+      '<g transform="translate(28 63)"><rect x="0" y="0" width="17" height="17" rx="4" fill="none" stroke="#3a3a3e" stroke-width="1.8"/><path d="M8.5 4.5v8.5M4.5 8.7h8" stroke="#3a3a3e" stroke-width="1.8" stroke-linecap="round"/></g>' +
+      '<text x="56" y="77" font-size="14.5" fill="#1c242e" font-weight="700" font-family="-apple-system,Arial">Zum Home-Bildschirm</text>' +
+      '<rect x="12" y="98" width="296" height="24" rx="8" fill="#fff"/>' +
+      '<text x="30" y="114" font-size="14" fill="#3a3a3e" font-family="-apple-system,Arial">Drucken</text>' +
+    '</svg>';
+
+  var dialog =
+    '<svg viewBox="0 0 320 108" role="img" aria-label="Dialog mit Knopf Hinzufügen">' +
+      '<rect width="320" height="108" fill="#f7f7f9"/>' +
+      '<text x="16" y="29" font-size="11.5" fill="#8b8b90" font-family="-apple-system,Arial">Abbrechen</text>' +
+      '<text x="152" y="29" font-size="12.5" fill="#1c242e" font-weight="700" text-anchor="middle" font-family="-apple-system,Arial">Zum Home-Bildschirm</text>' +
+      '<rect x="240" y="13" width="64" height="25" rx="8" fill="#e0682f"/>' +
+      '<text x="272" y="30" font-size="11.5" fill="#fff" font-weight="700" text-anchor="middle" font-family="-apple-system,Arial">Hinzufügen</text>' +
+      '<rect x="18" y="54" width="42" height="42" rx="10" fill="#1f5d92"/>' +
+      '<text x="39" y="80" font-size="15" fill="#fff" font-weight="700" text-anchor="middle" font-family="-apple-system,Arial">G</text>' +
+      '<rect x="72" y="60" width="150" height="14" rx="5" fill="#e2e2e6"/>' +
+      '<rect x="72" y="80" width="210" height="11" rx="5" fill="#eeeef1"/>' +
+    '</svg>';
+
+  function schritt(nr, titel, text, bild) {
+    return '<div class="schritt"><span class="nr">' + nr + '</span><div class="txt"><b>' + titel + '</b>' +
+      (text ? '<span>' + text + '</span>' : '') + (bild ? '<div class="bild">' + bild + '</div>' : '') + '</div></div>';
+  }
+
+  // --- Schon installiert -------------------------------------------------
+  if (schonApp) {
+    box.innerHTML =
+      '<div class="karte fertig"><div class="hak">✓</div><b>Alles erledigt!</b>' +
+      '<span>Du benutzt die App bereits vom Startbildschirm.</span></div>' +
+      '<a class="btn" href="glas-mitarbeiter.html">Zu meinen Touren</a>';
+    return;
+  }
+
+  // --- iPhone aus einem fremden Browser (WhatsApp & Co.) -----------------
+  if (istFremdBrowser) {
+    box.innerHTML =
+      '<div class="hinweis"><b>Zuerst in Safari öffnen</b><span>Du hast diese Seite gerade aus einer anderen App heraus geöffnet. ' +
+      'Zum Installieren muss sie in <b>Safari</b> laufen: unten auf das Teilen- oder Menü-Symbol tippen und ' +
+      '<b>„In Safari öffnen"</b> wählen. Danach erscheint hier die Anleitung.</span></div>' +
+      '<a class="btn hell" href="' + location.href + '" target="_blank" rel="noopener">Seite neu öffnen</a>' +
+      '<p class="fuss">Alternativ diese Adresse in Safari eintippen:<br><code>' + location.host + '/app</code></p>';
+    return;
+  }
+
+  // --- iPhone / iPad -----------------------------------------------------
+  if (istIos) {
+    box.innerHTML =
+      '<div class="karte">' +
+        schritt(1, "Auf das Teilen-Symbol tippen", "Ganz unten in Safari – das Viereck mit dem Pfeil nach oben.", safariLeiste) +
+        schritt(2, "„Zum Home-Bildschirm“ wählen", "Im Menü ein Stück nach unten scrollen.", menuAusschnitt) +
+        schritt(3, "Oben rechts auf „Hinzufügen“", "Fertig – die App liegt jetzt auf deinem Startbildschirm.", dialog) +
+      '</div>' +
+      '<div class="hinweis"><b>Wichtig</b><span>Bitte danach immer das <b>GEKO-Symbol</b> vom Startbildschirm benutzen und nicht mehr den Browser – ' +
+      'nur so bekommst du Benachrichtigungen über neue Touren.</span></div>' +
+      '<a class="btn hell" href="glas-mitarbeiter.html">Erstmal ohne App weiter</a>';
+    return;
+  }
+
+  // --- Android -----------------------------------------------------------
+  if (istAndroid) {
+    box.innerHTML =
+      '<div class="karte fertig" id="andBox"><div class="hak" style="background:#eaf2fb;color:#1f5d92;">📲</div>' +
+      '<b>Mit einem Tipp installieren</b><span id="andSub">Einen Moment – die Installation wird vorbereitet…</span></div>' +
+      '<button class="btn" id="andBtn" style="display:none">Jetzt installieren</button>' +
+      '<a class="btn hell" href="glas-mitarbeiter.html">Erstmal ohne App weiter</a>';
+    var ereignis = null, btn = document.getElementById("andBtn"), sub = document.getElementById("andSub");
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); ereignis = e;
+      sub.textContent = "Tippe auf den Knopf – den Rest macht dein Handy.";
+      btn.style.display = "block";
+    });
+    btn.addEventListener("click", function () {
+      if (!ereignis) return;
+      ereignis.prompt(); ereignis = null; btn.style.display = "none";
+      sub.textContent = "Bestätige die Rückfrage deines Handys.";
+    });
+    window.addEventListener("appinstalled", function () {
+      document.getElementById("andBox").innerHTML =
+        '<div class="hak">✓</div><b>Geschafft!</b><span>Die App liegt jetzt auf deinem Startbildschirm.</span>';
+      btn.style.display = "none";
+    });
+    // Browser ohne Ein-Klick-Installation (z. B. Firefox): Menü-Weg zeigen
+    setTimeout(function () {
+      if (ereignis || btn.style.display === "block") return;
+      sub.innerHTML = 'Öffne rechts oben das Menü <b>⋮</b> und wähle <b>„App installieren“</b> bzw. <b>„Zum Startbildschirm hinzufügen“</b>.';
+    }, 2500);
+    return;
+  }
+
+  // --- Computer ----------------------------------------------------------
+  document.getElementById("kopfSub").textContent = "Diese Seite gehört aufs Handy.";
+  box.innerHTML =
+    '<div class="karte"><b style="font-size:16.5px;">Am Handy öffnen</b>' +
+    '<p style="font-size:14.5px;color:var(--grau);margin-top:8px;line-height:1.6;">Schick diesen Link an den Mitarbeiter ' +
+    '(z. B. per WhatsApp) – er führt ihn Schritt für Schritt durch die Einrichtung:</p>' +
+    '<p style="margin-top:12px;"><code style="background:#e3e9ef;border-radius:8px;padding:9px 12px;display:inline-block;font-size:14px;user-select:all;">' +
+    location.host + '/app</code></p></div>' +
+    '<a class="btn hell" href="glas-mitarbeiter.html">Zu den Touren</a>';
+})();
+</script>
+</body>
+</html>
