@@ -718,6 +718,66 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
 
+/* ================= Karte auf der MA-Startseite ================= */
+.glas-startkarte {
+  max-width: 340px;
+  margin: 18px auto 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  overflow: hidden;
+  text-align: left;
+  box-shadow: 0 2px 10px rgba(16, 42, 67, 0.07);
+}
+html.dark .glas-startkarte { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
+.gsk-kopf {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 11px 13px 9px;
+}
+.gsk-titel { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.gsk-zahl { font-size: 12px; font-weight: 800; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.gsk-slot { position: relative; }
+.gsk-buehne { height: 190px; width: 100%; background: var(--bg); }
+/* Leaflet bringt eigene Schriften/Farben mit - hier an die App angleichen */
+/* Leaflet vergibt .leaflet-container AM Element selbst, nicht an ein Kind. */
+.gsk-buehne.leaflet-container { font-family: inherit; background: var(--bg); }
+.gsk-buehne .leaflet-control-attribution {
+  font-size: 8.5px; background: rgba(255, 255, 255, 0.72); padding: 0 4px;
+}
+html.dark .gsk-buehne .leaflet-control-attribution { background: rgba(0, 0, 0, 0.55); color: #b9c4d0; }
+html.dark .gsk-buehne .leaflet-control-attribution a { color: #8fb6d8; }
+/* Nadeln: runder Punkt mit Nummer - dieselbe Sprache wie in der Stopp-Liste */
+.gsk-nadel span {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; color: #fff; font-weight: 800;
+  border: 3px solid var(--card);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font-family: inherit;
+}
+.gsk-naechst {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 12px 13px; border: 0; border-top: 1px solid var(--border);
+  background: var(--card); color: var(--text);
+  font-family: inherit; text-align: left; cursor: pointer;
+}
+.gsk-naechst:hover { background: var(--bg); }
+.gsk-kg {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  background: #2d7dc4; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px;
+}
+.gsk-tx { flex: 1; min-width: 0; }
+.gsk-tx b { display: block; font-size: 14px; font-weight: 700; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsk-tx span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsk-pf { flex: 0 0 auto; color: var(--text-secondary); font-size: 17px; }
+.gsk-fertig {
+  margin: 0; padding: 12px 13px; border-top: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--success-text); text-align: center;
+}
+
 /* ================= MA-Touren: geoeffnete Tour =================
    Aufbau: oben eine schmale Leiste, die beim Scrollen kleben bleibt (Tourname,
    Aktualisieren-Symbol, Fortschritt, Pfeile), in der Mitte die Stopp-Liste in FESTER

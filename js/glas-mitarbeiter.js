@@ -328,6 +328,151 @@ function glasSingleMapLinks(stop) {
   };
 }
 
+// ================= Karte auf der Startseite =================
+// Zeigt die Stopps der heutigen Tour(en) als Nadeln. Bewusst sparsam gebaut:
+//   - Die Karte laedt EINMAL beim Oeffnen. Hintergrund-Aktualisierungen bauen den
+//     Startbildschirm zwar neu auf, die Karte wird dabei aber nur umgehaengt statt
+//     neu erzeugt - sonst wuerden bei jedem Durchlauf erneut Kartenbilder geladen.
+//   - Nicht verschiebbar und nicht zoombar. Ein Tipp fuehrt in die Tour. Damit
+//     bleibt es bei einem Kartenausschnitt pro Oeffnen; das haelt die Zahl der
+//     Abrufe bei OpenStreetMap klein (deren Regeln verbieten starke Nutzung).
+//   - Faellt Leaflet aus (kein Netz, CDN nicht erreichbar), entfaellt die Karte
+//     stillschweigend. Der Rest der Seite funktioniert unveraendert weiter.
+
+let glasKarte = null;          // Leaflet-Instanz
+let glasKartenHost = null;     // der DIV, in dem die Karte lebt (ueberlebt Neuaufbauten)
+let glasKartenSignatur = "";   // welche Stopps gerade gezeichnet sind
+
+// Alle Stopps der heute laufenden Touren, die Koordinaten haben.
+function glasHeutigeKartenStopps() {
+  const heute = todayIso();
+  const raus = [];
+  glasTouren.forEach((t) => {
+    if (!t.datum || t.datum > heute || heute > (t.datum_bis || t.datum)) return;
+    (t.stopps || []).forEach((s, i) => {
+      const lat = parseFloat(s.lat), lng = parseFloat(s.lng);
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      raus.push({ id: s.id, tourId: t.id, nr: i + 1, lat, lng,
+        objekt: s.objekt || "", adresse: s.adresse || "", status: s.status });
+    });
+  });
+  return raus;
+}
+
+function renderGlasStartKarte() {
+  if (typeof L === "undefined") return "";           // Leaflet nicht da -> keine Karte
+  const punkte = glasHeutigeKartenStopps();
+  if (punkte.length < 1) return "";                  // nichts zu zeigen
+  const offen = punkte.filter((p) => p.status === "offen");
+  const naechster = offen[0] || null;
+  const fertig = punkte.length - offen.length;
+  return `
+    <div class="glas-startkarte">
+      <div class="gsk-kopf">
+        <span class="gsk-titel">Deine Stopps heute</span>
+        <span class="gsk-zahl">${fertig}/${punkte.length}</span>
+      </div>
+      <div class="gsk-slot" id="glasKartenSlot"></div>
+      ${naechster ? `
+      <button class="gsk-naechst" onclick="glasSpringZuStopp('${naechster.tourId}','${naechster.id}')">
+        <span class="gsk-kg">${naechster.nr}</span>
+        <span class="gsk-tx">
+          <b>${escapeHtml(naechster.objekt || "Nächster Stopp")}</b>
+          <span>${escapeHtml(String(naechster.adresse).split("\n")[0])}</span>
+        </span>
+        <span class="gsk-pf">›</span>
+      </button>` : `
+      <p class="gsk-fertig">✓ Alle Stopps von heute sind erledigt</p>`}
+    </div>`;
+}
+
+// Oeffnet die Tour und klappt den gewaehlten Stopp auf.
+function glasSpringZuStopp(tourId, stopId) {
+  glasMaScreen = "touren";
+  glasOpenTourId = tourId;
+  glasOpenStopId = stopId;
+  glasSignStopId = null;
+  renderGlasMa();
+}
+
+// Haengt die (einmal erzeugte) Karte in den frisch gebauten Startbildschirm.
+function glasStartKarteEinsetzen() {
+  const slot = document.getElementById("glasKartenSlot");
+  if (!slot) return;                                  // Startseite ohne Karte
+  if (typeof L === "undefined") return;
+  const punkte = glasHeutigeKartenStopps();
+  if (!punkte.length) return;
+
+  if (!glasKartenHost) {
+    glasKartenHost = document.createElement("div");
+    glasKartenHost.className = "gsk-buehne";
+  }
+  slot.appendChild(glasKartenHost);                   // umhaengen statt neu bauen
+
+  const signatur = punkte.map((p) => `${p.id}:${p.status}`).join("|");
+  if (glasKarte && glasKartenSignatur === signatur) {
+    // Gleiche Stopps wie vorher: nur die Groesse neu berechnen, KEINE neuen Bilder.
+    setTimeout(() => { try { glasKarte.invalidateSize(); } catch (e) {} }, 60);
+    return;
+  }
+  glasKartenSignatur = signatur;
+  glasZeichneStartKarte(punkte);
+}
+
+function glasZeichneStartKarte(punkte) {
+  try {
+    if (!glasKarte) {
+      glasKarte = L.map(glasKartenHost, {
+        // bewusst unbeweglich: ein Ausschnitt pro Oeffnen, Tippen fuehrt in die Tour
+        dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false,
+        boxZoom: false, keyboard: false, zoomControl: false, attributionControl: true,
+        tap: false,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18, attribution: "© OpenStreetMap",
+      }).addTo(glasKarte);
+    } else {
+      glasKarte.eachLayer((l) => { if (l instanceof L.Marker) glasKarte.removeLayer(l); });
+      if (glasKarte.__linie) { glasKarte.removeLayer(glasKarte.__linie); glasKarte.__linie = null; }
+    }
+
+    const offenIdx = punkte.findIndex((p) => p.status === "offen");
+    punkte.forEach((p, i) => {
+      const fertig = p.status === "erledigt";
+      const jetzt = i === offenIdx;
+      const farbe = fertig ? "#1e7a34" : jetzt ? "#2d7dc4" : "#8fa3b8";
+      const gr = jetzt ? 34 : 26;
+      const icon = L.divIcon({
+        className: "gsk-nadel",
+        html: `<span style="width:${gr}px;height:${gr}px;background:${farbe};font-size:${jetzt ? 14 : 12}px;">${fertig ? "✓" : p.nr}</span>`,
+        iconSize: [gr, gr], iconAnchor: [gr / 2, gr / 2],
+      });
+      // Liegen Stopps dicht beieinander, ueberdecken sich die Nadeln. Der naechste
+      // Stopp muss dabei IMMER obenauf liegen - er ist der wichtigste auf dem Schirm.
+      L.marker([p.lat, p.lng], {
+        icon, keyboard: false,
+        zIndexOffset: jetzt ? 1000 : fertig ? 0 : 500,
+      })
+        .addTo(glasKarte)
+        .on("click", () => glasSpringZuStopp(p.tourId, p.id));
+    });
+
+    if (punkte.length > 1) {
+      glasKarte.__linie = L.polyline(punkte.map((p) => [p.lat, p.lng]), {
+        color: "#2d7dc4", weight: 3, opacity: 0.75, dashArray: "1 8", lineCap: "round",
+      }).addTo(glasKarte);
+    }
+
+    const grenzen = L.latLngBounds(punkte.map((p) => [p.lat, p.lng]));
+    if (punkte.length === 1) glasKarte.setView([punkte[0].lat, punkte[0].lng], 15);
+    else glasKarte.fitBounds(grenzen, { padding: [34, 34], maxZoom: 15 });
+    setTimeout(() => { try { glasKarte.invalidateSize(); } catch (e) {} }, 60);
+  } catch (e) {
+    // Karte darf die Startseite niemals blockieren
+    if (glasKartenHost) glasKartenHost.style.display = "none";
+  }
+}
+
 let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen Doppel-Animation)
 
 function renderGlasMa() {
@@ -355,6 +500,7 @@ function renderGlasMa() {
         <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
         <p class="glas-welcome-title">Hallo GEKO Clean <span class="glas-welcome-heart">❤️</span></p>
         <p class="glas-welcome-sub">Schön, dass du da bist!</p>
+        ${renderGlasStartKarte()}
         <div class="glas-welcome-buttons">
           <button class="btn btn-primary glas-welcome-btn" style="animation-delay:0.35s;" onclick="glasMaScreen = 'touren'; renderGlasMa();">
             🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
@@ -363,6 +509,7 @@ function renderGlasMa() {
         ${glasAppLinkKarte()}
         ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
       </div>`;
+    glasStartKarteEinsetzen();
     return;
   }
 
