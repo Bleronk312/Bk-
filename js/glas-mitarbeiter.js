@@ -330,15 +330,7 @@ function glasSingleMapLinks(stop) {
 
 let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen Doppel-Animation)
 
-// Huelle um den eigentlichen Aufbau: die feste Fussleiste muss nach JEDEM Neuzeichnen
-// nachgezogen werden - egal ueber welchen der vielen return-Wege unten der Aufbau endet.
 function renderGlasMa() {
-  renderGlasMaIntern();
-  document.body.classList.toggle("glas-tour-auf", !!glasOpenTourId && glasMaScreen !== "home");
-  glasSyncStopFuss();
-}
-
-function renderGlasMaIntern() {
   const view = document.getElementById("view");
 
   // Sicherheitsnetz: Ist kein Unterschrift-Sheet (mehr) offen, darf die Seite NIE in
@@ -507,7 +499,6 @@ function renderGlasTourBar(t) {
   return `
     <div class="gsm-bar">
       <div class="gsm-bar-oben">
-        <button class="gsm-ic gsm-zurueck" onclick="closeGlasTour()">‹ Touren</button>
         <span class="gsm-tour">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Tour")}</span>
         <button class="gsm-ic gsm-refresh" onclick="glasRefreshTouren(this)" aria-label="Aktualisieren"><span class="glas-refresh-ic">⟳</span></button>
       </div>
@@ -542,10 +533,10 @@ function glasStopSchritt(richtung) {
 
 function renderGlasTourScreen(t) {
   return `
+    <button class="btn btn-sm" style="margin-bottom:12px;" onclick="closeGlasTour()">&larr; Alle Touren</button>
     ${renderGlasTourBar(t)}
     ${t.notiz ? `<div class="glas-hinweis-box" style="margin-top:12px;"><span class="glas-hinweis-icon">📌</span><div><p class="glas-hinweis-title">Notiz zur Tour</p><p class="glas-hinweis-text" style="white-space:pre-line;">${escapeHtml(t.notiz)}</p></div></div>` : ""}
     ${renderGlasStopsList(t)}
-    <div class="gsm-fuss-platz"></div>
   `;
 }
 
@@ -587,12 +578,13 @@ function renderGlasStopsList(t) {
 function renderMaStopPositionen(s) {
   const pos = glasStopPositionen(s);
   if (!pos.length) return "";
-  return `<div style="margin-top:8px; border-left:2px solid var(--border); padding-left:9px; display:flex; flex-direction:column; gap:3px;">
-    ${pos.map((p) => `<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">
-      <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
-      <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
-      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
-    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="muted" style="margin:-1px 0 3px 0; font-size:11.5px; line-height:1.4; white-space:pre-line;">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
+  return `<div class="gsm-posbox">
+    <p class="gsm-poskopf">${pos.length === 1 ? "LEISTUNG" : "LEISTUNGEN"}</p>
+    ${pos.map((p) => `<div class="gsm-pos">
+      <span class="gsm-posnr">${escapeHtml(p.nr || "–")}</span>
+      <span class="gsm-posart">${escapeHtml(p.art || "")}</span>
+      ${p.qm ? `<span class="gsm-posqm">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="gsm-posqm">Std. vor Ort</span>` : ""}
+    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="gsm-postext">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
   </div>`;
 }
 
@@ -610,9 +602,23 @@ function renderGlasStopKacheln(s) {
   </div>`;
 }
 
-// Anrufen / Navigation / Unterschreiben stehen NICHT mehr hier drin, sondern in der
-// festen Fussleiste (renderGlasStopFuss) - so ist der Unterschreiben-Knopf immer
-// erreichbar, egal wie lang die Karte wird.
+// Die Knoepfe sitzen am Fuss der Karte in einem eigenen, durch eine Linie
+// abgesetzten Block - nicht mehr verstreut zwischen den Angaben.
+function renderGlasStopAktionen(t, s, isDone, isNg) {
+  const telNr = s.telefon ? String(s.telefon).replace(/[^0-9+]/g, "") : "";
+  const neben = [];
+  if (telNr) neben.push(`<a class="btn gsm-abtn" href="tel:${escapeHtml(telNr)}">📞 Anrufen</a>`);
+  if (s.lat) neben.push(`<button class="btn gsm-abtn" onclick="event.stopPropagation(); openGlasNaviSheet('${s.id}')">🧭 Navigation</button>`);
+  let haupt = "";
+  if (isDone) haupt = `<button class="btn gsm-ahaupt" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 Abnahmeschein öffnen</button>`;
+  else if (!isNg) haupt = `<button class="btn btn-primary gsm-ahaupt" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Jetzt unterschreiben</button>`;
+  if (!neben.length && !haupt) return "";
+  return `<div class="gsm-aktionen">
+    ${neben.length ? `<div class="gsm-akt-zwei">${neben.join("")}</div>` : ""}
+    ${haupt}
+  </div>`;
+}
+
 function renderGlasStopDetails(t, s, isDone, isNg) {
   return `
     <div class="gsm-auf" onclick="event.stopPropagation();">
@@ -642,47 +648,8 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
           ? `<div class="glas-notiz-box">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
           : ""
       }
+      ${renderGlasStopAktionen(t, s, isDone, isNg)}
     </div>`;
-}
-
-// ---- Feste Fussleiste zum offenen Stopp ----
-// Lebt als direktes body-Kind (wie die Bottom-Nav im Admin), damit sie beim Neuaufbau
-// der Liste nicht mitspringt und immer am unteren Rand klebt.
-function glasStopFussHtml(t, s) {
-  const isDone = s.status === "erledigt";
-  const isNg = s.status === "nicht_geschafft";
-  const telNr = s.telefon ? String(s.telefon).replace(/[^0-9+]/g, "") : "";
-  const oben = (telNr || s.lat) ? `<div class="gsm-fuss-zwei">
-      ${telNr ? `<a class="btn gsm-fbtn" href="tel:${escapeHtml(telNr)}">📞 Anrufen</a>` : ""}
-      ${s.lat ? `<button class="btn gsm-fbtn" onclick="openGlasNaviSheet('${s.id}')">🧭 Navigation</button>` : ""}
-    </div>` : "";
-  let haupt = "";
-  if (isDone) haupt = `<button class="btn btn-primary gsm-fhaupt" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 Abnahmeschein öffnen</button>`;
-  else if (isNg) haupt = `<p class="gsm-fuss-hinweis">Dieser Stopp wird vom Büro neu eingeplant.</p>`;
-  else haupt = `<button class="btn btn-primary gsm-fhaupt" onclick="openGlasSignSheet('${s.id}')">✍️ Abnahmeschein unterschreiben</button>`;
-  return oben + haupt;
-}
-
-// Baut/entfernt die Fussleiste passend zum aktuellen Zustand.
-function glasSyncStopFuss() {
-  let host = document.getElementById("glasStopFuss");
-  const t = glasOpenTourId ? glasTouren.find((x) => x.id === glasOpenTourId) : null;
-  const s = t && glasOpenStopId ? t.stopps.find((x) => x.id === glasOpenStopId) : null;
-  // Nur im Tour-Bildschirm mit offenem Stopp - sonst weg damit.
-  if (!t || !s || glasMaScreen === "home") {
-    if (host) host.remove();
-    document.body.classList.remove("glas-hat-fuss");
-    return;
-  }
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "glasStopFuss";
-    host.className = "gsm-fuss";
-    document.body.appendChild(host);
-  }
-  const neu = glasStopFussHtml(t, s);
-  if (host.__html !== neu) { host.innerHTML = neu; host.__html = neu; }
-  document.body.classList.add("glas-hat-fuss");
 }
 
 // Nur die Eingabefelder. Der "Speichern"-Knopf sitzt in der festen Fußleiste des
