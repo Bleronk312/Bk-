@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v129";
+const GEKO_CACHE = "geko-cache-v131";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).

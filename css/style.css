@@ -59,7 +59,10 @@ html.dark .ptr-indicator { background: var(--card); }
 html.dark .logo-watermark { opacity: 0.05; }
 html.dark .glas-hinweis-box { background: #322a10; border-color: #4d421f; border-left-color: #b98f1f; }
 html.dark .glas-hinweis-box .glas-hinweis-title { color: #e5b95e; }
-html.dark .glas-notiz-box { background: #18242f; border-color: #27394b; }
+/* Die Fliesstexte in Hinweis- und Notiz-Box hatten nur eine helle Fassung (dunkles
+   Braun bzw. dunkles Blau). Auf dem dunklen Kasten waren sie kaum zu lesen. */
+html.dark .glas-hinweis-box .glas-hinweis-text { color: #e6d3a4; }
+html.dark .glas-notiz-box { background: #18242f; border-color: #27394b; color: #bcd4ec; }
 html.dark .glas-cal-cell { border-top-color: var(--border); }
 html.dark .glas-cal-cell:hover { background: #1e2833; }
 html.dark .glas-cal-cell.is-selected { background: #1d3450; }
@@ -714,6 +717,255 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
 /* Bewusst KEIN 'overflow:hidden' mehr auf dem Body: das konnte auf manchen Handys
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
+
+/* ================= Bewegung in der MA-Touren-App =================
+   Grundregel: es werden ausschliesslich transform und opacity bewegt. Beides
+   rechnet die Grafikeinheit des Handys - dadurch laeuft alles fluessig, ohne dass
+   der Browser die Seite neu vermessen muss. Hoehen, Abstaende oder Farben zu
+   animieren waere sichtbar ruckelig.
+   Alle Effekte haengen an der Eintritts-Situation: bei einem Hintergrund-Neuaufbau
+   setzt das JS die Klasse .glas-static und es laeuft bewusst gar nichts. */
+
+/* --- Seitenwechsel: tiefer hinein von rechts, zurueck von links --- */
+@keyframes glasVor    { from { opacity: 0; transform: translate3d(26px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes glasZurueck{ from { opacity: 0; transform: translate3d(-26px, 0, 0); } to { opacity: 1; transform: none; } }
+/* Doppelte Klasse, um das generelle "#view { animation: none }" zu uebertreffen */
+body.glas-logo-left #view.glas-vor { animation: glasVor 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
+body.glas-logo-left #view.glas-zurueck { animation: glasZurueck 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* --- Stopp-Karten laufen nacheinander herein --- */
+@keyframes gsmKarteRein { from { opacity: 0; transform: translate3d(0, 12px, 0); } to { opacity: 1; transform: none; } }
+.gsm-stopp { animation: gsmKarteRein 0.4s cubic-bezier(0.32, 0.72, 0, 1) both; }
+/* Hintergrund-Neuaufbau: nichts bewegen, sonst flackert die Liste staendig.
+   WICHTIG: nur #view.glas-static - die Klasse steht ausserdem FEST im HTML auf
+   .app-sheet-content (schaltet dort die alte Karten-Animation ab). Ohne das
+   #view davor waeren die Regeln hier dauerhaft aktiv und nichts wuerde laufen. */
+#view.glas-static .gsm-stopp { animation: none !important; }
+
+/* --- Aufgeklappter Bereich gleitet heraus --- */
+@keyframes gsmAufRein { from { opacity: 0; transform: translate3d(0, -7px, 0); } to { opacity: 1; transform: none; } }
+.gsm-auf { animation: gsmAufRein 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
+#view.glas-static:not(.glas-tipp) .gsm-auf { animation: none !important; }
+/* Der Pfeil dreht sich beim Aufklappen mit */
+@keyframes gsmPfeilDreh { from { transform: rotate(-180deg); } to { transform: rotate(0); } }
+.gsm-stopp.offen .gsm-pfeil { display: inline-block; animation: gsmPfeilDreh 0.26s cubic-bezier(0.32, 0.72, 0, 1) both; }
+#view.glas-static:not(.glas-tipp) .gsm-pfeil { animation: none !important; }
+
+/* --- Nach dem Unterschreiben: einmal kurz gruen aufleuchten --- */
+@keyframes gsmJubel {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(30, 122, 52, 0.42); }
+  38%  { transform: scale(1.022); box-shadow: 0 0 0 9px rgba(30, 122, 52, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(30, 122, 52, 0); }
+}
+@keyframes gsmHakenPop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  55%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.gsm-stopp.frisch-fertig { animation: gsmJubel 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+/* Der Jubel muss die Karten-Bremse uebertreffen - er gehoert zu einer bewussten Aktion. */
+#view.glas-static.glas-tipp .gsm-stopp.frisch-fertig { animation: gsmJubel 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both !important; }
+#view.glas-static.glas-tipp .gsm-stopp.frisch-fertig .gsm-kugel { animation: gsmHakenPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both !important; }
+.gsm-stopp.frisch-fertig .gsm-kugel { animation: gsmHakenPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both; }
+
+/* --- Knopf-Rueckmeldung beim Antippen: kurz nachgeben --- */
+.gsm-abtn, .gsm-ahaupt, .glas-navi-opt { transition: transform 0.11s ease, background 0.14s ease; }
+.gsm-abtn:active, .gsm-ahaupt:active, .glas-navi-opt:active { transform: scale(0.972); }
+/* Die aufgeklappte Karte hebt sich weich hervor, statt hart umzuspringen */
+.gsm-stopp { transition: border-color 0.2s ease, box-shadow 0.24s ease, background 0.2s ease; }
+
+/* Wer im Handy "Bewegung reduzieren" eingestellt hat, bekommt gar keine Animation. */
+@media (prefers-reduced-motion: reduce) {
+  body.glas-logo-left #view.glas-vor,
+  body.glas-logo-left #view.glas-zurueck,
+  .gsm-stopp, .gsm-auf, .gsm-stopp.offen .gsm-pfeil,
+  .gsm-stopp.frisch-fertig, .gsm-stopp.frisch-fertig .gsm-kugel { animation: none !important; }
+  .gsm-abtn, .gsm-ahaupt, .glas-navi-opt, .gsm-stopp { transition: none !important; }
+}
+
+/* ================= MA-Touren: geoeffnete Tour =================
+   Aufbau: oben eine schmale Leiste, die beim Scrollen kleben bleibt (Tourname,
+   Aktualisieren-Symbol, Fortschritt, Pfeile), in der Mitte die Stopp-Liste in FESTER
+   Reihenfolge, unten eine feste Leiste mit Anrufen/Navigation/Unterschreiben zum
+   gerade offenen Stopp. Damit ist der Unterschreiben-Knopf immer erreichbar. */
+/* Die Tour-Leiste ist bewusst eine normale Karte im Seitenfluss - kein eigener
+   Kopfbalken, der die Seite uebernimmt. Der GEKO-Kopf und das Logo bleiben stehen,
+   damit die Tour Teil derselben App bleibt und sich nicht wie ein eigenes Menue
+   anfuehlt. */
+.gsm-bar {
+  margin: 0 0 10px;
+  padding: 12px 14px 13px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.gsm-bar-oben { display: flex; align-items: center; gap: 9px; }
+.gsm-tour {
+  flex: 1; min-width: 0;
+  font-size: 16px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gsm-ic {
+  flex: 0 0 auto;
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.gsm-ic:not(:disabled):hover { background: var(--border); }
+.gsm-ic:disabled { opacity: 0.32; cursor: default; }
+.gsm-refresh.is-loading { opacity: 0.6; pointer-events: none; }
+.gsm-refresh.is-loading .glas-refresh-ic { animation: glasSpin 0.8s linear infinite; }
+.gsm-bar-unten { display: flex; align-items: center; gap: 9px; margin-top: 11px; }
+.gsm-mitte { flex: 1; min-width: 0; }
+.gsm-zeile {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+.gsm-track { height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.gsm-fill { height: 100%; border-radius: 3px; background: var(--blue); transition: width 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+@media (prefers-reduced-motion: reduce) { .gsm-fill { transition: none; } }
+
+/* --- Stopp-Karten --- */
+.gsm-stopp {
+  border-radius: 12px;
+  margin-top: 10px;
+  cursor: pointer;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.gsm-stopp.fertig { background: var(--success-bg); border-color: var(--success-border); }
+.gsm-stopp.ng { opacity: 0.66; }
+.gsm-stopp.offen { border: 2px solid #2d7dc4; box-shadow: 0 5px 18px rgba(45, 125, 196, 0.15); }
+html.dark .gsm-stopp.offen { box-shadow: 0 5px 18px rgba(0, 0, 0, 0.4); }
+.gsm-z1 { display: flex; align-items: center; gap: 11px; padding: 13px 14px; }
+.gsm-stopp.offen .gsm-z1 { padding-bottom: 9px; }
+.gsm-kugel {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #2d7dc4; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px;
+}
+.gsm-stopp.fertig .gsm-kugel { background: #1e7a34; }
+.gsm-stopp.ng .gsm-kugel { background: var(--text-secondary); }
+.gsm-nam { margin: 0; font-weight: 600; font-size: 14.5px; }
+.gsm-stopp:not(.offen) .gsm-nam { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsm-stopp.offen .gsm-nam { font-size: 16px; font-weight: 800; line-height: 1.3; letter-spacing: -0.005em; }
+.gsm-ort { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsm-rechts { flex-shrink: 0; text-align: right; font-size: 12px; line-height: 1.5; }
+.gsm-rechts b { display: block; font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.gsm-stopp.fertig .gsm-rechts b { color: var(--success-text); }
+.gsm-pfeil { color: var(--text-secondary); }
+
+/* --- aufgeklappter Bereich --- */
+.gsm-auf { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 11px; }
+.gsm-adr { margin: 0; font-size: 13.5px; color: var(--text-secondary); line-height: 1.45; white-space: pre-line; padding-left: 37px; margin-top: -3px; }
+.gsm-kacheln { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gsm-kacheln.einzeln { grid-template-columns: 1fr; }
+.gsm-ka { background: var(--bg); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; }
+.gsm-ka .k { font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; color: var(--text-secondary); }
+.gsm-ka .v { font-size: 16px; font-weight: 800; margin-top: 2px; line-height: 1.15; letter-spacing: -0.01em; }
+.gsm-ka .v.s { font-size: 13.5px; }
+.gsm-pos { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+.gsm-posnr {
+  flex-shrink: 0;
+  font-size: 10px; font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0 5px; line-height: 15px;
+}
+.gsm-posart { flex: 1; min-width: 0; }
+.gsm-posqm { flex-shrink: 0; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.gsm-postext { font-size: 11.5px; color: var(--text-secondary); line-height: 1.4; white-space: pre-line; margin: -3px 0 1px 0; }
+/* Diese Bloecke bringen eigene Abstaende mit - im Flex-Stapel regelt das gap. */
+.gsm-auf > .glas-hinweis-box, .gsm-auf > .glas-notiz-box { margin-top: 0; }
+.gsm-abschluss { border-top: 1px solid var(--success-border); padding-top: 12px; }
+
+/* --- Leistungen: eigener, abgesetzter Block --- */
+.gsm-posbox {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.gsm-posbox .gsm-poskopf {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em;
+  color: var(--text-secondary); margin: 0 0 1px;
+}
+
+/* --- Aktionen: eigener Platz am Fuss der Karte, durch eine Linie abgesetzt --- */
+.gsm-aktionen {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.gsm-stopp.fertig .gsm-aktionen { border-top-color: var(--success-border); }
+.gsm-akt-zwei { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.gsm-abtn { justify-content: center; padding: 12px 8px; font-size: 14px; font-weight: 600; }
+.gsm-ahaupt { width: 100%; justify-content: center; padding: 14px; font-size: 15.5px; font-weight: 700; }
+
+/* Auswahl der Navigations-App (ein Knopf "Navigation" statt drei kleiner Knoepfe) */
+.glas-navi-back {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  inset: 0;
+  z-index: 320;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: glasNaviFade 0.16s ease;
+}
+@keyframes glasNaviFade { from { opacity: 0; } to { opacity: 1; } }
+.glas-navi-sheet {
+  width: 100%;
+  max-width: 460px;
+  box-sizing: border-box;
+  background: var(--card);
+  border-radius: 18px 18px 0 0;
+  padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  animation: glasNaviUp 0.2s ease;
+}
+@keyframes glasNaviUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .glas-navi-back, .glas-navi-sheet { animation: none; }
+}
+.glas-navi-t { margin: 0; font-weight: 700; font-size: 16px; text-align: center; }
+.glas-navi-s {
+  margin: 3px 0 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.glas-navi-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.glas-navi-opt:active { background: var(--border); }
+.glas-navi-ico { flex: 0 0 auto; font-size: 19px; }
+.glas-navi-pf { margin-left: auto; color: var(--text-secondary); font-size: 17px; font-weight: 400; }
+.glas-navi-abbruch { width: 100%; justify-content: center; margin-top: 4px; padding: 13px; }
 
 /* Mitarbeiter-Login */
 .glas-login { max-width: 420px; margin: 8vh auto 0; padding: 4px; }

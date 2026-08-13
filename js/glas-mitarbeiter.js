@@ -23,6 +23,24 @@ let glasCurrentUser = null; // {id, name, username} des angemeldeten Mitarbeiter
 
 
 
+// Link zur Installations-Anleitung – nur im Browser sichtbar. Wer die App schon vom
+// Home-Bildschirm nutzt, sieht ihn nie. Spart im Büro das ständige "kannst du mir das
+// aufs neue Handy machen?".
+function glasAppLinkKarte() {
+  const alsApp = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  if (alsApp) return "";
+  return `<a href="install.html" style="display:flex; align-items:center; gap:11px; text-decoration:none;
+      max-width:340px; margin:16px auto 0; background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:13px 15px; box-shadow:0 2px 10px rgba(16,42,67,.07); text-align:left;">
+    <span style="font-size:24px; flex:none;">📲</span>
+    <span style="flex:1; min-width:0;">
+      <span style="display:block; font-size:14.5px; font-weight:700; color:var(--text);">App aufs Handy holen</span>
+      <span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">Eigenes Symbol statt Browser · 1 Minute</span>
+    </span>
+    <span style="font-size:18px; color:var(--text-secondary); flex:none;">›</span>
+  </a>`;
+}
+
 function todayIso() {
   const d = new Date(); // lokale Zeit - toISOString() wäre UTC und nachts einen Tag daneben
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -311,6 +329,12 @@ function glasSingleMapLinks(stop) {
 }
 
 let glasMaRenderedScreen = null; // welcher Screen zuletzt gebaut wurde (gegen Doppel-Animation)
+let glasMaRenderedTiefe = 0;     // 0 Start, 1 Tourenliste, 2 offene Tour - gibt die Richtung vor
+let glasGeradeErledigt = null;   // Stopp, der eben unterschrieben wurde (einmaliger Jubel-Effekt)
+// Trennt "Nutzer hat getippt" von "Hintergrund-Aktualisierung". Beim Auf-/Zuklappen
+// eines Stopps bleibt der Bildschirm derselbe - ohne diese Unterscheidung wuerde die
+// Flacker-Bremse (glas-static) auch die gewollte Aufklapp-Animation verschlucken.
+let glasTippAnimation = false;
 
 function renderGlasMa() {
   const view = document.getElementById("view");
@@ -323,12 +347,26 @@ function renderGlasMa() {
   // Nur bei echtem Screen-Wechsel animieren. Hintergrund-Refreshes (Touren nachgeladen,
   // Offline-Sync, Intervall) bauen denselben Screen neu auf - dann NICHT erneut animieren,
   // sonst flackert/„ruckelt" die Ansicht (Animation lief scheinbar zweimal).
-  let screenKey;
-  if (glasMaScreen === "home") screenKey = "home";
-  else if (glasOpenTourId && glasTouren.find((x) => x.id === glasOpenTourId)) screenKey = "tour:" + glasOpenTourId;
-  else screenKey = "touren";
-  view.classList.toggle("glas-static", screenKey === glasMaRenderedScreen);
+  let screenKey, tiefe;
+  if (glasMaScreen === "home") { screenKey = "home"; tiefe = 0; }
+  else if (glasOpenTourId && glasTouren.find((x) => x.id === glasOpenTourId)) { screenKey = "tour:" + glasOpenTourId; tiefe = 2; }
+  else { screenKey = "touren"; tiefe = 1; }
+  const gleicherSchirm = screenKey === glasMaRenderedScreen;
+  view.classList.toggle("glas-static", gleicherSchirm);
+  view.classList.toggle("glas-tipp", glasTippAnimation);
+  glasTippAnimation = false;
+
+  // Richtung des Uebergangs wie in einer nativen App: tiefer hinein = von rechts
+  // herein, zurueck = von links. Bei einem Hintergrund-Neuaufbau (gleicher Schirm)
+  // laeuft bewusst gar nichts, sonst flackert die Seite bei jeder Kleinigkeit.
+  view.classList.remove("glas-vor", "glas-zurueck");
+  if (!gleicherSchirm && glasMaRenderedScreen !== null) {
+    view.classList.add(tiefe >= glasMaRenderedTiefe ? "glas-vor" : "glas-zurueck");
+    // Neustart der Animation erzwingen, auch wenn dieselbe Klasse erneut gesetzt wird
+    void view.offsetWidth;
+  }
   glasMaRenderedScreen = screenKey;
+  glasMaRenderedTiefe = tiefe;
 
   if (glasMaScreen === "home") {
     const heute = glasTouren.filter((t) => t.datum && t.datum <= todayIso() && todayIso() <= (t.datum_bis || t.datum)).length;
@@ -342,6 +380,7 @@ function renderGlasMa() {
             🚐 Meine Touren${heute ? ` <span class="badge" style="background:rgba(255,255,255,0.25); color:white; margin-left:6px;">${heute} heute</span>` : ""}
           </button>
         </div>
+        ${glasAppLinkKarte()}
         ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
       </div>`;
     return;
@@ -451,8 +490,12 @@ function renderGlasTourList() {
 
 function openGlasTour(id) {
   glasOpenTourId = id;
-  glasOpenStopId = null;
   glasSignStopId = null;
+  // Der erste noch offene Stopp klappt gleich auf - das ist fast immer der, der dran
+  // ist. Ist alles erledigt, bleibt die Liste zu (dann gibt es nichts mehr zu tun).
+  const t = glasTouren.find((x) => x.id === id);
+  const naechster = t ? t.stopps.find((s) => s.status === "offen") : null;
+  glasOpenStopId = naechster ? naechster.id : null;
   renderGlasMa();
 }
 
@@ -463,18 +506,57 @@ function closeGlasTour() {
   renderGlasMa();
 }
 
-function renderGlasTourScreen(t) {
-  const done = t.stopps.filter((s) => s.status === "erledigt").length;
+// Kopfleiste der geoeffneten Tour. Bleibt beim Scrollen oben kleben, damit Fortschritt
+// und die Pfeile immer erreichbar sind. Frueher standen hier ein grosser
+// "Aktualisieren"-Knopf, eine Tour-Karte und ein Erklaertext - zusammen ueber die halbe
+// Bildschirmhoehe, bevor der erste Stopp kam. Aktualisieren ist jetzt ein Symbol.
+function renderGlasTourBar(t) {
+  const { total, done } = glasTourProgress(t);
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const idx = t.stopps.findIndex((s) => s.id === glasOpenStopId);
+  const links = idx === -1 ? "" : `Stopp ${idx + 1} von ${total}`;
+  const offen = total - done;
+  return `
+    <div class="gsm-bar">
+      <div class="gsm-bar-oben">
+        <span class="gsm-tour">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Tour")}</span>
+        <button class="gsm-ic gsm-refresh" onclick="glasRefreshTouren(this)" aria-label="Aktualisieren"><span class="glas-refresh-ic">⟳</span></button>
+      </div>
+      <div class="gsm-bar-unten">
+        <button class="gsm-ic" onclick="glasStopSchritt(-1)" ${idx <= 0 ? "disabled" : ""} aria-label="Vorheriger Stopp">‹</button>
+        <div class="gsm-mitte">
+          <div class="gsm-zeile">
+            <span>${links || `${done} von ${total} erledigt`}</span>
+            <span>${offen === 0 ? "alles erledigt" : `noch ${offen} offen`}</span>
+          </div>
+          <div class="gsm-track"><div class="gsm-fill" style="width:${pct}%;"></div></div>
+        </div>
+        <button class="gsm-ic" onclick="glasStopSchritt(1)" ${idx === -1 || idx >= total - 1 ? "disabled" : ""} aria-label="Nächster Stopp">›</button>
+      </div>
+    </div>`;
+}
 
+// Springt einen Stopp vor oder zurueck - unabhaengig davon, welche schon erledigt sind.
+function glasStopSchritt(richtung) {
+  const t = glasTouren.find((x) => x.id === glasOpenTourId);
+  if (!t || !t.stopps.length) return;
+  const i = t.stopps.findIndex((s) => s.id === glasOpenStopId);
+  const start = i === -1 ? (richtung > 0 ? -1 : t.stopps.length) : i;
+  const ziel = start + richtung;
+  if (ziel < 0 || ziel >= t.stopps.length) return;
+  glasOpenStopId = t.stopps[ziel].id;
+  glasSignStopId = null;
+  glasTippAnimation = true;
+  renderGlasMa();
+  const el = document.getElementById("gstop-" + glasOpenStopId);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function renderGlasTourScreen(t) {
   return `
     <button class="btn btn-sm" style="margin-bottom:12px;" onclick="closeGlasTour()">&larr; Alle Touren</button>
-    ${glasRefreshButton()}
-    <div class="card">
-      <p style="margin:0 0 4px; font-weight:700; font-size:17px;">${t.name ? escapeHtml(t.name) : (t.datum ? formatGlasDate(t.datum) : "Ohne Namen")}</p>
-      <p class="muted" style="margin:0;">${t.datum ? formatGlasDate(t.datum) : ""}${t.datum ? " · " : ""}${done}/${t.stopps.length} erledigt</p>
-    </div>
+    ${renderGlasTourBar(t)}
     ${t.notiz ? `<div class="glas-hinweis-box" style="margin-top:12px;"><span class="glas-hinweis-icon">📌</span><div><p class="glas-hinweis-title">Notiz zur Tour</p><p class="glas-hinweis-text" style="white-space:pre-line;">${escapeHtml(t.notiz)}</p></div></div>` : ""}
-    <p class="muted" style="margin:14px 2px 4px; font-size:12.5px;">Auf einen Stopp tippen – dort stehen alle Infos und die Unterschrift.</p>
     ${renderGlasStopsList(t)}
   `;
 }
@@ -489,17 +571,23 @@ function renderGlasStopsList(t) {
       const isDone = s.status === "erledigt";
       const isNg = s.status === "nicht_geschafft";
       const qm = glasStopQm(s);
+      // Reihenfolge steht fest: erledigte Stopps bleiben an ihrem Platz und werden nur
+      // gruen/kompakt. So findet man ein Objekt immer an derselben Stelle der Liste.
+      // Gestaffelter Eintritt: die Karten laufen nacheinander herein. Nach dem achten
+      // Stopp bleibt die Verzoegerung stehen - sonst wartet man bei langen Touren zu lang.
+      const verzug = Math.min(idx, 8) * 0.045;
+      const frisch = glasGeradeErledigt === s.id ? " frisch-fertig" : "";
       return `
-        <div style="border-radius:12px; padding:13px 14px; margin-top:10px; cursor:pointer; background:${isDone ? "var(--success-bg)" : "var(--card)"}; border:1px solid ${isDone ? "var(--success-border)" : "var(--border)"};${isNg ? " opacity:0.66;" : ""}" onclick="toggleGlasStop('${s.id}')">
-          <div style="display:flex; align-items:center; gap:11px;">
-            <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:${isDone ? "#1e7a34" : isNg ? "var(--text-secondary)" : "#2d7dc4"}; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
+        <div class="gsm-stopp${isOpen ? " offen" : ""}${isDone ? " fertig" : ""}${isNg ? " ng" : ""}${frisch}" id="gstop-${s.id}" style="animation-delay:${verzug}s;" onclick="toggleGlasStop('${s.id}')">
+          <div class="gsm-z1">
+            <div class="gsm-kugel">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
-              <p style="margin:0; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
-              <p class="muted" style="margin:2px 0 0; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml((s.adresse || "").split("\n")[0])}</p>
+              <p class="gsm-nam">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
+              ${isOpen ? "" : `<p class="gsm-ort">${escapeHtml((s.adresse || "").split("\n")[0])}</p>`}
             </div>
-            <div style="flex-shrink:0; text-align:right;">
-              ${qm ? `<p style="margin:0; font-weight:700; font-size:13.5px; white-space:nowrap;">${qm} qm</p>` : ""}
-              <p style="margin:2px 0 0; font-size:12px;">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}<span style="color:var(--text-secondary);"> ${isOpen ? "▲" : "▼"}</span></p>
+            <div class="gsm-rechts">
+              ${isOpen ? "" : `${qm ? `<b>${qm} qm</b>` : ""}<span class="gsm-merk">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}</span>`}
+              <span class="gsm-pfeil">${isOpen ? "▲" : "▼"}</span>
             </div>
           </div>
           ${isOpen ? renderGlasStopDetails(t, s, isDone, isNg) : ""}
@@ -515,23 +603,52 @@ function renderGlasStopsList(t) {
 function renderMaStopPositionen(s) {
   const pos = glasStopPositionen(s);
   if (!pos.length) return "";
-  return `<div style="margin-top:8px; border-left:2px solid var(--border); padding-left:9px; display:flex; flex-direction:column; gap:3px;">
-    ${pos.map((p) => `<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">
-      <span style="flex-shrink:0; font-size:10.5px; font-weight:700; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:0 5px; line-height:16px;">${escapeHtml(p.nr || "–")}</span>
-      <span style="flex:1; min-width:0;">${escapeHtml(p.art || "")}</span>
-      ${p.qm ? `<span class="muted" style="flex-shrink:0;">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="muted" style="flex-shrink:0;">Std. vor Ort</span>` : ""}
-    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="muted" style="margin:-1px 0 3px 0; font-size:11.5px; line-height:1.4; white-space:pre-line;">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
+  return `<div class="gsm-posbox">
+    <p class="gsm-poskopf">${pos.length === 1 ? "LEISTUNG" : "LEISTUNGEN"}</p>
+    ${pos.map((p) => `<div class="gsm-pos">
+      <span class="gsm-posnr">${escapeHtml(p.nr || "–")}</span>
+      <span class="gsm-posart">${escapeHtml(p.art || "")}</span>
+      ${p.qm ? `<span class="gsm-posqm">${escapeHtml(String(p.qm))} ${glasPosEinheit(p)}</span>` : glasIstStundenPos(p) ? `<span class="gsm-posqm">Std. vor Ort</span>` : ""}
+    </div>${p.pos_text && String(p.pos_text).trim() ? `<div class="gsm-postext">${escapeHtml(String(p.pos_text).trim())}</div>` : ""}`).join("")}
+  </div>`;
+}
+
+// Die beiden Kacheln unter der Adresse: Flaeche und Ansprechpartner. Das sind die
+// zwei Angaben, die man vor Ort am haeufigsten braucht - als Kachel sind sie auf
+// einen Blick da statt im Fliesstext. Fehlt eine, nimmt die andere die ganze Breite.
+function renderGlasStopKacheln(s) {
+  const qm = glasStopQm(s);
+  const k = [];
+  if (qm) k.push({ t: "FLÄCHE", v: `${qm} qm`, klein: false });
+  if (s.ansprechpartner) k.push({ t: "VOR ORT", v: s.ansprechpartner, klein: true });
+  if (!k.length) return "";
+  return `<div class="gsm-kacheln${k.length === 1 ? " einzeln" : ""}">
+    ${k.map((x) => `<div class="gsm-ka"><div class="k">${x.t}</div><div class="v${x.klein ? " s" : ""}">${escapeHtml(x.v)}</div></div>`).join("")}
+  </div>`;
+}
+
+// Die Knoepfe sitzen am Fuss der Karte in einem eigenen, durch eine Linie
+// abgesetzten Block - nicht mehr verstreut zwischen den Angaben.
+function renderGlasStopAktionen(t, s, isDone, isNg) {
+  const telNr = s.telefon ? String(s.telefon).replace(/[^0-9+]/g, "") : "";
+  const neben = [];
+  if (telNr) neben.push(`<a class="btn gsm-abtn" href="tel:${escapeHtml(telNr)}">📞 Anrufen</a>`);
+  if (s.lat) neben.push(`<button class="btn gsm-abtn" onclick="event.stopPropagation(); openGlasNaviSheet('${s.id}')">🧭 Navigation</button>`);
+  let haupt = "";
+  if (isDone) haupt = `<button class="btn gsm-ahaupt" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 Abnahmeschein öffnen</button>`;
+  else if (!isNg) haupt = `<button class="btn btn-primary gsm-ahaupt" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Jetzt unterschreiben</button>`;
+  if (!neben.length && !haupt) return "";
+  return `<div class="gsm-aktionen">
+    ${neben.length ? `<div class="gsm-akt-zwei">${neben.join("")}</div>` : ""}
+    ${haupt}
   </div>`;
 }
 
 function renderGlasStopDetails(t, s, isDone, isNg) {
-  const links = glasSingleMapLinks(s);
-  const qm = glasStopQm(s);
   return `
-    <div style="margin-top:12px; border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
-      <p style="margin:0; font-weight:600; font-size:15px; white-space:pre-line;">${escapeHtml(s.adresse)}</p>
-      ${qm ? `<p class="muted" style="margin:6px 0 0;">Fläche: <b>${qm} qm</b></p>` : ""}
-      ${renderMaStopPositionen(s)}
+    <div class="gsm-auf" onclick="event.stopPropagation();">
+      <p class="gsm-adr">${escapeHtml(s.adresse)}</p>
+      ${renderGlasStopKacheln(s)}
       ${s.hinweise ? `
       <div class="glas-hinweis-box">
         <span class="glas-hinweis-icon">⚠️</span>
@@ -541,32 +658,22 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
         </div>
       </div>` : ""}
       ${s.notiz ? `<div class="glas-notiz-box">📝 ${escapeHtml(s.notiz)}</div>` : ""}
-      ${(s.ansprechpartner || s.telefon) ? `
-      <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span class="muted" style="font-size:13px;">👤 ${escapeHtml(s.ansprechpartner || "Ansprechpartner")}${s.telefon ? " · " + escapeHtml(s.telefon) : ""}</span>
-        ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
-      </div>` : ""}
-      ${!isDone && s.lat ? `
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;">
-        <a class="btn btn-sm" href="${links.google}" target="_blank" style="justify-content:center;">🧭 Google</a>
-        <a class="btn btn-sm" href="${links.apple}" style="justify-content:center;">🗺️ Apple</a>
-        <a class="btn btn-sm" href="${links.waze}" style="justify-content:center;">📍 Waze</a>
-      </div>` : ""}
+      ${renderMaStopPositionen(s)}
       ${isDone
         ? `
-      <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
+      <div class="gsm-abschluss">
         <p class="muted" style="margin:0 0 8px;">${!s.unterschrift && s.manuell_erledigt_am
           ? `✔️ Vom Büro als erledigt markiert am ${formatGlasDate(glasSignaturDatum(s))}`
           : `✍️ Unterschrieben von <b>${escapeHtml(s.name || "")}</b> am ${formatGlasDate(glasSignaturDatum(s))}`}</p>
         ${s.__pendingSync ? `<div class="glas-notiz-box" style="margin:0 0 8px; background:var(--warning-bg); border-color:#e0b64a;">⏳ Sicher gespeichert – wird automatisch ans Büro gesendet, sobald wieder Empfang da ist.</div>` : ""}
         ${s.zusatz ? `<div class="glas-notiz-box" style="margin:0 0 8px; white-space:pre-line;">➕ Zusätzlich: ${escapeHtml(s.zusatz)}</div>` : ""}
         ${s.unterschrift ? `<img src="${s.unterschrift}" style="max-width:100%; border:1px solid var(--border); border-radius:8px; background:white;" />` : ""}
-        <button class="btn btn-sm" style="margin-top:10px;" onclick="downloadGlasPdf('${t.id}','${s.id}')">📄 PDF öffnen</button>
       </div>`
         : isNg
-          ? `<div class="glas-notiz-box" style="margin-top:12px;">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
-          : `<button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:12px; padding:13px; font-size:15.5px;" onclick="event.stopPropagation(); openGlasSignSheet('${s.id}')">✍️ Abnahmeschein unterschreiben</button>`
+          ? `<div class="glas-notiz-box">🚫 Vom Büro als <b>nicht geschafft</b> markiert${s.ng_grund ? ` – ${escapeHtml(s.ng_grund)}` : ""}. Dieser Stopp wird neu eingeplant.</div>`
+          : ""
       }
+      ${renderGlasStopAktionen(t, s, isDone, isNg)}
     </div>`;
 }
 
@@ -644,6 +751,46 @@ function closeGlasSignSheet() {
   glasSignStopId = null;
 }
 
+// Auswahl der Navigations-App. Frueher standen Google/Apple/Waze als drei kleine
+// Knoepfe nebeneinander im Stopp - das war eng und auf schmalen Handys kaum zu
+// treffen. Jetzt: EIN Knopf "Navigation", der dieses Auswahl-Blatt oeffnet.
+function openGlasNaviSheet(stopId) {
+  let stop = null;
+  for (const t of glasTouren) {
+    const s = (t.stopps || []).find((x) => x.id === stopId);
+    if (s) stop = s;
+  }
+  if (!stop || !stop.lat) return;
+  closeGlasNaviSheet();
+  const links = glasSingleMapLinks(stop);
+  const el = document.createElement("div");
+  el.className = "glas-navi-back";
+  el.id = "glasNaviSheet";
+  el.onclick = function (e) { if (e.target === el) closeGlasNaviSheet(); };
+  el.innerHTML = `
+    <div class="glas-navi-sheet" role="dialog" aria-label="Navigation starten">
+      <div class="glas-sheet-grip"></div>
+      <p class="glas-navi-t">Navigation starten</p>
+      <p class="glas-navi-s">${escapeHtml(String(stop.adresse || "").replace(/\n/g, ", "))}</p>
+      <a class="glas-navi-opt" href="${links.google}" target="_blank" rel="noopener" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">🧭</span><span>Google Maps</span><span class="glas-navi-pf">›</span>
+      </a>
+      <a class="glas-navi-opt" href="${links.apple}" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">🗺️</span><span>Apple Karten</span><span class="glas-navi-pf">›</span>
+      </a>
+      <a class="glas-navi-opt" href="${links.waze}" target="_blank" rel="noopener" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">📍</span><span>Waze</span><span class="glas-navi-pf">›</span>
+      </a>
+      <button class="btn glas-navi-abbruch" onclick="closeGlasNaviSheet()">Abbrechen</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function closeGlasNaviSheet() {
+  const el = document.getElementById("glasNaviSheet");
+  if (el) el.remove();
+}
+
 // Fügt ein weiteres Zusatz-Feld hinzu, ohne die Seite neu zu bauen (Unterschrift bleibt).
 function glasZusatzAddField() {
   const list = document.getElementById("gs_zusatz_list");
@@ -661,6 +808,7 @@ function glasZusatzAddField() {
 function toggleGlasStop(id) {
   glasOpenStopId = glasOpenStopId === id ? null : id;
   glasSignStopId = null;
+  glasTippAnimation = true; // bewusste Aktion -> Aufklapp-Animation darf laufen
   renderGlasMa();
 }
 
@@ -738,10 +886,23 @@ async function saveGlasSignature(stopId) {
     showToast("Offline gespeichert – wird gesendet, sobald wieder Empfang da ist");
   }
 
-  // Sheet schließen; Stopp bleibt aufgeklappt und zeigt den grünen "Unterschrieben"-Block
+  // Sheet schließen. Danach klappt der naechste noch offene Stopp auf, damit es ohne
+  // Suchen weitergeht. Gibt es keinen mehr, bleibt der gerade unterschriebene offen
+  // und zeigt den gruenen "Unterschrieben"-Block.
   closeGlasSignSheet();
-  glasOpenStopId = stopId;
+  const tourJetzt = glasTouren.find((x) => x.id === glasOpenTourId);
+  const naechster = tourJetzt ? tourJetzt.stopps.find((s) => s.status === "offen") : null;
+  glasOpenStopId = naechster ? naechster.id : stopId;
+  // Der eben unterschriebene Stopp bekommt EINMAL den gruenen Jubel-Effekt. Danach
+  // zuruecksetzen, damit er bei Hintergrund-Neuaufbauten nicht erneut losgeht.
+  glasGeradeErledigt = stopId;
+  glasTippAnimation = true;
   renderGlasMa();
+  setTimeout(() => { glasGeradeErledigt = null; }, 1200);
+  if (naechster) {
+    const el = document.getElementById("gstop-" + naechster.id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 function downloadGlasPdf(tourId, stopId) {
