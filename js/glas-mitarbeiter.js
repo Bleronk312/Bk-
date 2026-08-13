@@ -30,7 +30,7 @@ function glasAppLinkKarte() {
   const alsApp = navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
   if (alsApp) return "";
   return `<a href="install.html" style="display:flex; align-items:center; gap:11px; text-decoration:none;
-      max-width:340px; margin:16px auto 0; background:#fff; border:1px solid var(--border); border-radius:14px;
+      max-width:340px; margin:16px auto 0; background:var(--card); border:1px solid var(--border); border-radius:14px;
       padding:13px 15px; box-shadow:0 2px 10px rgba(16,42,67,.07); text-align:left;">
     <span style="font-size:24px; flex:none;">📲</span>
     <span style="flex:1; min-width:0;">
@@ -544,7 +544,6 @@ function renderMaStopPositionen(s) {
 }
 
 function renderGlasStopDetails(t, s, isDone, isNg) {
-  const links = glasSingleMapLinks(s);
   const qm = glasStopQm(s);
   return `
     <div style="margin-top:12px; border-top:1px solid ${isDone ? "var(--success-border)" : "var(--border)"}; padding-top:12px;" onclick="event.stopPropagation();">
@@ -566,11 +565,7 @@ function renderGlasStopDetails(t, s, isDone, isNg) {
         ${s.telefon ? `<a class="btn btn-sm" href="tel:${escapeHtml(String(s.telefon).replace(/[^0-9+]/g, ""))}" style="justify-content:center;">📞 Anrufen</a>` : ""}
       </div>` : ""}
       ${!isDone && s.lat ? `
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;">
-        <a class="btn btn-sm" href="${links.google}" target="_blank" style="justify-content:center;">🧭 Google</a>
-        <a class="btn btn-sm" href="${links.apple}" style="justify-content:center;">🗺️ Apple</a>
-        <a class="btn btn-sm" href="${links.waze}" style="justify-content:center;">📍 Waze</a>
-      </div>` : ""}
+      <button class="btn btn-sm" style="width:100%; justify-content:center; margin-top:12px; padding:11px;" onclick="event.stopPropagation(); openGlasNaviSheet('${s.id}')">🧭 Navigation</button>` : ""}
       ${isDone
         ? `
       <div style="margin-top:12px; border-top:1px solid var(--success-border); padding-top:12px;">
@@ -661,6 +656,46 @@ function closeGlasSignSheet() {
   document.body.classList.remove("glas-sheet-open");
   glasSigPad = null;
   glasSignStopId = null;
+}
+
+// Auswahl der Navigations-App. Frueher standen Google/Apple/Waze als drei kleine
+// Knoepfe nebeneinander im Stopp - das war eng und auf schmalen Handys kaum zu
+// treffen. Jetzt: EIN Knopf "Navigation", der dieses Auswahl-Blatt oeffnet.
+function openGlasNaviSheet(stopId) {
+  let stop = null;
+  for (const t of glasTouren) {
+    const s = (t.stopps || []).find((x) => x.id === stopId);
+    if (s) stop = s;
+  }
+  if (!stop || !stop.lat) return;
+  closeGlasNaviSheet();
+  const links = glasSingleMapLinks(stop);
+  const el = document.createElement("div");
+  el.className = "glas-navi-back";
+  el.id = "glasNaviSheet";
+  el.onclick = function (e) { if (e.target === el) closeGlasNaviSheet(); };
+  el.innerHTML = `
+    <div class="glas-navi-sheet" role="dialog" aria-label="Navigation starten">
+      <div class="glas-sheet-grip"></div>
+      <p class="glas-navi-t">Navigation starten</p>
+      <p class="glas-navi-s">${escapeHtml(String(stop.adresse || "").replace(/\n/g, ", "))}</p>
+      <a class="glas-navi-opt" href="${links.google}" target="_blank" rel="noopener" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">🧭</span><span>Google Maps</span><span class="glas-navi-pf">›</span>
+      </a>
+      <a class="glas-navi-opt" href="${links.apple}" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">🗺️</span><span>Apple Karten</span><span class="glas-navi-pf">›</span>
+      </a>
+      <a class="glas-navi-opt" href="${links.waze}" target="_blank" rel="noopener" onclick="closeGlasNaviSheet()">
+        <span class="glas-navi-ico">📍</span><span>Waze</span><span class="glas-navi-pf">›</span>
+      </a>
+      <button class="btn glas-navi-abbruch" onclick="closeGlasNaviSheet()">Abbrechen</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function closeGlasNaviSheet() {
+  const el = document.getElementById("glasNaviSheet");
+  if (el) el.remove();
 }
 
 // Fügt ein weiteres Zusatz-Feld hinzu, ohne die Seite neu zu bauen (Unterschrift bleibt).
