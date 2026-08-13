@@ -242,12 +242,30 @@ async function handlePhotoSelect(event, which) {
   if (files.length > remaining) showToast(`Nur die ersten ${remaining} Foto(s) wurden hinzugefügt (max. ${PHOTO_MAX_COUNT})`);
   for (const file of toProcess) {
     try {
+      // PDF? Dann jede Seite in ein Bild umwandeln. Die Vorher-/Nachher-Bilder
+      // landen spaeter im Abnahmeschein-PDF und muessen dort Bilder sein.
+      if (typeof gekoIstPdf === "function" && gekoIstPdf(file)) {
+        const platz = PHOTO_MAX_COUNT - arr.length;
+        if (platz <= 0) { showToast(`Maximal ${PHOTO_MAX_COUNT} Fotos`); break; }
+        showToast("PDF wird umgewandelt…");
+        const { bilder, seitenGesamt } = await gekoPdfSeitenAlsBilder(file, platz, PHOTO_MAX_DIM, PHOTO_QUALITY);
+        if (!bilder.length) { showToast("PDF enthält keine Seiten"); continue; }
+        for (const bild of bilder) {
+          arr.push(await uploadFotoToStorage(bild, which));
+          refreshPhotoSection();
+        }
+        if (seitenGesamt > bilder.length) showToast(`Nur die ersten ${bilder.length} von ${seitenGesamt} Seiten wurden übernommen`);
+        else showToast(seitenGesamt === 1 ? "PDF hinzugefügt" : `${seitenGesamt} PDF-Seiten hinzugefügt`);
+        continue;
+      }
       const compressed = await compressPhotoFile(file);
       const stored = await uploadFotoToStorage(compressed, which);
       arr.push(stored);
       refreshPhotoSection(); // nach jedem Foto direkt anzeigen, nicht erst am Ende
     } catch (e) {
-      showToast("Ein Foto konnte nicht verarbeitet werden");
+      showToast(typeof gekoIstPdf === "function" && gekoIstPdf(file)
+        ? "PDF konnte nicht umgewandelt werden – bitte als Bild speichern und erneut versuchen"
+        : "Ein Foto konnte nicht verarbeitet werden");
     }
   }
 }
@@ -283,7 +301,7 @@ function renderPhotoSection() {
     return `
       <div class="photo-section-label">${label}</div>
       <div class="photo-grid">${thumbs}${addBtn}</div>
-      <input type="file" id="photoInput_${which}" accept="image/*" multiple style="display:none;" onchange="handlePhotoSelect(event, '${which}')" />
+      <input type="file" id="photoInput_${which}" accept="image/*,application/pdf,.pdf" multiple style="display:none;" onchange="handlePhotoSelect(event, '${which}')" />
     `;
   };
   photoViewerSets["vorher"] = () => vorherFotos;
@@ -293,6 +311,7 @@ function renderPhotoSection() {
       ${renderRow("Vorher-Fotos (optional)", "vorher")}
       <div style="height:10px;"></div>
       ${renderRow("Nachher-Fotos (optional)", "nachher")}
+      <p class="muted" style="margin:9px 0 0; font-size:11.5px;">Fotos oder PDF – aus einem PDF wird jede Seite als Bild übernommen.</p>
       <button class="btn btn-sm btn-primary" style="margin-top:12px; width:100%; justify-content:center;" onclick="saveVorherNachherNow()">💾 Fotos speichern</button>
       <p class="muted" style="margin:6px 0 0; font-size:11.5px;">Speichert die Fotos sofort – so gehen sie beim Verlassen der Seite nicht verloren.</p>
     </div>
