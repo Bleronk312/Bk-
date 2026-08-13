@@ -718,6 +718,141 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
    (v.a. Xiaomi/MIUI) haengen bleiben und die ganze Seite einfrieren. Das Sheet deckt
    als deckendes Vollbild ohnehin alles ab; Scroll-Ketten verhindert overscroll-behavior. */
 
+/* ================= MA-Touren: geoeffnete Tour =================
+   Aufbau: oben eine schmale Leiste, die beim Scrollen kleben bleibt (Tourname,
+   Aktualisieren-Symbol, Fortschritt, Pfeile), in der Mitte die Stopp-Liste in FESTER
+   Reihenfolge, unten eine feste Leiste mit Anrufen/Navigation/Unterschreiben zum
+   gerade offenen Stopp. Damit ist der Unterschreiben-Knopf immer erreichbar. */
+/* Damit die Kopfleiste kleben KANN: global steht "html, body { overflow-x: hidden }".
+   Das macht den Body selbst zum Scroll-Container und haengt sticky darin auf. "clip"
+   schneidet genauso seitlich ab, erzeugt aber KEINEN Scroll-Container. Nur auf dem
+   Tour-Bildschirm gesetzt, damit keine andere Seite beruehrt wird. Kennt ein altes
+   Handy "clip" nicht, faellt die Regel weg: dann klebt die Leiste eben nicht - der
+   Rest der Seite funktioniert unveraendert weiter. */
+body.glas-tour-auf { overflow-x: clip; }
+/* In der geoeffneten Tour IST die Tour-Leiste der Kopf. Der grosse blaue Kopf mit
+   "Glasreinigung / Meine Touren" und das Logo-Abzeichen sagen hier nichts Neues und
+   kosteten rund 330 Pixel, bevor der erste Stopp ueberhaupt anfing. */
+body.glas-tour-auf .app-header,
+body.glas-tour-auf .logo-badge,
+body.glas-tour-auf .logo-watermark { display: none; }
+body.glas-tour-auf .app-sheet { margin-top: 0; border-radius: 0; min-height: 100vh; }
+body.glas-tour-auf .app-sheet-content { padding-top: 0 !important; }
+
+.gsm-bar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  margin: 0 -18px 10px;           /* bis an die Raender der .wrap-Polsterung */
+  padding: calc(env(safe-area-inset-top, 0px) + 11px) 15px 12px;
+  background: linear-gradient(135deg, #3a8fd0 0%, #1f5d92 100%);
+  color: #fff;
+}
+.gsm-bar-oben { display: flex; align-items: center; gap: 9px; }
+.gsm-tour {
+  flex: 1; min-width: 0;
+  font-size: 15px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gsm-ic {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.gsm-ic:not(:disabled):hover { background: rgba(255, 255, 255, 0.3); }
+.gsm-ic:disabled { opacity: 0.34; cursor: default; }
+/* "Touren" beschriftet, damit er nicht mit dem Pfeil eine Zeile tiefer verwechselt wird */
+.gsm-zurueck { width: auto; padding: 0 11px; font-size: 13.5px; font-weight: 700; gap: 3px; }
+.gsm-refresh.is-loading { opacity: 0.6; pointer-events: none; }
+.gsm-refresh.is-loading .glas-refresh-ic { animation: glasSpin 0.8s linear infinite; }
+.gsm-bar-unten { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
+.gsm-mitte { flex: 1; min-width: 0; }
+.gsm-zeile {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, 0.94);
+  margin-bottom: 5px;
+}
+.gsm-track { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.26); overflow: hidden; }
+.gsm-fill { height: 100%; border-radius: 3px; background: #fff; transition: width 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+@media (prefers-reduced-motion: reduce) { .gsm-fill { transition: none; } }
+
+/* --- Stopp-Karten --- */
+.gsm-stopp {
+  border-radius: 12px;
+  margin-top: 10px;
+  cursor: pointer;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.gsm-stopp.fertig { background: var(--success-bg); border-color: var(--success-border); }
+.gsm-stopp.ng { opacity: 0.66; }
+.gsm-stopp.offen { border: 2px solid #2d7dc4; box-shadow: 0 5px 18px rgba(45, 125, 196, 0.15); }
+html.dark .gsm-stopp.offen { box-shadow: 0 5px 18px rgba(0, 0, 0, 0.4); }
+.gsm-z1 { display: flex; align-items: center; gap: 11px; padding: 13px 14px; }
+.gsm-stopp.offen .gsm-z1 { padding-bottom: 9px; }
+.gsm-kugel {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #2d7dc4; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px;
+}
+.gsm-stopp.fertig .gsm-kugel { background: #1e7a34; }
+.gsm-stopp.ng .gsm-kugel { background: var(--text-secondary); }
+.gsm-nam { margin: 0; font-weight: 600; font-size: 14.5px; }
+.gsm-stopp:not(.offen) .gsm-nam { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsm-stopp.offen .gsm-nam { font-size: 16px; font-weight: 800; line-height: 1.3; letter-spacing: -0.005em; }
+.gsm-ort { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsm-rechts { flex-shrink: 0; text-align: right; font-size: 12px; line-height: 1.5; }
+.gsm-rechts b { display: block; font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.gsm-stopp.fertig .gsm-rechts b { color: var(--success-text); }
+.gsm-pfeil { color: var(--text-secondary); }
+
+/* --- aufgeklappter Bereich --- */
+.gsm-auf { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 11px; }
+.gsm-adr { margin: 0; font-size: 13.5px; color: var(--text-secondary); line-height: 1.45; white-space: pre-line; padding-left: 37px; margin-top: -3px; }
+.gsm-kacheln { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gsm-kacheln.einzeln { grid-template-columns: 1fr; }
+.gsm-ka { background: var(--bg); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; }
+.gsm-ka .k { font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; color: var(--text-secondary); }
+.gsm-ka .v { font-size: 16px; font-weight: 800; margin-top: 2px; line-height: 1.15; letter-spacing: -0.01em; }
+.gsm-ka .v.s { font-size: 13.5px; }
+/* Diese Bloecke bringen eigene Abstaende mit - im Flex-Stapel regelt das gap. */
+.gsm-auf > .glas-hinweis-box, .gsm-auf > .glas-notiz-box { margin-top: 0; }
+.gsm-abschluss { border-top: 1px solid var(--success-border); padding-top: 12px; }
+
+/* --- feste Fussleiste --- */
+.gsm-fuss {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 60;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 11px 14px calc(env(safe-area-inset-bottom, 0px) + 13px);
+  box-shadow: 0 -3px 14px rgba(16, 32, 52, 0.09);
+}
+html.dark .gsm-fuss { box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.45); }
+.gsm-fuss > * { max-width: 560px; margin-left: auto; margin-right: auto; }
+.gsm-fuss-zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
+.gsm-fuss-zwei:only-child { margin-bottom: 0; }
+.gsm-fbtn { justify-content: center; padding: 12px 8px; font-size: 14px; font-weight: 600; }
+.gsm-fhaupt { width: 100%; justify-content: center; padding: 15px; font-size: 16px; font-weight: 700; }
+.gsm-fuss-hinweis { margin: 0; text-align: center; font-size: 13px; color: var(--text-secondary); padding: 4px 0; }
+/* Platz schaffen, damit die Leiste den letzten Stopp nicht verdeckt. Bewusst als
+   eigenes Element und nicht ueber .wrap: dort steht im HTML ein Inline-Padding,
+   das jede Klassenregel ueberstimmen wuerde. */
+.gsm-fuss-platz { height: 0; }
+body.glas-hat-fuss .gsm-fuss-platz { height: calc(env(safe-area-inset-bottom, 0px) + 152px); }
+
 /* Auswahl der Navigations-App (ein Knopf "Navigation" statt drei kleiner Knoepfe) */
 .glas-navi-back {
   position: fixed;
