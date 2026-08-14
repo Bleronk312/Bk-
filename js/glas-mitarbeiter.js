@@ -18,6 +18,9 @@ let glasOpenStopId = null; // aufgeklappter Stopp (Akkordeon)
 let glasSignStopId = null; // Stopp, bei dem gerade das Unterschrift-Formular offen ist
 let glasSigPad = null;
 let glasFrueherExpanded = false; // "Frühere Touren"-Abschnitt aufgeklappt
+// false, solange noch NIE Touren geladen wurden (weder aus dem Netz noch aus dem
+// Speicher). Nur dann zeigt die Liste ein Ladebild statt "Noch keine Tour für dich".
+let glasTourenGeladen = false;
 
 // ---------------- Login ----------------
 const GLAS_AUTH_KEY = "geko_ma_auth";
@@ -51,7 +54,12 @@ function todayIso() {
 async function glasMaInit() {
   const ok = await glasEnsureLoggedIn();
   if (!ok) return; // Es läuft der Login-Screen
-  renderGlasMa(); // Startseite sofort zeigen, Touren laden im Hintergrund
+  // Zuletzt gespeicherte Touren SOFORT anzeigen - dadurch steht die Liste beim Öffnen
+  // ohne Wartezeit da, statt kurz "Noch keine Tour für dich" zu zeigen und sie zwei
+  // Sekunden später nachzuladen. Im Hintergrund wird trotzdem aktualisiert.
+  const cached = glasLoadTourenCache();
+  if (cached && cached.length) glasTouren = glasOhneAlteFertigeTouren(cached);
+  renderGlasMa();
   await glasFlushSignQueue(); // eventuell offline gesammelte Unterschriften zuerst nachsenden
   await loadGlasTouren();
   glasOeffneTourAusLink(); // aus GEKO One direkt in eine bestimmte Tour springen
@@ -302,6 +310,8 @@ async function loadGlasTouren() {
   }
   // Offline unterschriebene Stopps lokal drüberlegen, bis sie gesendet sind
   glasApplyPendingSigns();
+  // Ab jetzt ist "keine Tour" eine echte Aussage und kein Ladezustand mehr.
+  glasTourenGeladen = true;
 }
 
 // Fetter "Aktualisieren"-Knopf: Ersatz fuers fruehere Pull-to-Refresh (das auf den
@@ -423,6 +433,19 @@ function renderGlasMa() {
       // ein Hintergrund-Refresh die schon begonnene Unterschrift zurücksetzen.
       return;
     }
+  }
+
+  // Solange noch NIE geladen wurde und auch kein gespeicherter Stand da ist, ein
+  // ruhiges Ladebild zeigen - NICHT "Noch keine Tour für dich". Diese Meldung ist erst
+  // richtig, wenn die Abfrage durch ist und wirklich nichts da war.
+  if (!glasTouren.length && !glasTourenGeladen) {
+    view.innerHTML = `
+      <div class="glas-skelett">
+        <div class="glas-skelett-karte"></div>
+        <div class="glas-skelett-karte"></div>
+        <div class="glas-skelett-karte"></div>
+      </div>`;
+    return;
   }
 
   if (!glasTouren.length) {

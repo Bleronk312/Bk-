@@ -312,7 +312,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v136</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v137</p>`;
 }
 
 /* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */

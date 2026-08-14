@@ -5,20 +5,16 @@ function initHeader() {
   const badge = document.getElementById("badgeLogoImg");
   if (wm) wm.src = GEKO_LOGO_TRANSPARENT_B64;
   if (badge) badge.src = GEKO_LOGO_TRANSPARENT_B64;
-  const greeting = document.getElementById("greetingText");
-  if (greeting) {
-    const name = typeof GREETING_NAME !== "undefined" ? GREETING_NAME : FIRMA_NAME;
-    greeting.innerHTML = `Hallo ${name}! &#128147;`;
-  }
+  // Begrüßung + Statuszeile entfallen: Die Kopfzeile ist in allen MA-Apps gleich
+  // aufgebaut (nur Zurück / Start / App-Name). Persönlich begrüßt wird in GEKO One.
 }
 try { initHeader(); } catch (e) { console.error("Header-Init fehlgeschlagen:", e); }
 try { checkPushStatus(); } catch (e) {}
 try { autoRenewPushSubscription("mitarbeiter"); } catch (e) {}
 
-function updateHeaderStat(openCount) {
-  const stat = document.getElementById("headerStat");
-  if (stat) stat.textContent = `${openCount} offene Schein${openCount === 1 ? "" : "e"}`;
-}
+// Die Statuszeile im Kopf ist entfallen (einheitliche Kopfzeile) - die Funktion
+// bleibt als Leerlauf, damit bestehende Aufrufe nicht ins Leere greifen.
+function updateHeaderStat(openCount) {}
 
 let scheine = [];
 let currentScheine = null;
@@ -276,16 +272,10 @@ function renderList() {
   const allOpenCount = scheine.filter((s) => !s.signed_at).length;
   updateHeaderStat(allOpenCount);
 
-  view.innerHTML = `
-    <div class="field">
-      <input type="text" id="scheineSearchInput" placeholder="Suche nach Kunde, Adresse, Kategorie..." value="${escapeHtml(scheineSearchQuery)}" oninput="onScheineSearchInput(this.value)" />
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
-      <button class="btn btn-sm" onclick="openCalendar()">📅 Kalender</button>
-      <button class="btn btn-sm" onclick="loadList()" title="Aktualisieren">🔄</button>
-    </div>
-    <div id="scheineListResults">${renderListResults()}</div>
-  `;
+  // Bewusst ohne Suchfeld und ohne Kalender-/Aktualisieren-Knöpfe: Der Kalender liegt
+  // jetzt zentral in GEKO One, aktualisiert wird beim Öffnen automatisch, und bei der
+  // Handvoll offener Scheine braucht es keine Suche. So sieht jede MA-Seite gleich aus.
+  view.innerHTML = `<div id="scheineListResults">${renderListResults()}</div>`;
 }
 
 function renderItem(s) {

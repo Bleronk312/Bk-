@@ -2553,3 +2553,17 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a; --jv-none:#7
 .geko-brand{ margin-left:auto; display:inline-flex; align-items:center; gap:7px;
   font-weight:600; font-size:13.5px; opacity:.92; min-width:0;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Ruhiges Ladebild statt einer falschen "nichts da"-Meldung, solange die Touren
+   noch nie geladen wurden. Deutet die kommenden Karten an, damit die Seite nicht
+   springt, sobald die echten Daten da sind. */
+.glas-skelett{ padding:16px 0 0; }
+.glas-skelett-karte{ height:92px; border-radius:16px; margin-bottom:12px;
+  background:linear-gradient(100deg, var(--card) 30%, rgba(0,0,0,.045) 50%, var(--card) 70%);
+  background-size:220% 100%; animation:gekoSchimmer 1.25s ease-in-out infinite;
+  border:1px solid var(--border); }
+html.dark .glas-skelett-karte{
+  background:linear-gradient(100deg, var(--card) 30%, rgba(255,255,255,.06) 50%, var(--card) 70%);
+  background-size:220% 100%; }
+@keyframes gekoSchimmer{ from{ background-position:120% 0; } to{ background-position:-40% 0; } }
+@media (prefers-reduced-motion:reduce){ .glas-skelett-karte{ animation:none; } }

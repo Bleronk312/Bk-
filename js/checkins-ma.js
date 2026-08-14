@@ -796,17 +796,10 @@ async function ciEnablePush() {
   await enablePushNotifications("checkin_ma", ciUser && ciUser.id);
   ciRender();
 }
-// nurWennAus: im Heute-Reiter zeigen wir die Karte nur, solange noch nicht aktiviert
-// wurde (keine dauerhafte "ist aktiv"-Karte auf dem Haupt-Reiter).
-function ciPushBanner(nurWennAus) {
-  if (typeof Notification === "undefined") return "";
-  if (Notification.permission === "granted") return nurWennAus ? "" : `<div class="card-x" style="padding:11px 14px;font-size:12.5px;color:var(--green);font-weight:600;">${t("bellAktiv")}</div>`;
-  return `<div class="card-x" style="display:flex;align-items:center;gap:11px;">
-    <span style="font-size:22px;">🔔</span>
-    <div style="flex:1;font-size:12.5px;">${t("bellHint")}</div>
-    <button class="btn-pri" style="flex:0 0 auto;padding:9px 14px;" onclick="ciEnablePush()">${t("bellOn")}</button>
-  </div>`;
-}
+// Benachrichtigungen werden zentral in GEKO One (Menü) eingeschaltet und gelten dann
+// für alles - Touren, Rundgänge, Dokumente. Deshalb gibt es hier keine eigene
+// Aktivieren-Karte mehr; ciEnablePush() bleibt für den Notfall im Code.
+function ciPushBanner(nurWennAus) { return ""; }
 
 /* ---- Offline-Warteschlange für Schichten ---- */
 function ciLoadShiftQueue() { try { return JSON.parse(localStorage.getItem(CI_SHIFT_QUEUE_KEY) || "[]"); } catch (e) { return []; } }
