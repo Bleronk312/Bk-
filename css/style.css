@@ -2240,6 +2240,38 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-lager-chip.an { background: var(--blue); border-color: var(--blue); color: #fff; }
 .glas-lager-chip.an .glas-ma-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
 
+/* Tages-Chips: seitlich wischbar statt Datumsfeld (das native Feld lief auf dem
+   iPhone aus dem Bildschirm). Der kleine Punkt = an dem Tag ist schon was geplant. */
+.glas-lager-tage { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.glas-lager-tage::-webkit-scrollbar { display: none; }
+.glas-lager-tag { flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 15px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--card); font-size: 13.5px; font-weight: 700; color: var(--text);
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s; }
+.glas-lager-tag.an { background: #6b4ee6; border-color: #6b4ee6; color: #fff; }
+.glas-lager-tag .lt-punkt { width: 7px; height: 7px; border-radius: 50%; background: #6b4ee6; display: inline-block; }
+.glas-lager-tag.an .lt-punkt { background: #fff; }
+
+/* Uhrzeit-Schnellwahl: bleibt markiert, bis man eine andere antippt */
+.glas-lager-zeiten { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.glas-lager-zeit { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 64px; padding: 11px 14px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: var(--card);
+  font-size: 15px; font-weight: 700; color: var(--text); font-family: inherit;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s; }
+.glas-lager-zeit:hover { border-color: var(--blue); }
+.glas-lager-zeit.an { background: var(--blue); border-color: var(--blue); color: #fff; }
+/* Eigene Uhrzeit + Notiz: mindestens 16px Schrift, sonst zoomt iOS beim Antippen in
+   die Seite hinein und alles wirkt "verschoben". appearance:none, damit das Feld
+   seine Breite respektiert statt mit iOS-Eigenmaßen überzulaufen. */
+.glas-lager-zeitfeld { -webkit-appearance: none; appearance: none; width: auto; min-width: 96px;
+  padding: 9px 12px; font-size: 16px; font-weight: 700; border-radius: 12px;
+  border: 1.5px solid var(--blue); font-variant-numeric: tabular-nums; }
+.glas-lager-notiz { font-size: 16px; -webkit-appearance: none; appearance: none; border-radius: 11px; }
+
 /* ---------------- Reine Kalender-App (?app=kalender vom Home-Bildschirm) ----------------
    Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich
    auf dem Kalender-Tab - navigiert man weg, erscheint die normale Oberfläche. Der

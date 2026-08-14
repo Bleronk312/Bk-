@@ -314,6 +314,17 @@ const glasCalApp = window.__gekoKalender === true
   || /(^|\/)kalender\.html$/i.test(location.pathname)
   || new URLSearchParams(location.search).get("app") === "kalender";
 
+// Eigene Lager-App: Die Hub-Kachel öffnet mit ?app=lager DIREKT den Lager-Plan -
+// ohne Glas-Reiter drumherum. Kopfzeile und Titel werden entsprechend umgestellt.
+const glasLagerApp = new URLSearchParams(location.search).get("app") === "lager";
+if (glasLagerApp) {
+  document.title = "GEKO Hub - Lager & Einsatzplan";
+  document.addEventListener("DOMContentLoaded", () => {
+    const g = document.querySelector(".app-header .greeting");
+    if (g) g.textContent = "Lager & Einsatzplan";
+  });
+}
+
 // App-Shell-Höhe hart in ECHTEN Pixeln setzen: iOS berechnet 100vh/100dvh (und teils
 // sogar position:fixed-Höhen) im Standalone-/Safari-Modus falsch, wodurch der Rahmen
 // samt unterer Leiste über dem Bildschirmrand endete. window.innerHeight bzw. der
@@ -421,6 +432,7 @@ async function glasInit() {
   if (!location.hash && qTab) location.hash = "#/tab/" + qTab;
   if (glasCalApp && !location.hash) location.hash = "#/tab/kalender";
   glasPage = glasParseHash();
+  if (glasLagerApp) { glasLagerOffen = true; loadGlasLagerPlan().then(renderGlasAdmin); }
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub(), loadGlasGraffitiTermine()]);
   window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
@@ -623,7 +635,7 @@ function goGlasHome() {
 }
 
 function glasNavigate(page) {
-  glasLagerOffen = false; // Lager-Plan ist eine Unterseite - jede Navigation schließt sie
+  if (!glasLagerApp) glasLagerOffen = false; // Unterseite - Navigation schließt sie (außer als eigene App)
   // Beim Öffnen des Kalenders die Ebenen auf Standard: Touren+Termine an, Urlaub aus.
   if (page.type === "tabs" && page.tab === "kalender" && !(glasPage && glasPage.type === "tabs" && glasPage.tab === "kalender")) {
     glasResetKalEbenen();
@@ -1041,6 +1053,7 @@ function glasOpenLager() {
   glasLagerOffen = true;
   glasLagerAuswahl = new Set();
   glasLagerNotiz = "";
+  glasLagerEigeneZeit = false;
   loadGlasLagerPlan().then(renderGlasAdmin);
   renderGlasAdmin();
 }
@@ -1091,7 +1104,8 @@ function glasLagerToggle(id) {
   renderGlasAdmin();
 }
 
-// Uhrzeit/Notiz aus den Feldern lesen, damit sie beim Neuzeichnen nicht verloren gehen
+// Notiz aus dem Feld lesen, damit sie beim Neuzeichnen nicht verloren geht.
+// Die Uhrzeit kommt aus den Chips (State), nur die eigene Uhrzeit aus dem Feld.
 function glasLagerSyncForm() {
   const u = document.getElementById("lager_uhrzeit");
   const n = document.getElementById("lager_notiz");
@@ -1106,33 +1120,85 @@ function glasLagerDatumSetzen(v) {
   renderGlasAdmin();
 }
 
+// Die üblichen Lager-Zeiten als Schnellwahl. Angetippt = bleibt markiert.
+// "Andere…" öffnet ein Zeitfeld für alles, was nicht im Raster liegt.
+const GLAS_LAGER_ZEITEN = ["05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00"];
+let glasLagerEigeneZeit = false; // Zeitfeld für eigene Uhrzeit sichtbar?
+
+function glasLagerZeitWaehlen(z) {
+  glasLagerSyncForm();
+  glasLagerUhrzeit = z;
+  glasLagerEigeneZeit = false;
+  renderGlasAdmin();
+}
+
+function glasLagerEigeneZeitAn() {
+  glasLagerSyncForm();
+  glasLagerEigeneZeit = true;
+  renderGlasAdmin();
+  // Direkt ins Feld springen, damit man nicht zweimal tippen muss
+  setTimeout(() => { const u = document.getElementById("lager_uhrzeit"); if (u && u.focus) u.focus(); }, 60);
+}
+
+function glasLagerEigeneZeitSetzen(v) {
+  if (v) glasLagerUhrzeit = v;
+  renderGlasAdmin();
+}
+
+// Kurze Tages-Beschriftung für die Datums-Chips: "Heute", "Morgen", sonst "Mo 17.08."
+function glasLagerTagLabel(iso) {
+  const heute = glasTodayIso();
+  if (iso === heute) return "Heute";
+  if (iso === glasAddDaysIso(heute, 1)) return "Morgen";
+  const d = new Date(iso + "T12:00:00");
+  const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()];
+  return `${wt} ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.`;
+}
+
 function renderLagerPlan() {
   const datum = glasLagerDatumJetzt();
+  const heute = glasTodayIso();
   const leute = glasLagerMitarbeiter();
   const eintraege = glasLagerPlan.filter((p) => p.datum === datum).sort((a, b) => (a.uhrzeit || "").localeCompare(b.uhrzeit || ""));
   const schon = glasLagerSchonEingeteilt(datum);
   const offen = leute.filter((m) => !schon.has(m.id));
+
+  // ---- Tag: die nächsten 14 Tage als Chips (kein Datumsfeld - das lief auf dem
+  // iPhone aus dem Bildschirm und die Tastatur verschob alles) ----
+  const tage = [];
+  for (let i = 0; i < 14; i++) tage.push(glasAddDaysIso(heute, i));
+  const tageHtml = tage.map((iso) => `
+    <button class="glas-lager-tag${iso === datum ? " an" : ""}" onclick="glasLagerDatumSetzen('${iso}')">
+      ${glasLagerTagLabel(iso)}${glasLagerPlan.some((p) => p.datum === iso) ? `<i class="lt-punkt"></i>` : ""}
+    </button>`).join("");
+
+  // ---- Uhrzeit: Schnellwahl-Chips, eigene Uhrzeit bei Bedarf ----
+  const eigene = !GLAS_LAGER_ZEITEN.includes(glasLagerUhrzeit);
+  const zeitenHtml = GLAS_LAGER_ZEITEN.map((z) => `
+    <button class="glas-lager-zeit${!glasLagerEigeneZeit && glasLagerUhrzeit === z ? " an" : ""}" onclick="glasLagerZeitWaehlen('${z}')">${z}</button>`).join("")
+    + (glasLagerEigeneZeit || eigene
+      ? `<input type="time" id="lager_uhrzeit" class="glas-lager-zeitfeld" value="${escapeHtml(glasLagerUhrzeit)}" step="300" onchange="glasLagerEigeneZeitSetzen(this.value)" />`
+      : `<button class="glas-lager-zeit" onclick="glasLagerEigeneZeitAn()">Andere…</button>`);
 
   // ---- Übersicht: was ist an dem Tag schon verschickt? ----
   const uebersicht = eintraege.length ? eintraege.map((p) => {
     const ids = glasLagerIds(p);
     const namen = ids.map((id) => glasMaName(id)).filter(Boolean);
     return `
-      <div class="card" style="margin:0 0 10px; padding:13px 15px;">
-        <div style="display:flex; align-items:center; gap:11px;">
-          <span style="font-size:20px; font-weight:800; color:var(--blue); flex:none;">${escapeHtml(p.uhrzeit)}</span>
+      <div class="card" style="margin:0 0 10px; padding:13px 15px; border-left:4px solid #6b4ee6;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:20px; font-weight:800; color:#6b4ee6; flex:none; min-width:56px;">${escapeHtml(p.uhrzeit)}</span>
           <span style="flex:1; min-width:0;">
-            <span style="display:block; font-size:14px; font-weight:600;">${namen.length} ${namen.length === 1 ? "Person" : "Personen"}</span>
-            <span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">${escapeHtml(namen.join(", ")) || "niemand"}</span>
+            <span style="display:block; font-size:14px; font-weight:600;">${escapeHtml(namen.join(", ")) || "niemand"}</span>
+            ${p.notiz ? `<span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">📝 ${escapeHtml(p.notiz)}</span>` : ""}
+            <span style="display:block; font-size:11.5px; color:var(--text-secondary); margin-top:2px;">${p.gesendet_am ? "✓ Benachrichtigung verschickt" : "noch nicht verschickt"}</span>
           </span>
-          <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">Entfernen</button>
+          <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">✕</button>
         </div>
-        ${p.notiz ? `<p class="muted" style="margin:8px 0 0; font-size:12.5px;">📝 ${escapeHtml(p.notiz)}</p>` : ""}
-        <p class="muted" style="margin:6px 0 0; font-size:11.5px;">${p.gesendet_am ? "✓ Benachrichtigung verschickt" : "noch nicht verschickt"}</p>
       </div>`;
-  }).join("") : `<p class="muted" style="margin:6px 2px 14px;">Für diesen Tag ist noch nichts eingeteilt.</p>`;
+  }).join("") : "";
 
-  // ---- Neue Gruppe zusammenstellen ----
+  // ---- Leute-Auswahl ----
   const auswahlHtml = offen.length ? offen.map((m) => {
     const an = glasLagerAuswahl.has(m.id);
     return `
@@ -1153,42 +1219,110 @@ function renderLagerPlan() {
       Bitte <code>supabase_add_lager.sql</code> in Supabase ausführen (SQL Editor &rarr; einfügen &rarr; Run) und die Seite neu laden.</p>
     </div>` : "";
 
+  const n = glasLagerAuswahl.size;
   return `
-    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasLagerSchliessen()">&larr; Zurück</button>
-    <h2 style="margin:0 0 4px;">📦 Lager-Plan</h2>
-    <p class="muted" style="margin:0 0 14px;">Uhrzeit wählen, Leute antippen, senden. Für die nächste Gruppe einfach nochmal.</p>
+    ${glasLagerApp ? "" : `<button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasLagerSchliessen()">&larr; Zurück</button>`}
+    <h2 style="margin:${glasLagerApp ? "10px" : "0"} 0 4px;">📦 Lager-Plan</h2>
+    <p class="muted" style="margin:0 0 14px;">Uhrzeit antippen, Leute antippen, senden. Für die nächste Uhrzeit einfach nochmal.</p>
     ${fehltHtml}
 
-    <div class="field">
-      <label class="muted">Tag</label>
-      <input type="date" id="lager_datum" value="${datum}" min="${glasTodayIso()}" onchange="glasLagerDatumSetzen(this.value)" />
+    <div class="glas-lager-tage">${tageHtml}</div>
+
+    ${uebersicht ? `<p class="glas-section-title" style="margin:18px 0 8px;">Eingeteilt · ${glasLagerTagLabel(datum)}</p>${uebersicht}` : ""}
+
+    <p class="glas-section-title" style="margin:18px 0 8px;">Uhrzeit</p>
+    <div class="glas-lager-zeiten">${zeitenHtml}</div>
+
+    <p class="glas-section-title" style="margin:18px 0 8px;">Wer soll um ${escapeHtml(glasLagerUhrzeit)} Uhr da sein?</p>
+    ${leute.length ? `<div class="glas-lager-chips">${auswahlHtml}</div>` : `
+      <p class="muted" style="margin:6px 2px;">${fehlt
+        ? "Erst die SQL-Datei ausführen – danach lässt sich hier freischalten."
+        : "Noch niemand für den Lager-Plan freigeschaltet. Das stellst du beim Mitarbeiter (Kalender → Urlaub → Mitarbeiter bearbeiten) unter „📦 Lager-Plan“ ein."}</p>`}
+
+    <div class="field" style="margin:16px 0 0;">
+      <label class="muted">Notiz (optional)</label>
+      <input type="text" id="lager_notiz" class="glas-lager-notiz" value="${escapeHtml(glasLagerNotiz)}" placeholder="z.B. Material für Kreishaus mitnehmen" oninput="glasLagerSyncForm()" />
     </div>
 
-    <p class="glas-section-title" style="margin:16px 0 6px;">Eingeteilt an diesem Tag</p>
-    ${uebersicht}
+    <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px; padding:14px; font-size:15px; border-radius:13px;"
+      onclick="glasLagerSenden()" ${glasLagerBusy || !n ? "disabled" : ""}>
+      ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : n ? `📲 Senden an ${n} ${n === 1 ? "Person" : "Personen"} · ${escapeHtml(glasLagerUhrzeit)} Uhr` : `📲 Erst Leute antippen`}
+    </button>
 
-    <div class="card" style="margin-top:16px;">
-      <p style="margin:0 0 12px; font-weight:700; font-size:15px;">➕ Gruppe hinzufügen</p>
-      <div class="row" style="display:flex; gap:10px;">
-        <div class="field" style="flex:0 0 130px;">
-          <label class="muted">Uhrzeit</label>
-          <input type="time" id="lager_uhrzeit" value="${escapeHtml(glasLagerUhrzeit)}" step="300" onchange="glasLagerSyncForm()" />
-        </div>
-        <div class="field" style="flex:1;">
-          <label class="muted">Notiz (optional)</label>
-          <input type="text" id="lager_notiz" value="${escapeHtml(glasLagerNotiz)}" placeholder="z.B. Material für Kreishaus" oninput="glasLagerSyncForm()" />
-        </div>
+    ${renderLagerPdfBlock()}`;
+}
+
+/* ---- Einsatzplan als PDF ----
+   Ein Monat auf einen Blick: entweder ALLE Mitarbeiter (der komplette Monatsplan)
+   oder EIN Mitarbeiter (wann war er im Einsatz, wann nicht) - im GEKO-Briefkopf. */
+
+let glasLagerPdfMonat = null; // {year, month} - null = aktueller Monat
+let glasLagerPdfWer = "alle"; // "alle" oder Mitarbeiter-ID
+
+function glasLagerPdfMonatJetzt() {
+  if (glasLagerPdfMonat) return glasLagerPdfMonat;
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+function glasLagerPdfBlaettern(schritt) {
+  const m = glasLagerPdfMonatJetzt();
+  const d = new Date(m.year, m.month + schritt, 1);
+  glasLagerPdfMonat = { year: d.getFullYear(), month: d.getMonth() };
+  glasLagerSyncForm();
+  renderGlasAdmin();
+}
+
+function glasLagerPdfWerSetzen(v) {
+  glasLagerPdfWer = v;
+  glasLagerSyncForm();
+  renderGlasAdmin();
+}
+
+function renderLagerPdfBlock() {
+  const m = glasLagerPdfMonatJetzt();
+  const label = `${["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"][m.month]} ${m.year}`;
+  // Zur Auswahl: alle Freigeschalteten PLUS alle, die im gewählten Monat im Plan
+  // stehen (auch wenn ihnen der Baustein inzwischen weggenommen wurde).
+  const von = `${m.year}-${String(m.month + 1).padStart(2, "0")}-01`;
+  const bis = `${m.year}-${String(m.month + 1).padStart(2, "0")}-31`;
+  const imMonat = new Set();
+  glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).forEach((p) => glasLagerIds(p).forEach((id) => imMonat.add(id)));
+  const wer = glasMitarbeiter.filter((x) => x.zugang_lager === true || imMonat.has(x.id));
+  const anzahl = glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).length;
+
+  return `
+    <p class="glas-section-title" style="margin:26px 0 8px;">📄 Einsatzplan als PDF</p>
+    <div class="card" style="padding:14px 15px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(-1)">‹</button>
+        <span style="flex:1; text-align:center; font-weight:700; font-size:14.5px;">${label}</span>
+        <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(1)">›</button>
       </div>
-      <label class="muted" style="display:block; margin-bottom:6px;">Wer soll um diese Zeit da sein? (${glasLagerAuswahl.size} gewählt)</label>
-      ${leute.length ? `<div class="glas-lager-chips">${auswahlHtml}</div>` : `
-        <p class="muted" style="margin:6px 2px;">${fehlt
-          ? "Erst die SQL-Datei ausführen – danach lässt sich hier freischalten."
-          : "Noch niemand für den Lager-Plan freigeschaltet. Das stellst du beim Mitarbeiter (Kalender → Urlaub → Mitarbeiter bearbeiten) unter „📦 Lager-Plan“ ein."}</p>`}
-      <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px; padding:13px;"
-        onclick="glasLagerSenden()" ${glasLagerBusy || !glasLagerAuswahl.size ? "disabled" : ""}>
-        ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : `📲 An ${glasLagerAuswahl.size || ""} ${glasLagerAuswahl.size === 1 ? "Person" : "Personen"} senden`}
+      <div class="glas-lager-chips glas-lager-pdfwer" style="margin-bottom:12px;">
+        <button class="glas-lager-chip${glasLagerPdfWer === "alle" ? " an" : ""}" onclick="glasLagerPdfWerSetzen('alle')">👥 Alle Mitarbeiter</button>
+        ${wer.map((x) => `<button class="glas-lager-chip${glasLagerPdfWer === x.id ? " an" : ""}" onclick="glasLagerPdfWerSetzen('${x.id}')">
+          <span class="glas-ma-dot" style="background:${glasMaFarbe(x.id)};"></span>${escapeHtml(x.name)}</button>`).join("")}
+      </div>
+      <button class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="glasLagerPdf()">
+        📄 PDF erstellen${glasLagerPdfWer === "alle" ? ` (${anzahl} ${anzahl === 1 ? "Einteilung" : "Einteilungen"})` : ""}
       </button>
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Ein Mitarbeiter = kompletter Monat Tag für Tag (Einsatz, Urlaub, frei). Alle = der gesamte Monatsplan.</p>
     </div>`;
+}
+
+function glasLagerPdf() {
+  if (typeof glasLagerPdfErstellen !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
+    showToast("PDF-Bibliothek lädt noch – kurz warten"); return;
+  }
+  const m = glasLagerPdfMonatJetzt();
+  const werId = glasLagerPdfWer === "alle" ? null : glasLagerPdfWer;
+  try {
+    glasLagerPdfErstellen(m, werId);
+    showToast("📄 Einsatzplan erstellt");
+  } catch (e) {
+    showToast("PDF-Fehler: " + (e && e.message || e));
+  }
 }
 
 async function glasLagerSenden() {
@@ -1239,7 +1373,7 @@ async function glasLagerSenden() {
 async function glasLagerLoeschen(id) {
   const p = glasLagerPlan.find((x) => x.id === id);
   if (!p) return;
-  if (!confirm(`Gruppe ${p.uhrzeit} Uhr wirklich entfernen?\n\nDie Mitarbeiter sehen den Eintrag dann nicht mehr.`)) return;
+  if (!confirm(`Einteilung um ${p.uhrzeit} Uhr wirklich entfernen?\n\nDie Mitarbeiter sehen den Eintrag dann nicht mehr.`)) return;
   const { error } = await sb.from("glas_lager_plan").delete().eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
   await loadGlasLagerPlan();
@@ -5157,55 +5291,95 @@ async function glasMaPasswortReset(id) {
 
 function renderMaForm() {
   const m = glasMaEditing;
+  // Monatsauswahl für den Einsatzplan: aktueller Monat + die 11 davor
+  const pdfMonate = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    pdfMonate.push({ v: `${d.getFullYear()}-${d.getMonth()}`, t: `${["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"][d.getMonth()]} ${d.getFullYear()}` });
+  }
+  const teil = (titel, inhalt) => `
+    <div class="card" style="margin:0 0 12px; padding:14px 15px;">
+      <p style="margin:0 0 12px; font-weight:700; font-size:14px;">${titel}</p>
+      ${inhalt}
+    </div>`;
+
   return `
     <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasMaEditing=null; renderGlasAdmin();">&larr; Zurück</button>
-    <div class="card">
-      <h2>${m.id ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"}</h2>
-      <div class="field"><label class="muted">Name</label><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>
+    <h2 style="margin:0 0 12px;">${m.id ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"}</h2>
 
-      <div class="card" style="background:var(--bg); margin:0 0 14px; padding:12px 14px;">
-        <p style="margin:0 0 8px; font-weight:700; font-size:14px;">🔑 App-Zugang (Glas-Touren-App)</p>
-        <div class="field"><label class="muted">Benutzername</label>
-          <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
-          <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
-        ${m.id && m.username && !m.pass_klar ? `
-        <div class="field">
-          <label class="muted">Passwort</label>
-          <div class="card" style="margin:0; padding:11px 13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span style="flex:1; min-width:140px; font-size:13px;">🔒 <b>Eigenes Passwort gesetzt</b> – aus Sicherheitsgründen nicht einsehbar.</span>
-            <button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Zurücksetzen</button>
-          </div>
-          <p class="muted" style="margin:5px 0 0; font-size:12px;">Beim Zurücksetzen vergibst du ein Einmal-Passwort; der Mitarbeiter muss sich danach sofort ein eigenes setzen.</p>
-        </div>` : `
-        <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
-          <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" />
-          ${m.id && m.username ? `<p class="muted" style="margin:5px 0 0; font-size:12px;">Sobald der Mitarbeiter sich in GEKO One ein eigenes Passwort setzt, verschwindet es hier – dann geht nur noch Zurücksetzen.</p>` : ""}</div>`}
-        ${m.id ? `<label class="glas-aktiv-toggle"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt, kommt nicht mehr rein)</span></span></label>` : ""}
-        <p style="margin:12px 0 6px; font-weight:700; font-size:13px;">Anmelden erlaubt bei:</p>
-        <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren-App</span></label>
-        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_graffiti" ${m.zugang_graffiti === true ? "checked" : ""} /> <span>🎨 Graffiti-App</span></label>
-        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_checkin" ${m.zugang_checkin === true ? "checked" : ""} /> <span>📍 Check-ins-App</span></label>
-        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_lager" ${m.zugang_lager === true ? "checked" : ""} /> <span>📦 Lager-Plan</span></label>
-        <p class="muted" style="margin:5px 0 0; font-size:12px;">Bestimmt, in welche App sich dieser Login einloggen darf – und welche Kacheln er in GEKO One sieht. Dasselbe Konto, aber du wählst wo es funktioniert.</p>
-      </div>
+    ${teil("👤 Name", `
+      <div class="field" style="margin:0;"><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>`)}
 
+    ${teil("🔑 Anmeldung &amp; Passwort", `
+      <div class="field"><label class="muted">Benutzername</label>
+        <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
+      ${m.id && m.username && !m.pass_klar ? `
       <div class="field">
-        <label class="muted">Arbeitswoche (für die Urlaubstage-Zählung)</label>
-        <select id="ma_tage" style="width:auto;">
-          <option value="mo_fr" ${m.arbeitstage !== "mo_sa" ? "selected" : ""}>Mo–Fr (5-Tage-Woche)</option>
-          <option value="mo_sa" ${m.arbeitstage === "mo_sa" ? "selected" : ""}>Mo–Sa (6-Tage-Woche)</option>
+        <label class="muted">Passwort</label>
+        <div class="card" style="margin:0; padding:11px 13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="flex:1; min-width:140px; font-size:13px;">🔒 <b>Eigenes Passwort gesetzt</b> – aus Sicherheitsgründen nicht einsehbar.</span>
+          <button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Zurücksetzen</button>
+        </div>
+        <p class="muted" style="margin:5px 0 0; font-size:12px;">Beim Zurücksetzen vergibst du ein Einmal-Passwort; der Mitarbeiter muss sich danach sofort ein eigenes setzen.</p>
+      </div>` : `
+      <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
+        <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        ${m.id && m.username ? `<p class="muted" style="margin:5px 0 0; font-size:12px;">Sobald der Mitarbeiter sich in GEKO One ein eigenes Passwort setzt, verschwindet es hier – dann geht nur noch Zurücksetzen.</p>` : ""}</div>`}
+      ${m.id ? `<label class="glas-aktiv-toggle" style="margin:0;"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt)</span></span></label>` : ""}`)}
+
+    ${teil("🧩 Bausteine &nbsp;<span class=\"muted\" style=\"font-weight:400; font-size:12px;\">= Kacheln in GEKO One</span>", `
+      <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren</span></label>
+      <label class="glas-aktiv-toggle" style="margin-top:8px;"><input type="checkbox" id="ma_zugang_graffiti" ${m.zugang_graffiti === true ? "checked" : ""} /> <span>🎨 Graffiti</span></label>
+      <label class="glas-aktiv-toggle" style="margin-top:8px;"><input type="checkbox" id="ma_zugang_checkin" ${m.zugang_checkin === true ? "checked" : ""} /> <span>📍 Check-ins</span></label>
+      <label class="glas-aktiv-toggle" style="margin-top:8px;"><input type="checkbox" id="ma_zugang_lager" ${m.zugang_lager === true ? "checked" : ""} /> <span>📦 Lager-Plan</span></label>
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Ein Konto, du bestimmst was er sieht – in GEKO One und in den einzelnen Apps.</p>`)}
+
+    ${teil("🏖️ Urlaub &amp; Arbeitswoche", `
+      <div class="row" style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:150px; margin:0;">
+          <label class="muted">Arbeitswoche</label>
+          <select id="ma_tage">
+            <option value="mo_fr" ${m.arbeitstage !== "mo_sa" ? "selected" : ""}>Mo–Fr (5 Tage)</option>
+            <option value="mo_sa" ${m.arbeitstage === "mo_sa" ? "selected" : ""}>Mo–Sa (6 Tage)</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1; min-width:120px; margin:0;">
+          <label class="muted">Urlaubstage / Jahr</label>
+          <input type="number" id="ma_anspruch" min="0" max="366" value="${m.urlaubsanspruch != null ? m.urlaubsanspruch : 30}" />
+        </div>
+      </div>
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Die App zieht genommene Tage ab und zeigt den Rest an.</p>`)}
+
+    ${m.id ? teil("📄 Einsatzplan (Lager) als PDF", `
+      <div class="row" style="display:flex; gap:10px; align-items:stretch;">
+        <select id="ma_pdf_monat" style="flex:1;">
+          ${pdfMonate.map((x) => `<option value="${x.v}">${x.t}</option>`).join("")}
         </select>
+        <button class="btn btn-primary" style="flex:none;" onclick="glasMaEinsatzplanPdf('${m.id}')">📄 PDF</button>
       </div>
-      <div class="field">
-        <label class="muted">Urlaubstage pro Jahr</label>
-        <input type="number" id="ma_anspruch" min="0" max="366" value="${m.urlaubsanspruch != null ? m.urlaubsanspruch : 30}" style="width:auto;" />
-        <p class="muted" style="margin:4px 0 0; font-size:12px;">Die App zieht die genommenen Tage ab und zeigt dir den Rest an.</p>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn-primary" onclick="saveGlasMa()">Speichern</button>
-        ${m.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-left:auto;" onclick="deleteGlasMa('${m.id}')">Löschen</button>` : ""}
-      </div>
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Tag für Tag: wann ${escapeHtml(m.name || "der Mitarbeiter")} im Lager-Einsatz war, wann Urlaub, wann frei – im GEKO-Briefkopf.</p>`) : ""}
+
+    <div style="display:flex; gap:8px; margin-top:4px;">
+      <button class="btn btn-primary" onclick="saveGlasMa()">Speichern</button>
+      ${m.id ? `<button class="btn btn-sm" style="color:var(--danger); margin-left:auto;" onclick="deleteGlasMa('${m.id}')">Löschen</button>` : ""}
     </div>`;
+}
+
+// Einsatzplan-PDF direkt aus dem Mitarbeiter-Formular (Monat aus dem Auswahlfeld)
+async function glasMaEinsatzplanPdf(maId) {
+  if (typeof glasLagerPdfErstellen !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
+    showToast("PDF-Bibliothek lädt noch – kurz warten"); return;
+  }
+  const v = (document.getElementById("ma_pdf_monat")?.value || "").split("-");
+  const monat = v.length === 2 ? { year: parseInt(v[0], 10), month: parseInt(v[1], 10) } : { year: new Date().getFullYear(), month: new Date().getMonth() };
+  if (!glasLagerPlan.length) await loadGlasLagerPlan(); // Plan evtl. noch nie geladen
+  try {
+    glasLagerPdfErstellen(monat, maId);
+    showToast("📄 Einsatzplan erstellt");
+  } catch (e) {
+    showToast("PDF-Fehler: " + (e && e.message || e));
+  }
 }
 
 async function saveGlasMa() {
