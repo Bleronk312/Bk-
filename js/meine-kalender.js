@@ -37,8 +37,20 @@ function oneKalBlaettern(schritt) {
   renderOne();
 }
 
+// Verhindert, dass eine einzelne hängende Abfrage den ganzen Kalender blockiert:
+// Nach spätestens 8 Sekunden gibt eine Quelle auf (leeres Ergebnis) statt ewig zu warten.
+function oneKalMitTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Zeitüberschreitung")), ms || 8000)),
+  ]);
+}
+
+let oneKalLaeuft = false; // schützt vor doppeltem Laden
+
 // Lädt alle Quellen parallel. Jede Quelle einzeln abgesichert: fällt eine aus (Tabelle
-// fehlt, kein Netz), bleiben die anderen trotzdem stehen.
+// fehlt, kein Netz, Zeitüberschreitung), bleiben die anderen trotzdem stehen. Der
+// Kalender kann dadurch NIE ewig im Ladekreis hängen.
 async function oneKalLaden() {
   const eintraege = [];
   const ich = oneUser.id;
@@ -47,7 +59,7 @@ async function oneKalLaden() {
   // --- Glas-Touren -------------------------------------------------------------
   if (oneUser.zugang_glas !== false) {
     aufgaben.push((async () => {
-      const { data } = await sb.from("glas_touren").select("id, name, datum, datum_bis, archiviert_am, ma_versteckt").order("datum", { ascending: true });
+      const { data } = await oneKalMitTimeout(sb.from("glas_touren").select("id, name, datum, datum_bis, archiviert_am, ma_versteckt").order("datum", { ascending: true }));
       (data || []).forEach((t) => {
         if (!t.datum || t.archiviert_am || t.ma_versteckt) return;
         eintraege.push({
@@ -62,7 +74,7 @@ async function oneKalLaden() {
   // --- Graffiti-Termine --------------------------------------------------------
   if (oneUser.zugang_graffiti === true) {
     aufgaben.push((async () => {
-      const { data } = await sb.from("scheine").select("id, kunde, adresse, termin, archiviert, datum").order("termin", { ascending: true });
+      const { data } = await oneKalMitTimeout(sb.from("scheine").select("id, kunde, adresse, termin, archiviert, datum").order("termin", { ascending: true }));
       (data || []).forEach((s) => {
         if (!s.termin || s.archiviert) return;
         const iso = String(s.termin).slice(0, 10);
@@ -82,7 +94,7 @@ async function oneKalLaden() {
   // aufgelöst. Nur die, die diesem Mitarbeiter zugewiesen sind (oder allen).
   if (oneUser.zugang_checkin === true) {
     aufgaben.push((async () => {
-      const { data } = await sb.from("checkin_rundgaenge").select("id, name, mitarbeiter_id, mitarbeiter_ids, tage, fenster_von, fenster_bis, aktiv");
+      const { data } = await oneKalMitTimeout(sb.from("checkin_rundgaenge").select("id, name, mitarbeiter_id, mitarbeiter_ids, tage, fenster_von, fenster_bis, aktiv"));
       const m = oneKalMonatJetzt();
       const letzter = new Date(m.jahr, m.monat + 1, 0).getDate();
       (data || []).forEach((r) => {
@@ -112,7 +124,7 @@ async function oneKalLaden() {
 
   // --- Eigener Urlaub (NUR der eigene - Datenschutz) ----------------------------
   aufgaben.push((async () => {
-    const { data } = await sb.from("glas_urlaub").select("id, von, bis, notiz, mitarbeiter_id").eq("mitarbeiter_id", ich);
+    const { data } = await oneKalMitTimeout(sb.from("glas_urlaub").select("id, von, bis, notiz, mitarbeiter_id").eq("mitarbeiter_id", ich));
     (data || []).forEach((u) => {
       if (!u.von) return;
       eintraege.push({
@@ -129,6 +141,24 @@ async function oneKalLaden() {
   oneKalTermine = eintraege;
 }
 
+// Startet das Laden GENAU EINMAL und zeichnet danach neu. Egal was passiert (Fehler,
+// Zeitüberschreitung), am Ende steht ein Array in oneKalTermine - der Ladekreis
+// verschwindet also immer.
+function oneKalStarteLaden() {
+  if (oneKalLaeuft) return;
+  oneKalLaeuft = true;
+  oneKalLaden()
+    .catch(() => { oneKalTermine = oneKalTermine || []; oneKalFehler = "Termine konnten nicht geladen werden. Bitte erneut versuchen."; })
+    .finally(() => { oneKalLaeuft = false; if (oneScreen === "kalender") renderOne(); });
+}
+
+// Vom "Aktualisieren"-Knopf: neu laden erzwingen.
+function oneKalNeuLaden() {
+  oneKalTermine = null;
+  oneKalStarteLaden();
+  renderOne();
+}
+
 // Alle Termine, die einen bestimmten Tag berühren (mehrtägige Touren zählen an jedem Tag)
 function oneKalAmTag(iso) {
   return (oneKalTermine || []).filter((e) => e.von <= iso && iso <= (e.bis || e.von));
@@ -140,8 +170,9 @@ function oneKalMonatName(m) {
 
 function renderOneKalender() {
   if (oneKalTermine === null) {
-    oneKalLaden().then(() => { if (oneScreen === "kalender") renderOne(); });
-    return `<p class="muted" style="margin-top:20px;"><span class="spinner"></span> Lade deine Termine…</p>`;
+    oneKalStarteLaden();
+    return `<p class="muted" style="margin-top:20px;"><span class="spinner"></span> Lade deine Termine…</p>
+      <p class="muted" style="margin-top:14px; font-size:12.5px;">Dauert es zu lange? <a href="#" onclick="event.preventDefault(); oneKalNeuLaden();" style="color:var(--blue);">Neu laden</a></p>`;
   }
 
   const m = oneKalMonatJetzt();
@@ -181,9 +212,10 @@ function renderOneKalender() {
 
   return `
     <div class="okal-kopf">
-      <button class="btn btn-sm" onclick="oneKalBlaettern(-1)">‹</button>
+      <button class="btn btn-sm" onclick="oneKalBlaettern(-1)" aria-label="Vorheriger Monat">‹</button>
       <span style="flex:1; text-align:center; font-weight:700;">${oneKalMonatName(m.monat)} ${m.jahr}</span>
-      <button class="btn btn-sm" onclick="oneKalBlaettern(1)">›</button>
+      <button class="btn btn-sm" onclick="oneKalNeuLaden()" aria-label="Aktualisieren" title="Aktualisieren">↻</button>
+      <button class="btn btn-sm" onclick="oneKalBlaettern(1)" aria-label="Nächster Monat">›</button>
     </div>
     ${oneKalFehler ? `<p class="muted" style="margin:6px 2px; font-size:12.5px;">⚠️ ${escapeHtml(oneKalFehler)}</p>` : ""}
     <div class="okal-wochentage">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => `<span>${w}</span>`).join("")}</div>
@@ -219,7 +251,13 @@ function oneKalTageText(tage) {
 
 function oneKalListe(eintraege, zusammengefasst) {
   if (!eintraege.length) return `<p class="muted" style="margin:10px 2px;">Keine Termine.</p>`;
+  const heute = oneKalHeute();
   return eintraege.map((e) => {
+    // Vergangenes ist nur noch Verlauf - nicht mehr anklickbar (die Tour/der Schein
+    // kann längst archiviert sein; ein Klick würde ins Leere führen). Wiederkehrende
+    // Rundgänge bleiben immer anklickbar (die gibt es weiter).
+    const vergangen = (e.bis || e.von) < heute && e.art !== "checkin";
+    const ziel = vergangen ? null : e.ziel;
     const mehrtaegig = e.bis && e.bis !== e.von;
     // Zusammengefasste Rundgänge zeigen den Rhythmus statt eines einzelnen Datums
     const datum = (zusammengefasst && e.art === "checkin" && e.tage)
@@ -232,9 +270,9 @@ function oneKalListe(eintraege, zusammengefasst) {
         <span>${escapeHtml(e.sub)}${e.zeit ? " · " + escapeHtml(e.zeit) + " Uhr" : ""}</span>
         <span style="font-weight:600; color:var(--text-secondary);">${datum}</span>
       </span>
-      ${e.ziel ? `<span class="m-pfeil">›</span>` : ""}`;
-    return e.ziel
-      ? `<a class="okal-eintrag" href="${e.ziel}">${inner}</a>`
-      : `<div class="okal-eintrag" style="cursor:default;">${inner}</div>`;
+      ${ziel ? `<span class="m-pfeil">›</span>` : ""}`;
+    return ziel
+      ? `<a class="okal-eintrag" href="${ziel}">${inner}</a>`
+      : `<div class="okal-eintrag" style="cursor:default;${vergangen ? "opacity:.7;" : ""}">${inner}</div>`;
   }).join("");
 }

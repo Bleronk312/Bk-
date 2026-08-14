@@ -291,7 +291,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v134</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v135</p>`;
 }
 
 /* ---------------- Darstellung (Hell / Dunkel / Auto) ---------------- */
