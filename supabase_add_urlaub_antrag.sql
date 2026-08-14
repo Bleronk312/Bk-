@@ -17,3 +17,7 @@ alter table glas_urlaub add column if not exists entschieden_von text;
 alter table glas_urlaub add column if not exists antwort text not null default '';
 
 create index if not exists idx_glas_urlaub_status on glas_urlaub(status);
+
+-- Benachrichtigung ans Büro, sobald ein Mitarbeiter Urlaub beantragt.
+-- Standard: AN (default true) - sonst würde man die ersten Anträge verpassen.
+alter table glas_einstellungen add column if not exists push_urlaub boolean not null default true;

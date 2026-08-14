@@ -787,15 +787,17 @@ function renderGlasAdmin() {
   // Reiterleiste. Auf dem Handy sitzt sie fest am UNTEREN Rand (Bottom-Nav, Icon über
   // Label); auf dem Desktop bleibt sie oben (per CSS). Icon + Beschriftung getrennt,
   // damit sie sich unten sauber stapeln lassen.
-  const tb = (active, ic, lb, onclick) =>
-    `<button class="tab-btn ${active ? "active" : ""}" onclick="${onclick}"><span class="tb-ic">${ic}</span><span class="tb-lb">${lb}</span></button>`;
+  // badge: kleine rote Zahl am Reiter (z.B. offene Urlaubsanträge am Kalender)
+  const tb = (active, ic, lb, onclick, badge) =>
+    `<button class="tab-btn ${active ? "active" : ""}" onclick="${onclick}"><span class="tb-ic">${ic}${badge ? `<i class="tb-badge">${badge > 9 ? "9+" : badge}</i>` : ""}</span><span class="tb-lb">${lb}</span></button>`;
+  const offeneUrlaube = (typeof glasOffeneUrlaubsantraege === "function") ? glasOffeneUrlaubsantraege().length : 0;
   const glasNav = glasCalApp
     ? `<div class="tabs"><button class="tab-btn active" style="justify-content:flex-start; gap:6px;" onclick="goGlasTab('kalender')">‹ Zurück zum Kalender</button></div>`
     : `<div class="glas-bottomnav"><div class="tabs">
       ${tb(isHome, "🏠", "Start", "goGlasHome()")}
       ${tb(tab === "touren", "🚐", "Touren", "goGlasTab('touren')")}
       ${tb(tab === "kunden", "👥", "Kunden", "goGlasTab('kunden')")}
-      ${tb(tab === "kalender", "📅", "Kalender", "goGlasTab('kalender')")}
+      ${tb(tab === "kalender", "📅", "Kalender", "goGlasTab('kalender')", offeneUrlaube)}
       ${tb(tab === "scheine", "📄", "Scheine", "goGlasTab('scheine')")}
       ${tb(["faellig", "einstellungen", "mehr"].includes(tab), "☰", "Mehr", "goGlasTab('mehr')")}
     </div></div>`;
@@ -813,6 +815,16 @@ function renderGlasAdmin() {
     if (hostBtns.length === 6) {
       const aktivIdx = isHome ? 0 : { touren: 1, kunden: 2, kalender: 3, scheine: 4, mehr: 5, faellig: 5, einstellungen: 5 }[tab] ?? -1;
       hostBtns.forEach((b, i) => b.classList.toggle("active", i === aktivIdx));
+      // Der Zähler am Kalender-Reiter muss hier von Hand nachgezogen werden, weil die
+      // feste Leiste bewusst nicht neu aufgebaut wird (sonst springt sie auf iOS).
+      const kalIc = hostBtns[3] && hostBtns[3].querySelector(".tb-ic");
+      if (kalIc) {
+        let b = kalIc.querySelector(".tb-badge");
+        if (offeneUrlaube) {
+          if (!b) { b = document.createElement("i"); b.className = "tb-badge"; kalIc.appendChild(b); }
+          b.textContent = offeneUrlaube > 9 ? "9+" : String(offeneUrlaube);
+        } else if (b) b.remove();
+      }
     } else {
       navHost.innerHTML = glasNav;
     }
@@ -1148,6 +1160,8 @@ function renderGlasHome() {
           <p class="muted" style="margin:2px 0 0;">${glasHeuteLangDatum()}</p>
         </div>
       </div>
+
+      ${renderUrlaubBanner()}
 
       <div class="glas-home-tiles">
         ${tile("t-crit", "🔴", uCount, "Überfällig", "glasKundenSort='dringend'; goGlasTab('kunden')")}
@@ -2706,6 +2720,10 @@ function renderPushEinstellungen() {
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
       <input type="checkbox" style="width:auto;" ${e.push_unterschrift ? "checked" : ""} onchange="glasSavePushSchalter('push_unterschrift', this.checked)" />
       <span style="font-size:13.5px;">✍️ Eingehende Unterschriften &middot; <span class="muted">Glasreinigung-App</span></span>
+    </label>
+    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+      <input type="checkbox" style="width:auto;" ${e.push_urlaub !== false ? "checked" : ""} onchange="glasSavePushSchalter('push_urlaub', this.checked)" />
+      <span style="font-size:13.5px;">🏖️ Neue Urlaubsanträge der Mitarbeiter &middot; <span class="muted">Glasreinigung-App</span></span>
     </label>
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
       <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
@@ -4617,6 +4635,31 @@ function glasOffeneUrlaubsantraege() {
   return glasUrlaub.filter((u) => u.status === "offen");
 }
 
+// Auffälliger Hinweis ganz oben auf der Startseite, sobald Anträge warten - damit sie
+// nicht im Kalender-Reiter untergehen. Ein Tipp führt direkt zur Bearbeitung.
+function renderUrlaubBanner() {
+  const n = glasOffeneUrlaubsantraege().length;
+  if (!n) return "";
+  const namen = [...new Set(glasOffeneUrlaubsantraege().map((u) => glasMaName(u.mitarbeiter_id)))];
+  return `
+    <button class="glas-urlaub-banner" onclick="glasOpenUrlaubsantraege()">
+      <span class="gub-ic">🏖️</span>
+      <span class="gub-txt">
+        <span class="gub-t">${n === 1 ? "1 Urlaubsantrag wartet" : `${n} Urlaubsanträge warten`} auf dich</span>
+        <span class="gub-s">${escapeHtml(namen.slice(0, 3).join(", "))}${namen.length > 3 ? " +" + (namen.length - 3) : ""} · jetzt entscheiden</span>
+      </span>
+      <span class="gub-arr">›</span>
+    </button>`;
+}
+
+// Springt direkt in den Urlaubskalender mit den offenen Anträgen oben.
+function glasOpenUrlaubsantraege() {
+  glasKalenderAnsicht = "urlaub";
+  glasUrlaubMaFilter = null;
+  glasKalenderSelectedDay = null;
+  goGlasTab("kalender");
+}
+
 function renderUrlaubAntraege() {
   const offene = glasOffeneUrlaubsantraege();
   if (!offene.length) return "";
@@ -4683,9 +4726,18 @@ async function glasUrlaubEntscheiden(id, status) {
   await loadGlasUrlaub();
   renderGlasAdmin();
   showToast(status === "genehmigt" ? `Urlaub von ${name} genehmigt ✓` : `Urlaub von ${name} abgelehnt`);
-  // Der Mitarbeiter sieht die Entscheidung beim nächsten Öffnen von GEKO One.
-  glasPushSend("geko_one", "push_touren", "Urlaubsantrag " + (status === "genehmigt" ? "genehmigt ✓" : "abgelehnt"),
-    `${formatGlasDateRange(u.von, u.bis)}${antwort ? " · " + antwort : ""}`, "/meine.html");
+  // Den Mitarbeiter über die Entscheidung benachrichtigen. Bewusst OHNE den
+  // Büro-Schalter: das ist eine Antwort auf seinen eigenen Antrag, die will er immer.
+  // Rolle "geko_one" = die Mitarbeiter-App (dort wird Push zentral aktiviert).
+  try {
+    sb.functions.invoke("send-push", { body: {
+      role: "geko_one",
+      title: status === "genehmigt" ? "🏖️ Urlaub genehmigt ✓" : "🏖️ Urlaubsantrag abgelehnt",
+      body: `${formatGlasDateRange(u.von, u.bis)}${antwort ? " · " + antwort : ""}`,
+      url: "/meine.html",
+      mitarbeiter_id: u.mitarbeiter_id, // nur an diesen Mitarbeiter, nicht an alle
+    } }).catch(() => {});
+  } catch (e) {}
 }
 
 function renderUrlaubMonat() {

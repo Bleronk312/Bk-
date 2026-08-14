@@ -26,7 +26,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { role, title, body, url } = await req.json();
+    // mitarbeiter_id (optional): schickt die Nachricht NUR an die Geräte dieses einen
+    // Mitarbeiters statt an alle mit dieser Rolle. Wird z.B. bei der Antwort auf einen
+    // Urlaubsantrag genutzt - die geht niemanden sonst etwas an.
+    const { role, title, body, url, mitarbeiter_id } = await req.json();
 
     if (!role || !title) {
       return new Response(JSON.stringify({ error: "role und title sind Pflicht" }), { status: 400, headers: corsHeaders });
@@ -38,10 +41,11 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: subs, error } = await supabase
-      .from("push_subscriptions")
-      .select("*")
-      .eq("role", role);
+    let abfrage = supabase.from("push_subscriptions").select("*").eq("role", role);
+    // Gezielt an einen Mitarbeiter: nur dessen Geräte. Ohne Angabe wie bisher an alle
+    // Geräte dieser Rolle.
+    if (mitarbeiter_id) abfrage = abfrage.eq("mitarbeiter_id", mitarbeiter_id);
+    const { data: subs, error } = await abfrage;
 
     if (error) {
       console.error("Datenbank-Fehler:", error.message);
@@ -53,6 +57,7 @@ Deno.serve(async (req) => {
       admin: "/admin.html", graffiti: "/admin.html", mitarbeiter: "/mitarbeiter.html",
       glas: "/glas-admin.html#/tab/touren", kalender: "/kalender.html#/tab/kalender",
       checkin_admin: "/checkins-admin.html", checkin_ma: "/checkins-ma.html",
+      geko_one: "/meine.html",
     };
     const fallbackUrl = roleUrls[role] || "/mitarbeiter.html";
     const payload = JSON.stringify({ title, body: body || "", url: url || fallbackUrl });

@@ -348,6 +348,23 @@ async function oneUrlaubSenden() {
     if (error) throw error;
     oneUrlaubFormOffen = false;
     oneKalTermine = null; oneMeineAntraege = null; // neu laden
+    // Das Büro sofort benachrichtigen (Glas-Admin-App) - aber nur, wenn der Schalter
+    // "Neue Urlaubsanträge" dort an ist. Läuft im Hintergrund: schlägt es fehl, ist der
+    // Antrag trotzdem gestellt und steht im Admin in der Liste.
+    try {
+      const { data: eins } = await sb.from("glas_einstellungen").select("push_urlaub").eq("id", "default").limit(1);
+      const an = !eins || !eins[0] || eins[0].push_urlaub !== false; // fehlt die Spalte -> an
+      if (an) {
+        const zeit = zeile.bis && zeile.bis !== zeile.von
+          ? `${formatGlasDate(zeile.von)} – ${formatGlasDate(zeile.bis)}` : formatGlasDate(zeile.von);
+        sb.functions.invoke("send-push", { body: {
+          role: "glas",
+          title: "🏖️ Neuer Urlaubsantrag",
+          body: `${oneUser.name || oneUser.username}: ${zeit}${notiz ? " · " + notiz : ""}`,
+          url: "/glas-admin.html#/tab/kalender",
+        } }).catch(() => {});
+      }
+    } catch (e) {}
     showToast("Antrag gesendet – das Büro entscheidet zeitnah ✓");
   } catch (e) {
     fehler("Konnte nicht gesendet werden. Bitte Internet prüfen.");
