@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO One" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO One - Meine Übersicht</title>
-<link rel="stylesheet" href="css/style.css?v=132" />
+<link rel="stylesheet" href="css/style.css?v=133" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
@@ -42,13 +42,30 @@
 @keyframes oneRein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes oneReinHalb { from { opacity: 0; transform: translateY(10px); } to { opacity: .62; transform: none; } }
 html.dark .one-kachel { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+
+/* Kopf-Identität rechts (Nav-Knöpfe stehen links) */
+.one-brand { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; opacity: .95; }
+
+/* Menü-Zeilen (Einstellungen) */
+.one-menu-row { display: flex; align-items: center; gap: 13px; width: 100%; background: var(--card);
+  border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 10px;
+  cursor: pointer; text-align: left; font-family: inherit; }
+.one-menu-row .m-ico { width: 38px; height: 38px; border-radius: 11px; flex: none; display: flex;
+  align-items: center; justify-content: center; font-size: 19px; background: var(--bg); }
+.one-menu-row b { display: block; font-size: 14.5px; color: var(--text); }
+.one-menu-row span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.one-menu-row .m-pfeil { margin-left: auto; color: var(--text-secondary); font-size: 18px; flex: none; }
+.one-seg { display: flex; gap: 6px; }
+.one-seg button { flex: 1; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.one-seg button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
 </style>
 </head>
 <body class="glas-logo-left">
 
   <div class="app-header">
-    <div class="brand-row"><span class="dot"></span>GEKO One</div>
-    <div class="greeting">Meine Übersicht</div>
+    <div class="brand-row geko-navrow" id="oneTopbar"><span class="one-brand"><span class="dot"></span>GEKO One</span></div>
+    <div class="greeting" id="oneGreeting">Meine Übersicht</div>
   </div>
   <div class="app-sheet">
     <img class="logo-watermark" id="watermarkImg" alt="" />
@@ -63,12 +80,13 @@ html.dark .one-kachel { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=132"></script>
-  <script src="js/fehler.js?v=132"></script>
-  <script src="js/logo-asset.js?v=132"></script>
-  <script src="js/supabase-client.js?v=132"></script>
-  <script src="js/app-shared.js?v=132"></script>
-  <script src="js/glas-shared.js?v=132"></script>
-  <script src="js/meine.js?v=1"></script>
+  <script src="js/config.js?v=133"></script>
+  <script src="js/fehler.js?v=133"></script>
+  <script src="js/logo-asset.js?v=133"></script>
+  <script src="js/supabase-client.js?v=133"></script>
+  <script src="js/app-shared.js?v=133"></script>
+  <script src="js/glas-shared.js?v=133"></script>
+  <script src="js/push.js?v=133"></script>
+  <script src="js/meine.js?v=2"></script>
 </body>
 </html>

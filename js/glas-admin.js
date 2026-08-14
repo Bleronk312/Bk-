@@ -4739,12 +4739,50 @@ function renderMaVerwaltung() {
               : `<span class="badge" style="background:#eef2f7; color:#6b7683;">kein Login</span>`}
           </p>
           ${m.username && m.pass_klar ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🔑 <b>${escapeHtml(m.username)}</b> · Passwort: <b>${escapeHtml(m.pass_klar)}</b></p>` : ""}
+          ${m.username && !m.pass_klar ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🔒 Eigenes Passwort gesetzt – nicht einsehbar. Vergessen? Beim Bearbeiten zurücksetzen.</p>` : ""}
+          ${m.username ? `<p class="muted" style="margin:2px 0 0; font-size:12.5px;">${glasMaZugangBadges(m)}</p>` : ""}
           <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} von ${b.anspruch} Urlaubstagen übrig</b></p>
         </div>
         <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
       </div>`;
     }).join("") : `<p class="muted">Noch keine Mitarbeiter angelegt.</p>`}
   `;
+}
+
+// Zeigt auf einen Blick, welche Bereiche dieser Login sehen darf (= die Kacheln,
+// die in GEKO One erscheinen). zugang_glas ist historisch "an, außer ausdrücklich aus".
+function glasMaZugangBadges(m) {
+  const frei = [];
+  if (m.zugang_glas !== false) frei.push("🧽 Glas");
+  if (m.zugang_graffiti === true) frei.push("🎨 Graffiti");
+  if (m.zugang_checkin === true) frei.push("📍 Check-ins");
+  return frei.length ? escapeHtml(frei.join(" · ")) : "<i>keine Bereiche freigeschaltet</i>";
+}
+
+// Passwort zurücksetzen: Das Büro vergibt ein Einmal-Passwort. Der Mitarbeiter MUSS
+// sich danach beim nächsten Anmelden ein eigenes setzen (pw_muss_wechsel) - das alte
+// ist ab sofort tot. Das Klartext-Feld bleibt nur bis zu diesem ersten Login gefüllt.
+async function glasMaPasswortReset(id) {
+  const m = glasMitarbeiter.find((x) => x.id === id);
+  if (!m) return;
+  const vorschlag = "Start" + Math.floor(1000 + Math.random() * 9000);
+  const neu = prompt(`Einmal-Passwort für ${m.name} vergeben.\n\nDer Mitarbeiter meldet sich damit an und MUSS sich sofort ein eigenes Passwort setzen. Das alte Passwort funktioniert danach nicht mehr.`, vorschlag);
+  if (neu === null) return;
+  const pw = String(neu).trim();
+  if (pw.length < 6) { showToast("Bitte mindestens 6 Zeichen"); return; }
+  const salt = gekoMakeSalt();
+  const payload = { pass_salt: salt, pass_hash: await gekoHashPw(pw, salt), pass_klar: pw, pw_muss_wechsel: true, pw_selbst_gesetzt: false };
+  let { error } = await sb.from("glas_mitarbeiter").update(payload).eq("id", id);
+  if (error && /(pw_muss_wechsel|pw_selbst_gesetzt)/i.test(error.message || "")) {
+    delete payload.pw_muss_wechsel; delete payload.pw_selbst_gesetzt;
+    showToast("Hinweis: Pflicht-Wechsel nicht gesetzt – bitte supabase_add_geko_one.sql ausführen");
+    ({ error } = await sb.from("glas_mitarbeiter").update(payload).eq("id", id));
+  }
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadGlasMitarbeiter();
+  if (glasMaEditing && glasMaEditing.id === id) glasMaEditing = glasMitarbeiter.find((x) => x.id === id) || glasMaEditing;
+  renderGlasAdmin();
+  alert(`Einmal-Passwort für ${m.name}:\n\n${pw}\n\nBitte dem Mitarbeiter mitteilen. Beim nächsten Anmelden muss er sich ein eigenes Passwort setzen.`);
 }
 
 function renderMaForm() {
@@ -4760,13 +4798,24 @@ function renderMaForm() {
         <div class="field"><label class="muted">Benutzername</label>
           <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
+        ${m.id && m.username && !m.pass_klar ? `
+        <div class="field">
+          <label class="muted">Passwort</label>
+          <div class="card" style="margin:0; padding:11px 13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="flex:1; min-width:140px; font-size:13px;">🔒 <b>Eigenes Passwort gesetzt</b> – aus Sicherheitsgründen nicht einsehbar.</span>
+            <button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Zurücksetzen</button>
+          </div>
+          <p class="muted" style="margin:5px 0 0; font-size:12px;">Beim Zurücksetzen vergibst du ein Einmal-Passwort; der Mitarbeiter muss sich danach sofort ein eigenes setzen.</p>
+        </div>` : `
         <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
-          <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
+          <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          ${m.id && m.username ? `<p class="muted" style="margin:5px 0 0; font-size:12px;">Sobald der Mitarbeiter sich in GEKO One ein eigenes Passwort setzt, verschwindet es hier – dann geht nur noch Zurücksetzen.</p>` : ""}</div>`}
         ${m.id ? `<label class="glas-aktiv-toggle"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt, kommt nicht mehr rein)</span></span></label>` : ""}
         <p style="margin:12px 0 6px; font-weight:700; font-size:13px;">Anmelden erlaubt bei:</p>
         <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren-App</span></label>
+        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_graffiti" ${m.zugang_graffiti === true ? "checked" : ""} /> <span>🎨 Graffiti-App</span></label>
         <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_checkin" ${m.zugang_checkin === true ? "checked" : ""} /> <span>📍 Check-ins-App</span></label>
-        <p class="muted" style="margin:5px 0 0; font-size:12px;">Bestimmt, in welche App sich dieser Login einloggen darf. Dasselbe Konto, aber du wählst wo es funktioniert.</p>
+        <p class="muted" style="margin:5px 0 0; font-size:12px;">Bestimmt, in welche App sich dieser Login einloggen darf – und welche Kacheln er in GEKO One sieht. Dasselbe Konto, aber du wählst wo es funktioniert.</p>
       </div>
 
       <div class="field">
@@ -4817,21 +4866,29 @@ async function saveGlasMa() {
 
   // Per-App-Zugang: bestimmt, WO sich dieser Login anmelden darf (Glas / Check-ins).
   const zGlasEl = document.getElementById("ma_zugang_glas");
+  const zGraffitiEl = document.getElementById("ma_zugang_graffiti");
   const zCheckinEl = document.getElementById("ma_zugang_checkin");
   if (zGlasEl) payload.zugang_glas = zGlasEl.checked;
+  if (zGraffitiEl) payload.zugang_graffiti = zGraffitiEl.checked;
   if (zCheckinEl) payload.zugang_checkin = zCheckinEl.checked;
 
   let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  // Graffiti-Spalte fehlt evtl. noch (neueste SQL nicht ausgeführt) -> ohne sie erneut versuchen
+  if (error && /zugang_graffiti/i.test(error.message || "")) {
+    delete payload.zugang_graffiti;
+    showToast("Graffiti-Freischaltung nicht gespeichert – bitte supabase_add_geko_one.sql in Supabase ausführen");
+    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
+  }
   if (error && /(zugang_glas|zugang_checkin)/i.test(error.message || "")) {
     // Zugangs-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
-    delete payload.zugang_glas; delete payload.zugang_checkin;
+    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin;
     showToast("Per-App-Zugang nicht gespeichert – bitte supabase_add_checkins.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
   if (error && /(username|pass_hash|pass_salt|pass_klar|login_aktiv)/i.test(error.message || "")) {
     // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
     delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.pass_klar; delete payload.login_aktiv;
-    delete payload.zugang_glas; delete payload.zugang_checkin;
+    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin;
     showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
