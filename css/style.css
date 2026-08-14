@@ -2325,12 +2325,33 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-lager-pdfkopf.auf { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .glas-lager-pdfkopf.auf .pk-pfeil { transform: rotate(90deg); }
 
-/* Gelesen-Etiketten im Admin: grün = in GEKO One abgehakt, grau = noch nicht */
-.glas-lager-gelesen { display: inline-flex; align-items: center; padding: 3px 9px;
-  border-radius: 9px; font-size: 12.5px; font-weight: 600;
-  background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
-.glas-lager-gelesen.ok { background: rgba(18, 161, 80, .12); color: #0e8443; border-color: rgba(18, 161, 80, .35); }
-html.dark .glas-lager-gelesen.ok { color: #35c97e; }
+/* Eingeteilt-Karte: Kopf mit Uhrzeit, darunter EINE Zeile je Person mit klarem
+   Status rechts. Antippbar (heute/vergangen) für den "war nicht da"-Vermerk. */
+.glas-lager-eintrag { background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid #6b4ee6; border-radius: 15px; padding: 12px 14px; margin: 0 0 10px; }
+.glas-lager-eintrag .le-kopf { display: flex; align-items: center; gap: 12px; }
+.glas-lager-eintrag .le-zeit { flex: none; font-size: 21px; font-weight: 800; color: #6b4ee6;
+  font-variant-numeric: tabular-nums; min-width: 58px; }
+.glas-lager-eintrag .le-info { flex: 1; min-width: 0; }
+.glas-lager-eintrag .le-notiz { display: block; font-size: 12.5px; color: var(--text); }
+.glas-lager-eintrag .le-meta { display: block; font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+.glas-lager-eintrag .le-personen { margin-top: 9px; border-top: 1px solid var(--border); }
+.glas-lager-person { display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 2px; border: none; border-bottom: 1px solid var(--border);
+  background: transparent; font-family: inherit; font-size: 14px; color: var(--text);
+  text-align: left; }
+.glas-lager-person:last-child { border-bottom: none; }
+.glas-lager-person.tippbar { cursor: pointer; }
+.glas-lager-person.tippbar:active { background: var(--bg); }
+.glas-lager-person .p-name { flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glas-lager-person .p-name.abw { text-decoration: line-through; color: var(--text-secondary); }
+.glas-lager-person .p-status { flex: none; font-size: 12.5px; font-weight: 700;
+  color: var(--text-secondary); }
+.glas-lager-person .p-status.ok { color: #0e8443; }
+.glas-lager-person .p-status.abw { color: #b23a1e; }
+html.dark .glas-lager-person .p-status.ok { color: #35c97e; }
+html.dark .glas-lager-person .p-status.abw { color: #e0795e; }
 
 /* ---------------- Reine Kalender-App (?app=kalender vom Home-Bildschirm) ----------------
    Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich

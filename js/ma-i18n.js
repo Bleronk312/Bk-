@@ -156,6 +156,8 @@
     "Keine Verbindung – dein Lager-Plan konnte nicht geladen werden.": "S'ka lidhje – plani i depos nuk u ngarkua.",
     "↻ Erneut versuchen": "↻ Provo përsëri",
     "Keine Verbindung – bitte später erneut abhaken": "S'ka lidhje – provo ta konfirmosh më vonë",
+    "✗ Als „nicht da\" vermerkt": "✗ Shënuar si „nuk ishte aty\"",
+    "Nicht da gewesen (Vermerk vom Büro)": "Nuk ishe aty (shënim i zyrës)",
     "Wann du im Lager sein sollst": "Kur duhet të jesh në depo",
     "Nichts eingeteilt": "Asgjë e caktuar",
     "DEMNÄCHST": "SË SHPEJTI",

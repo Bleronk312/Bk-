@@ -1199,33 +1199,45 @@ function renderLagerPlan() {
       : `<button class="glas-lager-zeit" onclick="glasLagerEigeneZeitAn()">Andere…</button>`);
 
   // ---- Übersicht: was ist an dem Tag schon verschickt? ----
+  // Eine Zeile je Person mit klarem Status rechts - auf einen Blick erkennbar,
+  // wer gelesen hat. Bei heutigen/vergangenen Tagen lässt sich eine Person
+  // antippen, um nachträglich "war nicht da" zu vermerken. Standardmäßig wird
+  // dabei NICHTS erwartet - der Vermerk ist die Ausnahme, nicht die Regel.
+  const vergangenOderHeute = datum <= heute;
   const uebersicht = eintraege.length ? eintraege.map((p) => {
     const ids = glasLagerIds(p);
     const best = p.bestaetigt || {};
-    const gelesen = ids.filter((id) => best[id]).length;
-    // Jeder Name als kleines Etikett: GRÜN mit Haken = hat in GEKO One abgehakt,
-    // grau = noch nicht gelesen. So sieht das Büro auf einen Blick, wer Bescheid weiß.
-    const namenHtml = ids.map((id) => {
+    const abw = p.abwesend || {};
+    const personen = ids.map((id) => {
       const nm = glasMaName(id);
       if (!nm) return "";
-      return `<span class="glas-lager-gelesen${best[id] ? " ok" : ""}">${best[id] ? "✓ " : ""}${escapeHtml(nm)}</span>`;
+      const istAbw = !!abw[id];
+      const status = istAbw
+        ? `<span class="p-status abw">✗ War nicht da</span>`
+        : best[id]
+          ? `<span class="p-status ok">✓ Gelesen</span>`
+          : `<span class="p-status">noch nicht gelesen</span>`;
+      const inhalt = `
+        <span class="glas-ma-dot" style="background:${glasMaFarbe(id)};"></span>
+        <span class="p-name${istAbw ? " abw" : ""}">${escapeHtml(nm)}</span>
+        ${status}`;
+      return vergangenOderHeute
+        ? `<button class="glas-lager-person tippbar" onclick="glasLagerAbwToggle('${p.id}', '${id}')">${inhalt}</button>`
+        : `<div class="glas-lager-person">${inhalt}</div>`;
     }).join("");
     return `
-      <div class="card" style="margin:0 0 10px; padding:13px 15px; border-left:4px solid #6b4ee6;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span style="font-size:20px; font-weight:800; color:#6b4ee6; flex:none; min-width:56px;">${escapeHtml(p.uhrzeit)}</span>
-          <span style="flex:1; min-width:0;">
-            <span style="display:flex; flex-wrap:wrap; gap:5px;">${namenHtml || `<span class="muted">niemand</span>`}</span>
-            ${p.notiz ? `<span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:4px;">📝 ${escapeHtml(p.notiz)}</span>` : ""}
-            <span style="display:block; font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
-              ${p.gesendet_am ? "✓ verschickt" : "noch nicht verschickt"}
-              &nbsp;·&nbsp; ${ids.length && gelesen === ids.length ? `<b style="color:#12a150;">von allen gelesen ✓</b>` : `gelesen von ${gelesen}/${ids.length}`}
-            </span>
+      <div class="glas-lager-eintrag">
+        <div class="le-kopf">
+          <span class="le-zeit">${escapeHtml(p.uhrzeit)}</span>
+          <span class="le-info">
+            ${p.notiz ? `<span class="le-notiz">📝 ${escapeHtml(p.notiz)}</span>` : ""}
+            <span class="le-meta">${p.gesendet_am ? "✓ verschickt" : "noch nicht verschickt"}</span>
           </span>
           <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">✕</button>
         </div>
+        <div class="le-personen">${personen || `<p class="muted" style="margin:8px 0 2px;">niemand</p>`}</div>
       </div>`;
-  }).join("") : "";
+  }).join("") + (vergangenOderHeute ? `<p class="muted" style="margin:2px 2px 0; font-size:12px;">Jemand nicht da gewesen? Einfach den Namen antippen.</p>` : "") : "";
 
   // ---- Leute-Auswahl ----
   const auswahlHtml = offen.length ? offen.map((m) => {
@@ -1414,6 +1426,39 @@ async function glasLagerSenden() {
   } finally {
     glasLagerBusy = false;
     renderGlasAdmin();
+  }
+}
+
+// Nachträglich vermerken (oder den Vermerk zurücknehmen), dass jemand nicht da
+// war. Erst frisch lesen, dann mergen - parallele Änderungen gehen nicht verloren.
+let glasLagerAbwBusy = false;
+async function glasLagerAbwToggle(planId, maId) {
+  if (glasLagerAbwBusy) return;
+  const p = glasLagerPlan.find((x) => x.id === planId);
+  if (!p) return;
+  const nm = glasMaName(maId) || "Mitarbeiter";
+  const istAbw = !!(p.abwesend && p.abwesend[maId]);
+  if (istAbw) {
+    if (!confirm(`${nm} war also doch da?\n\nDer Vermerk „war nicht da" wird entfernt.`)) return;
+  } else {
+    if (!confirm(`${nm} als „war nicht da" vermerken?\n\nDas erscheint dann auch in seinem Kalender und im Einsatzplan-PDF.`)) return;
+  }
+  glasLagerAbwBusy = true;
+  try {
+    const { data, error: e1 } = await sb.from("glas_lager_plan").select("abwesend").eq("id", planId).maybeSingle();
+    if (e1) throw e1;
+    const neu = Object.assign({}, (data && data.abwesend) || {});
+    if (istAbw) delete neu[maId]; else neu[maId] = new Date().toISOString();
+    const { error } = await sb.from("glas_lager_plan").update({ abwesend: neu }).eq("id", planId);
+    if (error) throw error;
+    p.abwesend = neu;
+    renderGlasAdmin();
+    showToast(istAbw ? `${nm}: Vermerk entfernt` : `${nm}: „war nicht da" vermerkt`);
+  } catch (e) {
+    if (/abwesend/i.test((e && e.message) || "")) showToast("Bitte supabase_add_lager.sql erneut in Supabase ausführen");
+    else showToast("Fehler: " + ((e && e.message) || e));
+  } finally {
+    glasLagerAbwBusy = false;
   }
 }
 

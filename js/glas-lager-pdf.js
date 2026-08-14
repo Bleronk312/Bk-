@@ -41,17 +41,21 @@ function glasLagerPdfDaten(monat, werId) {
       const d = new Date(monat.year, monat.month, t);
       const meine = plan.filter((p) => p.datum === iso && glasLagerPdfIds(p).includes(werId));
       const urlaub = glasLagerPdfUrlaub(werId, iso);
-      if (meine.length) einsaetze += meine.length;
-      else if (urlaub) urlaubstage++;
+      // "Nicht da"-Vermerke zaehlen NICHT als Einsatz - genau darum gibt es sie
+      const daGewesen = meine.filter((p) => !(p.abwesend && p.abwesend[werId]));
+      if (daGewesen.length) einsaetze += daGewesen.length;
+      else if (!meine.length && urlaub) urlaubstage++;
       tage.push({
         iso, tag: t,
         label: `${wtNamen[d.getDay()]}  ${String(t).padStart(2, "0")}.${String(monat.month + 1).padStart(2, "0")}.`,
         wochenende: d.getDay() === 0 || d.getDay() === 6,
-        einsaetze: meine.map((p) => ({ uhrzeit: p.uhrzeit || "?", notiz: p.notiz || "" })),
+        einsaetze: meine.map((p) => ({ uhrzeit: p.uhrzeit || "?", notiz: p.notiz || "", abw: !!(p.abwesend && p.abwesend[werId]) })),
         urlaub,
       });
     }
-    return { modus: "einer", tage, einsaetze, urlaubstage, frei: letzter - tage.filter((x) => x.einsaetze.length || x.urlaub).length };
+    const nichtDa = tage.reduce((n, x) => n + x.einsaetze.filter((e) => e.abw).length, 0);
+    return { modus: "einer", tage, einsaetze, urlaubstage, nichtDa,
+      frei: letzter - tage.filter((x) => x.einsaetze.length || x.urlaub).length };
   }
 
   // ---- Alle: nur Tage MIT Einteilungen, gruppiert ----
@@ -67,16 +71,24 @@ function glasLagerPdfDaten(monat, werId) {
       label: `${wtNamen[d.getDay()]}, ${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`,
       zeilen: proTag.get(iso).map((p) => ({
         uhrzeit: p.uhrzeit || "?",
-        namen: glasLagerPdfIds(p).map((id) => (typeof glasMaName === "function" ? glasMaName(id) : id)).filter(Boolean),
+        namen: glasLagerPdfIds(p).map((id) => {
+          const nm = (typeof glasMaName === "function" ? glasMaName(id) : id);
+          if (!nm) return "";
+          return (p.abwesend && p.abwesend[id]) ? "✗ " + nm + " (nicht da)" : nm;
+        }).filter(Boolean),
         notiz: p.notiz || "",
       })),
     };
   });
   // Einsätze je Mitarbeiter (für die Zusammenfassung)
   const zaehler = new Map();
-  plan.forEach((p) => glasLagerPdfIds(p).forEach((id) => zaehler.set(id, (zaehler.get(id) || 0) + 1)));
+  plan.forEach((p) => glasLagerPdfIds(p).forEach((id) => {
+    const z = zaehler.get(id) || { da: 0, nichtDa: 0 };
+    if (p.abwesend && p.abwesend[id]) z.nichtDa++; else z.da++;
+    zaehler.set(id, z);
+  }));
   const proMa = [...zaehler.entries()]
-    .map(([id, anzahl]) => ({ id, name: (typeof glasMaName === "function" ? glasMaName(id) : id) || id, anzahl }))
+    .map(([id, z]) => ({ id, name: (typeof glasMaName === "function" ? glasMaName(id) : id) || id, anzahl: z.da, nichtDa: z.nichtDa }))
     .sort((a, b) => b.anzahl - a.anzahl || a.name.localeCompare(b.name));
   return { modus: "alle", tage, einteilungen: plan.length, einsatztage: tage.length, proMa };
 }
@@ -93,7 +105,7 @@ function glasLagerPdfErstellen(monat, werId) {
   const maName = werId && typeof glasMaName === "function" ? (glasMaName(werId) || "Mitarbeiter") : "";
   const daten = glasLagerPdfDaten(monat, werId);
 
-  const BLAU = [31, 93, 146], TIEF = [18, 48, 76], VIOLETT = [93, 66, 200], GRUEN = [31, 122, 77],
+  const BLAU = [31, 93, 146], TIEF = [18, 48, 76], VIOLETT = [93, 66, 200], GRUEN = [31, 122, 77], ROT = [178, 52, 30],
         GRAU = [112, 120, 130], DUNKEL = [28, 36, 46], ZEBRA = [247, 249, 252],
         WE = [240, 243, 248], LINIE = [225, 231, 238];
   const fc = (c) => doc.setFillColor(c[0], c[1], c[2]);
@@ -165,8 +177,8 @@ function glasLagerPdfErstellen(monat, werId) {
       doc.text(t.label, cDatum, yy + 2);
       if (t.einsaetze.length) {
         t.einsaetze.forEach((e, k) => {
-          doc.setFont(FONT, "bold"); tc(VIOLETT);
-          doc.text(`${e.uhrzeit} Uhr – Lager`, cEinsatz, yy + 2 + k * 15);
+          doc.setFont(FONT, "bold"); tc(e.abw ? ROT : VIOLETT);
+          doc.text(e.abw ? `${e.uhrzeit} Uhr – nicht da` : `${e.uhrzeit} Uhr – Lager`, cEinsatz, yy + 2 + k * 15);
           if (e.notiz) {
             doc.setFont(FONT, "normal"); doc.setFontSize(8.5); tc(GRAU);
             doc.text(doc.splitTextToSize(e.notiz, W - M - cNotiz - 6)[0] || "", cNotiz, yy + 2 + k * 15);
@@ -227,8 +239,8 @@ function glasLagerPdfErstellen(monat, werId) {
         if (i % 2 === 0) { fc(ZEBRA); doc.rect(M, yy - 9, CW, 17, "F"); }
         doc.setFont(FONT, "normal"); doc.setFontSize(9.5); tc(DUNKEL);
         doc.text(z.name, M + 10, yy + 3);
-        doc.setFont(FONT, "bold"); tc(BLAU);
-        doc.text(`${z.anzahl} ${z.anzahl === 1 ? "Einsatz" : "Einsätze"}`, W - M - 10, yy + 3, { align: "right" });
+        doc.setFont(FONT, "bold"); tc(z.nichtDa ? ROT : BLAU);
+        doc.text(`${z.anzahl} ${z.anzahl === 1 ? "Einsatz" : "Einsätze"}${z.nichtDa ? ` · ${z.nichtDa}× nicht da` : ""}`, W - M - 10, yy + 3, { align: "right" });
         yy += 17;
       });
     }

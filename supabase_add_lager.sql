@@ -29,3 +29,7 @@ alter table glas_einstellungen add column if not exists push_lager boolean not n
 -- Lese-Bestaetigung: der Mitarbeiter hakt seine Einteilung in GEKO One ab.
 -- Aufbau: { "<mitarbeiter_id>": "<zeitstempel>" } - das Buero sieht, wer's gelesen hat.
 alter table glas_lager_plan add column if not exists bestaetigt jsonb not null default '{}'::jsonb;
+
+-- Nachtraeglicher Vermerk des Bueros: wer eingeteilt war, aber NICHT da war.
+-- Standard ist leer - nur wenn es wirklich vorkommt, tippt das Buero den Namen an.
+alter table glas_lager_plan add column if not exists abwesend jsonb not null default '{}'::jsonb;

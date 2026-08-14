@@ -186,11 +186,12 @@ async function oneKalLaden() {
       const bisIso = glasIsoFromDate(new Date(m.jahr, m.monat + 1, 0));
       const res = await oneKalMitTimeout(oneLagerAbfrage(vonIso, bisIso));
       (res.data || []).filter((p) => oneLagerIds(p).includes(ich)).forEach((p) => {
+        const abw = !!(p.abwesend && p.abwesend[ich]);
         eintraege.push({
-          art: "lager", ico: "📦", titel: "Lager",
+          art: "lager", ico: abw ? "✗" : "📦", titel: "Lager",
           von: p.datum, bis: p.datum, zeit: p.uhrzeit || "",
           // Die Uhrzeit hängt die Liste selbst an - hier nur, WORUM es geht.
-          sub: p.notiz ? "Im Lager sein · " + p.notiz : "Im Lager sein",
+          sub: abw ? "Nicht da gewesen (Vermerk vom Büro)" : p.notiz ? "Im Lager sein · " + p.notiz : "Im Lager sein",
           ziel: null,
         });
       });
@@ -358,16 +359,18 @@ function oneLagerIds(p) {
 // Kann die Umgebung den jsonb-Filter nicht (ältere PostgREST-Version), wird ohne
 // ihn geholt und hier ausgesiebt - das Ergebnis ist in beiden Fällen dasselbe.
 async function oneLagerAbfrage(vonIso, bisIso) {
-  let spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz, bestaetigt";
+  let spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz, bestaetigt, abwesend";
   const basis = () => sb.from("glas_lager_plan").select(spalten).gte("datum", vonIso).lte("datum", bisIso).order("datum", { ascending: true });
-  let res;
-  try {
-    res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id]));
-  } catch (e) { res = { error: e }; }
-  // bestaetigt-Spalte fehlt evtl. noch (SQL nicht erneut ausgefuehrt) -> ohne sie
+  const mitFilter = async () => { try { return await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id])); } catch (e) { return { error: e }; } };
+  let res = await mitFilter();
+  // Neuere Spalten fehlen evtl. noch (SQL nicht erneut ausgefuehrt) -> stufenweise ohne sie
+  if (res && res.error && /abwesend/i.test(res.error.message || "")) {
+    spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz, bestaetigt";
+    res = await mitFilter();
+  }
   if (res && res.error && /bestaetigt/i.test(res.error.message || "")) {
     spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz";
-    try { res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id])); } catch (e) { res = { error: e }; }
+    res = await mitFilter();
   }
   if (res && res.error) { try { res = await basis(); } catch (e) { res = { data: [], error: e }; } }
   // Fehlt die Tabelle noch, wird das gemerkt statt still verschluckt - sonst sieht
@@ -408,7 +411,7 @@ function oneLagerNeuLaden() {
 function oneLagerNaechster() {
   const heute = oneKalHeute();
   return (oneLagerPlan || [])
-    .filter((p) => p.datum >= heute)
+    .filter((p) => p.datum >= heute && !oneLagerIstAbwesend(p))
     .sort((a, b) => (a.datum === b.datum ? (a.uhrzeit || "").localeCompare(b.uhrzeit || "") : a.datum.localeCompare(b.datum)))[0] || null;
 }
 
@@ -423,6 +426,11 @@ function oneLagerTagText(iso) {
 // Hat DIESER Mitarbeiter die Einteilung schon abgehakt?
 function oneLagerIstBestaetigt(p) {
   return !!(p && p.bestaetigt && oneUser && p.bestaetigt[oneUser.id]);
+}
+
+// Hat das Büro vermerkt, dass DIESER Mitarbeiter nicht da war?
+function oneLagerIstAbwesend(p) {
+  return !!(p && p.abwesend && oneUser && p.abwesend[oneUser.id]);
 }
 
 let oneLagerBestBusy = false;
@@ -493,17 +501,20 @@ function renderOneLager() {
   const kommend = alle.filter((p) => p.datum >= heute);
   const vergangen = alle.filter((p) => p.datum < heute).reverse();
 
-  const zeile = (p, alt) => `
-    <div class="one-lager-zeile${alt ? " alt" : ""}">
+  const zeile = (p, alt) => {
+    const abw = oneLagerIstAbwesend(p);
+    return `
+    <div class="one-lager-zeile${alt ? " alt" : ""}${abw ? " abw" : ""}">
       <span class="lz-zeit">${escapeHtml(p.uhrzeit || "?")}</span>
       <span class="lz-txt">
         <b>${escapeHtml(oneLagerTagText(p.datum))}</b>
-        <span>${p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
+        <span>${abw ? `<b style="color:#b23a1e;">✗ Als „nicht da" vermerkt</b>` : p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
       </span>
-      ${alt ? "" : oneLagerIstBestaetigt(p)
+      ${alt || abw ? "" : oneLagerIstBestaetigt(p)
         ? `<span class="l-check ok" style="flex:none;">✓</span>`
         : `<button class="l-check" style="flex:none;" onclick="oneLagerBestaetigen('${p.id}', event)" title="Gelesen – bin da!">✓</button>`}
     </div>`;
+  };
 
   if (oneLagerFehlt) {
     return `<div class="card" style="margin-top:10px;">
