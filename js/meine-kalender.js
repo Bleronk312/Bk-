@@ -352,18 +352,11 @@ function renderOneUrlaubForm() {
     </div>`;
 }
 
-// Im Kalender stehen nur AKTUELLE Anträge: alles was noch offen ist, plus kürzlich
-// abgelehnte, deren Zeitraum noch nicht vorbei ist. Alte, erledigte Anträge kleben
-// sonst monatelang unter dem Kalender - die ganze Historie gibt es im Menü unter
-// "Meine Urlaubsanträge".
+// Im Kalender stehen nur die Anträge, die noch WARTEN. Entscheidungen (genehmigt/
+// abgelehnt) meldet die Startseite einmalig mit "Verstanden"-Knopf; danach stehen
+// sie in der Historie unter "Meine Urlaubsanträge". So klebt nichts monatelang.
 function renderOneMeineAntraege() {
-  const heute = oneKalHeute();
-  const liste = (oneMeineAntraege || []).filter((u) => {
-    const st = u.status || "genehmigt";
-    if (st === "offen") return true;                       // wartet -> immer zeigen
-    if (st === "abgelehnt") return (u.bis || u.von) >= heute; // nur solange noch aktuell
-    return false;                                           // genehmigt steht als Termin drin
-  });
+  const liste = (oneMeineAntraege || []).filter((u) => (u.status || "genehmigt") === "offen");
   if (!liste.length) return "";
   return `
     <p class="one-label">DEINE ANTRÄGE</p>
@@ -487,10 +480,65 @@ function oneAntragZeile(u) {
 // Eigene Anträge laden (nur die eigenen - Datenschutz wie beim Urlaub selbst)
 async function oneLadeMeineAntraege() {
   try {
-    const { data, error } = await sb.from("glas_urlaub")
-      .select("id, von, bis, notiz, status, antwort").eq("mitarbeiter_id", oneUser.id);
-    oneMeineAntraege = error ? [] : (data || []);
+    // Mit gesehen_am; fehlt die Spalte noch, ohne sie laden.
+    let res = await sb.from("glas_urlaub")
+      .select("id, von, bis, notiz, status, antwort, gesehen_am, beantragt_am").eq("mitarbeiter_id", oneUser.id);
+    if (res.error && /(gesehen_am|beantragt_am)/i.test(res.error.message || "")) {
+      res = await sb.from("glas_urlaub").select("id, von, bis, notiz, status, antwort").eq("mitarbeiter_id", oneUser.id);
+    }
+    oneMeineAntraege = res.error ? [] : (res.data || []);
   } catch (e) { oneMeineAntraege = []; }
+}
+
+/* ---------------- Entscheidung des Büros: Hinweis auf der Startseite ----------------
+   Sobald das Büro entschieden hat (genehmigt ODER abgelehnt), steht das Ergebnis
+   auf der GEKO-One-Startseite - bis der Mitarbeiter es bestätigt. Danach ist es
+   nur noch in seiner Antrags-Historie zu finden. */
+
+// Entschiedene, noch nicht bestätigte Anträge. Wichtig: NUR solche, die auch
+// wirklich beantragt wurden (beantragt_am gesetzt) - vom Büro direkt eingetragener
+// Urlaub ist keine "Entscheidung" und braucht keine Bestätigung.
+function oneNeueEntscheidungen() {
+  return (oneMeineAntraege || []).filter((u) => {
+    const st = u.status || "genehmigt";
+    if (st !== "genehmigt" && st !== "abgelehnt") return false;
+    if (u.gesehen_am) return false;
+    return !!u.beantragt_am;
+  });
+}
+
+function renderOneEntscheidungen() {
+  const liste = oneNeueEntscheidungen();
+  if (!liste.length) return "";
+  return liste.map((u) => {
+    const ok = (u.status || "") === "genehmigt";
+    const zeit = u.bis && u.bis !== u.von ? `${formatGlasDate(u.von)} – ${formatGlasDate(u.bis)}` : formatGlasDate(u.von);
+    return `
+      <div class="one-info ${ok ? "gut" : "schlecht"}">
+        <span class="oi-ic">${ok ? "🎉" : "😕"}</span>
+        <span class="oi-txt">
+          <b>${ok ? "Dein Urlaub wurde genehmigt" : "Dein Urlaubsantrag wurde abgelehnt"}</b>
+          <span>${escapeHtml(zeit)}${u.notiz ? " · " + escapeHtml(u.notiz) : ""}</span>
+          ${u.antwort ? `<span>Büro: ${escapeHtml(u.antwort)}</span>` : ""}
+        </span>
+        <button class="oi-btn" onclick="oneEntscheidungBestaetigen('${u.id}')">Verstanden</button>
+      </div>`;
+  }).join("");
+}
+
+async function oneEntscheidungBestaetigen(id) {
+  // Sofort ausblenden - das Speichern läuft im Hintergrund. Klappt es nicht (kein
+  // Netz), steht der Hinweis beim nächsten Öffnen wieder da; nichts geht verloren.
+  const u = (oneMeineAntraege || []).find((x) => x.id === id);
+  if (u) u.gesehen_am = new Date().toISOString();
+  renderOne();
+  try {
+    const { error } = await sb.from("glas_urlaub")
+      .update({ gesehen_am: new Date().toISOString() }).eq("id", id).eq("mitarbeiter_id", oneUser.id);
+    if (error && /gesehen_am/i.test(error.message || "")) {
+      showToast("Bitte supabase_add_urlaub_antrag.sql ausführen – der Hinweis kommt sonst wieder.");
+    }
+  } catch (e) {}
 }
 
 function oneKalTagWaehlen(iso) {

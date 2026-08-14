@@ -227,6 +227,12 @@ function renderOne() {
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
   oneSetGreeting("Meine Übersicht");
+  // Eigene Urlaubsanträge einmalig holen - entschiedene, noch nicht bestätigte
+  // erscheinen oben als Hinweis mit "Verstanden"-Knopf. Hier (statt in oneInit),
+  // damit es auch nach einer frischen Anmeldung greift.
+  if (typeof oneLadeMeineAntraege === "function" && typeof oneMeineAntraege !== "undefined" && oneMeineAntraege === null) {
+    oneLadeMeineAntraege().then(() => { if (oneScreen === "home") renderOne(); });
+  }
   // Freigeschaltete Bausteine (zugang_glas ist historisch "an, außer ausdrücklich aus")
   const kacheln = [];
   let d = 0.1;
@@ -239,6 +245,7 @@ function renderOne() {
       <p class="w-titel">Moin, ${escapeHtml(oneVorname())} <span class="glas-welcome-heart">👋</span></p>
       <p class="w-sub">${oneBegruessung()}</p>
     </div>
+    ${typeof renderOneEntscheidungen === "function" ? renderOneEntscheidungen() : ""}
     <p class="one-label">DEINE BEREICHE</p>
     ${kacheln.length
       ? `<div class="one-raster">${kacheln.join("")}</div>`
@@ -319,7 +326,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v141</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v142</p>`;
 }
 
 /* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */

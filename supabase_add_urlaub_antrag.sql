@@ -21,3 +21,8 @@ create index if not exists idx_glas_urlaub_status on glas_urlaub(status);
 -- Benachrichtigung ans Büro, sobald ein Mitarbeiter Urlaub beantragt.
 -- Standard: AN (default true) - sonst würde man die ersten Anträge verpassen.
 alter table glas_einstellungen add column if not exists push_urlaub boolean not null default true;
+
+-- Hat der Mitarbeiter die Entscheidung des Büros zur Kenntnis genommen?
+-- Solange leer, steht der Hinweis (genehmigt/abgelehnt) auf seiner GEKO-One-Startseite.
+-- Nach dem Bestätigen verschwindet er dort und steht nur noch in seiner Antrags-Historie.
+alter table glas_urlaub add column if not exists gesehen_am timestamptz;
