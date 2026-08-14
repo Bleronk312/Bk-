@@ -230,6 +230,7 @@ function renderOne() {
 
   if (oneScreen === "kalender") { oneSetGreeting("Mein Kalender"); view.innerHTML = renderOneKalender(); return; }
   if (oneScreen === "urlaub") { oneSetGreeting("Meine Urlaubsanträge"); view.innerHTML = renderOneUrlaubHistorie(); return; }
+  if (oneScreen === "lager") { oneSetGreeting("Lager-Plan"); view.innerHTML = renderOneLager(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
@@ -241,15 +242,22 @@ function renderOne() {
     oneLadeMeineAntraege().then(() => { if (oneScreen === "home") renderOne(); });
   }
   // Lager-Plan des Büros: der nächste eigene Termin steht ganz oben.
-  if (oneUser.zugang_lager === true && typeof oneLagerLaden === "function" && typeof oneLagerPlan !== "undefined" && oneLagerPlan === null) {
-    oneLagerLaden().catch(() => { oneLagerPlan = []; }).then(() => { if (oneScreen === "home") renderOne(); });
-  }
+  if (oneUser.zugang_lager === true && typeof oneLagerStarteLaden === "function") oneLagerStarteLaden();
   // Freigeschaltete Bausteine (zugang_glas ist historisch "an, außer ausdrücklich aus")
   const kacheln = [];
   let d = 0.1;
   if (oneUser.zugang_glas !== false) kacheln.push(oneKachel("glas-mitarbeiter.html", "#1f5d92", "🧽", "Glas-Touren", "Deine Touren & Unterschriften", (d += 0.07)));
   if (oneUser.zugang_graffiti === true) kacheln.push(oneKachel("mitarbeiter.html", "#a52d82", "🎨", "Graffiti", "Abnahmescheine & Fotos", (d += 0.07)));
   if (oneUser.zugang_checkin === true) kacheln.push(oneKachel("checkins-ma.html", "#cf6a12", "📍", "Check-ins", "Rundgänge & Arbeitszeit", (d += 0.07)));
+  // Lager ist keine eigene App, sondern eine Seite hier drin - deshalb ein Knopf
+  // statt eines Links. Die Kachel steht da, sobald das Büro freischaltet, auch
+  // wenn noch gar nichts eingeteilt ist. Sonst sähe Freischalten nach nichts aus.
+  if (oneUser.zugang_lager === true) {
+    kacheln.push(`<button class="one-kachel" style="animation-delay:${(d += 0.07)}s;" onclick="oneScreen='lager'; renderOne();">
+      <span class="k-ico" style="background:#6b4ee6;">📦</span>
+      <b>Lager</b><span>${escapeHtml(typeof oneLagerKachelSub === "function" ? oneLagerKachelSub() : "Wann du im Lager sein sollst")}</span>
+    </button>`);
+  }
 
   view.innerHTML = `
     <div class="one-welcome">

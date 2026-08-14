@@ -1035,6 +1035,7 @@ let glasLagerUhrzeit = "06:00";    // Uhrzeit der Gruppe, die gerade zusammenges
 let glasLagerAuswahl = new Set();  // markierte Mitarbeiter
 let glasLagerNotiz = "";
 let glasLagerBusy = false;
+let glasLagerFehlt = false;        // Tabelle glas_lager_plan fehlt noch (SQL nicht ausgeführt)
 
 function glasOpenLager() {
   glasLagerOffen = true;
@@ -1053,7 +1054,15 @@ function glasLagerDatumJetzt() {
 
 async function loadGlasLagerPlan() {
   const { data, error } = await sb.from("glas_lager_plan").select("*").order("uhrzeit", { ascending: true });
-  if (!error) glasLagerPlan = data || [];
+  if (!error) { glasLagerPlan = data || []; glasLagerFehlt = false; return; }
+  if (/glas_lager_plan/i.test(error.message || "")) glasLagerFehlt = true;
+}
+
+// Fehlt die Spalte zugang_lager noch, kommt sie bei KEINEM Mitarbeiter mit. Genau
+// daran lässt sich "SQL noch nicht ausgeführt" von "noch niemand freigeschaltet"
+// unterscheiden - sonst sucht man ewig, warum das Freischalten nichts bewirkt.
+function glasLagerSpalteFehlt() {
+  return glasMitarbeiter.length > 0 && glasMitarbeiter.every((m) => m.zugang_lager === undefined);
 }
 
 // Nur Mitarbeiter, die den Lager-Baustein freigeschaltet haben - genau die sehen
@@ -1133,10 +1142,22 @@ function renderLagerPlan() {
       </button>`;
   }).join("") : `<p class="muted" style="margin:6px 2px;">Alle freigeschalteten Mitarbeiter sind für diesen Tag schon eingeteilt.</p>`;
 
+  // Ohne die SQL-Datei läuft nichts: Freischalten wird nicht gespeichert und der
+  // Mitarbeiter sieht nie etwas. Das gehört deutlich sichtbar hierher, nicht in
+  // einen Hinweis, der nach drei Sekunden weg ist.
+  const fehlt = glasLagerFehlt || glasLagerSpalteFehlt();
+  const fehltHtml = fehlt ? `
+    <div class="card" style="margin:0 0 14px; border-left:4px solid var(--danger);">
+      <p style="margin:0; font-weight:700; font-size:14px;">⚠️ Der Lager-Plan ist in der Datenbank noch nicht angelegt.</p>
+      <p class="muted" style="margin:6px 0 0; font-size:12.5px;">Solange das fehlt, wird das Freischalten <b>nicht gespeichert</b> und die Mitarbeiter sehen nichts.
+      Bitte <code>supabase_add_lager.sql</code> in Supabase ausführen (SQL Editor &rarr; einfügen &rarr; Run) und die Seite neu laden.</p>
+    </div>` : "";
+
   return `
     <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasLagerSchliessen()">&larr; Zurück</button>
     <h2 style="margin:0 0 4px;">📦 Lager-Plan</h2>
     <p class="muted" style="margin:0 0 14px;">Uhrzeit wählen, Leute antippen, senden. Für die nächste Gruppe einfach nochmal.</p>
+    ${fehltHtml}
 
     <div class="field">
       <label class="muted">Tag</label>
@@ -1160,8 +1181,9 @@ function renderLagerPlan() {
       </div>
       <label class="muted" style="display:block; margin-bottom:6px;">Wer soll um diese Zeit da sein? (${glasLagerAuswahl.size} gewählt)</label>
       ${leute.length ? `<div class="glas-lager-chips">${auswahlHtml}</div>` : `
-        <p class="muted" style="margin:6px 2px;">Noch niemand für den Lager-Plan freigeschaltet.
-        Das stellst du beim Mitarbeiter unter „📦 Lager-Plan“ ein.</p>`}
+        <p class="muted" style="margin:6px 2px;">${fehlt
+          ? "Erst die SQL-Datei ausführen – danach lässt sich hier freischalten."
+          : "Noch niemand für den Lager-Plan freigeschaltet. Das stellst du beim Mitarbeiter (Kalender → Urlaub → Mitarbeiter bearbeiten) unter „📦 Lager-Plan“ ein."}</p>`}
       <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px; padding:13px;"
         onclick="glasLagerSenden()" ${glasLagerBusy || !glasLagerAuswahl.size ? "disabled" : ""}>
         ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : `📲 An ${glasLagerAuswahl.size || ""} ${glasLagerAuswahl.size === 1 ? "Person" : "Personen"} senden`}

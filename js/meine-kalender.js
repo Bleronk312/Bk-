@@ -345,7 +345,8 @@ let oneKalTagGewaehlt = null;
    Hier steht nur, was DIESEN Mitarbeiter betrifft - direkt auf der Startseite,
    damit man abends nicht erst suchen muss, wann man morgen da sein soll. */
 
-let oneLagerPlan = null; // eigene Einträge ab heute (null = noch nicht geladen)
+let oneLagerPlan = null;      // eigene Einträge (null = noch nicht geladen)
+let oneLagerFehlt = false;    // Tabelle/Spalte fehlt noch (SQL nicht ausgeführt)
 
 function oneLagerIds(p) {
   try { return Array.isArray(p.mitarbeiter_ids) ? p.mitarbeiter_ids : JSON.parse(p.mitarbeiter_ids || "[]"); }
@@ -363,15 +364,29 @@ async function oneLagerAbfrage(vonIso, bisIso) {
     res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id]));
   } catch (e) { res = { error: e }; }
   if (res && res.error) { try { res = await basis(); } catch (e) { res = { data: [], error: e }; } }
+  // Fehlt die Tabelle noch, wird das gemerkt statt still verschluckt - sonst sieht
+  // es aus, als wäre einfach nichts eingeteilt, und keiner weiß warum.
+  if (res && res.error && /glas_lager_plan/i.test(res.error.message || "")) oneLagerFehlt = true;
   return res && !res.error ? res : { data: [] };
 }
 
 async function oneLagerLaden() {
-  if (!oneUser || oneUser.zugang_lager !== true) { oneLagerPlan = []; return; }
+  if (!oneUser) { oneLagerPlan = []; return; }
   const heute = oneKalHeute();
-  // Ein Jahr nach vorne reicht mehr als aus - der Lager-Plan wird tageweise gemacht.
-  const res = await oneLagerAbfrage(heute, glasAddDaysIso(heute, 365));
+  // Rückblick von 60 Tagen (für den Verlauf) und ein Jahr nach vorne - der
+  // Lager-Plan wird tageweise gemacht, mehr braucht es nicht.
+  const res = await oneLagerAbfrage(glasAddDaysIso(heute, -60), glasAddDaysIso(heute, 365));
   oneLagerPlan = (res.data || []).filter((p) => oneLagerIds(p).includes(oneUser.id));
+}
+
+// Lädt einmalig nach und zeichnet danach neu. Von der Startseite UND von der
+// Lager-Seite aus aufrufbar, ohne dass doppelt geladen wird.
+function oneLagerStarteLaden() {
+  if (oneLagerPlan !== null) return;
+  oneLagerPlan = [];  // sperrt weitere Läufe
+  oneLagerLaden()
+    .catch(() => {})
+    .then(() => { if (oneScreen === "home" || oneScreen === "lager") renderOne(); });
 }
 
 // Der nächste Termin ab heute - genau der gehört auf die Startseite.
@@ -395,13 +410,57 @@ function renderOneLagerHinweis() {
   const p = oneLagerNaechster();
   if (!p) return "";
   return `
-    <div class="one-lager-karte">
+    <button class="one-lager-karte" onclick="oneScreen='lager'; renderOne();">
       <span class="l-ico">📦</span>
       <span class="l-text">
         <b>${escapeHtml(oneLagerTagText(p.datum))} um ${escapeHtml(p.uhrzeit || "?")} Uhr im Lager</b>
         <span>${p.notiz ? escapeHtml(p.notiz) : "Das Büro hat dich eingeteilt."}</span>
       </span>
+      <span class="m-pfeil">›</span>
+    </button>`;
+}
+
+// Untertitel der Kachel: sagt schon von außen, ob überhaupt etwas ansteht.
+function oneLagerKachelSub() {
+  if (oneLagerPlan === null) return "Wann du im Lager sein sollst";
+  const p = oneLagerNaechster();
+  return p ? `${oneLagerTagText(p.datum)} um ${p.uhrzeit || "?"} Uhr` : "Nichts eingeteilt";
+}
+
+// Eigene Seite: was ansteht und was schon war. Beides nur für einen selbst.
+function renderOneLager() {
+  oneLagerStarteLaden();
+  const heute = oneKalHeute();
+  const alle = (oneLagerPlan || []).slice()
+    .sort((a, b) => (a.datum === b.datum ? (a.uhrzeit || "").localeCompare(b.uhrzeit || "") : a.datum.localeCompare(b.datum)));
+  const kommend = alle.filter((p) => p.datum >= heute);
+  const vergangen = alle.filter((p) => p.datum < heute).reverse();
+
+  const zeile = (p, alt) => `
+    <div class="one-lager-zeile${alt ? " alt" : ""}">
+      <span class="lz-zeit">${escapeHtml(p.uhrzeit || "?")}</span>
+      <span class="lz-txt">
+        <b>${escapeHtml(oneLagerTagText(p.datum))}</b>
+        <span>${p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
+      </span>
     </div>`;
+
+  if (oneLagerFehlt) {
+    return `<div class="card" style="margin-top:10px;">
+      <p style="margin:0; font-size:14px;">📦 Der Lager-Plan ist noch nicht eingerichtet.</p>
+      <p class="muted" style="margin:6px 0 0; font-size:12.5px;">Bitte im Büro Bescheid geben.</p>
+    </div>`;
+  }
+
+  return `
+    <p class="one-label" style="margin-top:6px;">DEMNÄCHST</p>
+    ${kommend.length
+      ? kommend.map((p) => zeile(p, false)).join("")
+      : `<div class="card" style="margin-top:10px;">
+          <p style="margin:0; font-size:14px;">Für dich ist gerade nichts eingeteilt.</p>
+          <p class="muted" style="margin:6px 0 0; font-size:12.5px;">Sobald das Büro dich einteilt, steht es hier – und du bekommst eine Benachrichtigung aufs Handy.</p>
+        </div>`}
+    ${vergangen.length ? `<p class="one-label">WAR SCHON</p>${vergangen.map((p) => zeile(p, true)).join("")}` : ""}`;
 }
 
 /* ---------------- Urlaub beantragen ---------------- */
