@@ -186,6 +186,16 @@ function oneSetGreeting(txt) {
 
 /* ---------------- Übersicht ---------------- */
 
+// Tageszeit-passender Untertitel - kleine Aufmerksamkeit, die die Startseite
+// lebendig macht, ohne zusätzlichen Platz zu kosten.
+function oneBegruessung() {
+  const h = new Date().getHours();
+  if (h < 10) return "Guten Morgen – auf einen guten Tag!";
+  if (h < 14) return "Schön, dass du da bist!";
+  if (h < 18) return "Guten Nachmittag!";
+  return "Feierabend in Sicht 🌙";
+}
+
 // Vorname für die Begrüßung ("Adnan B." -> "Adnan")
 function oneVorname() {
   const n = (oneUser && (oneUser.name || oneUser.username)) || "";
@@ -224,10 +234,9 @@ function renderOne() {
   if (oneUser.zugang_checkin === true) kacheln.push(oneKachel("checkins-ma.html", "#cf6a12", "📍", "Check-ins", "Rundgänge & Arbeitszeit", (d += 0.07)));
 
   view.innerHTML = `
-    <div class="glas-welcome" style="padding-top:6px;">
-      <img class="glas-welcome-logo" src="${typeof GEKO_LOGO_TRANSPARENT_B64 !== "undefined" ? GEKO_LOGO_TRANSPARENT_B64 : ""}" alt="GEKO" />
-      <p class="glas-welcome-title">Moin, ${escapeHtml(oneVorname())} <span class="glas-welcome-heart">👋</span></p>
-      <p class="glas-welcome-sub">Schön, dass du da bist!</p>
+    <div class="one-welcome">
+      <p class="w-titel">Moin, ${escapeHtml(oneVorname())} <span class="glas-welcome-heart">👋</span></p>
+      <p class="w-sub">${oneBegruessung()}</p>
     </div>
     <p class="one-label">DEINE BEREICHE</p>
     ${kacheln.length
@@ -273,6 +282,18 @@ function renderOneMenu() {
     </div>
 
     <div class="one-menu-row" style="cursor:default; align-items:flex-start;">
+      <span class="m-ico">🌐</span>
+      <span style="flex:1;">
+        <b>Sprache / Gjuha</b>
+        <span style="margin-bottom:9px;">Gilt für alle deine GEKO-Apps auf diesem Gerät.</span>
+        <div class="one-seg">
+          <button class="${oneGetLang() === "de" ? "on" : ""}" onclick="oneSetLang('de')">🇩🇪 Deutsch</button>
+          <button class="${oneGetLang() === "sq" ? "on" : ""}" onclick="oneSetLang('sq')">🇦🇱 Shqip</button>
+        </div>
+      </span>
+    </div>
+
+    <div class="one-menu-row" style="cursor:default; align-items:flex-start;">
       <span class="m-ico">🌙</span>
       <span style="flex:1;">
         <b>Darstellung</b>
@@ -291,7 +312,20 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v135</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v136</p>`;
+}
+
+/* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */
+
+// Die Apps benutzen historisch zwei verschiedene Speicherschlüssel: die Graffiti-App
+// "geko_ma_lang" (ma-i18n.js), die Check-ins-App "geko_ci_lang". Hier werden BEIDE
+// gesetzt, damit die im Menü gewählte Sprache wirklich überall gilt.
+const ONE_LANG_KEYS = ["geko_ma_lang", "geko_ci_lang"];
+function oneGetLang() { try { return localStorage.getItem(ONE_LANG_KEYS[0]) || "de"; } catch (e) { return "de"; } }
+function oneSetLang(l) {
+  try { ONE_LANG_KEYS.forEach((k) => localStorage.setItem(k, l)); } catch (e) {}
+  renderOne();
+  showToast(l === "sq" ? "Gjuha: Shqip ✓" : "Sprache: Deutsch ✓");
 }
 
 /* ---------------- Darstellung (Hell / Dunkel / Auto) ---------------- */

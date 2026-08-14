@@ -167,33 +167,16 @@
     applying = false;
   }
 
-  function injectSelector() {
-    const row = document.querySelector(".app-header .brand-row");
-    if (!row || document.getElementById("maLangBtn")) return;
-    const btn = document.createElement("button");
-    btn.id = "maLangBtn";
-    // Gleicher Knopf-Stil wie Start/Zurück (geko-navbtn), damit die Kopfzeile
-    // einheitlich aussieht. Kompakt (nur Flagge + Kürzel), damit alles nebeneinander
-    // passt; die Leiste bricht bei sehr schmalen Geräten sauber um.
-    btn.className = "geko-navbtn";
-    btn.type = "button";
-    btn.textContent = lang() === "sq" ? "🇦🇱" : "🇩🇪";
-    btn.title = lang() === "sq" ? "Gjuha: Shqip (ndrysho)" : "Sprache: Deutsch (wechseln)";
-    btn.setAttribute("aria-label", "Sprache wechseln / Ndrysho gjuhën");
-    btn.addEventListener("click", () => {
-      const next = lang() === "sq" ? "de" : "sq";
-      try { localStorage.setItem(LS, next); } catch (e) {}
-      location.reload();
-    });
-    // Vor den ersten Nav-Knopf (Start) setzen, damit die Reihenfolge
-    // [Sprache][Start][Zurück] bleibt und die drei als Gruppe rechts stehen.
-    const ersterNav = row.querySelector(".geko-navbtn.right");
-    if (ersterNav) { ersterNav.classList.remove("right"); btn.classList.add("right"); row.insertBefore(btn, ersterNav); }
-    else row.appendChild(btn);
+  // Die Sprache wird NICHT mehr in der Kopfzeile umgeschaltet - das machte die Leiste
+  // uneinheitlich (jede App sah anders aus). Sie sitzt jetzt zentral im GEKO-One-Menü
+  // unter "Sprache" und gilt über denselben Speicherschlüssel für alle MA-Apps.
+  function entferneAltenSelector() {
+    const alt = document.getElementById("maLangBtn");
+    if (alt) alt.remove();
   }
 
   function setup() {
-    injectSelector();
+    entferneAltenSelector();
     apply();
     try {
       const obs = new MutationObserver(() => { if (!applying) apply(); });

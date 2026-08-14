@@ -61,11 +61,16 @@ async function oneKalLaden() {
     aufgaben.push((async () => {
       const { data } = await oneKalMitTimeout(sb.from("glas_touren").select("id, name, datum, datum_bis, archiviert_am, ma_versteckt").order("datum", { ascending: true }));
       (data || []).forEach((t) => {
-        if (!t.datum || t.archiviert_am || t.ma_versteckt) return;
+        // Vom Admin ausgeblendete Touren gehören nie in die MA-Ansicht. Archivierte
+        // bleiben als Verlauf stehen, lassen sich aber nicht mehr öffnen (siehe unten).
+        if (!t.datum || t.ma_versteckt) return;
         eintraege.push({
           art: "glas", ico: "🧽", titel: t.name || "Tour",
           von: t.datum, bis: t.datum_bis || t.datum,
-          sub: "Glas-Tour", ziel: "glas-mitarbeiter.html",
+          sub: t.archiviert_am ? "Glas-Tour · abgeschlossen" : "Glas-Tour",
+          // Direkt IN die Tour springen (nicht nur in die App)
+          ziel: t.archiviert_am ? null : `glas-mitarbeiter.html?tour=${encodeURIComponent(t.id)}`,
+          abgelaufen: !!t.archiviert_am,
         });
       });
     })());
@@ -189,7 +194,7 @@ function renderOneKalender() {
     const eintraege = oneKalAmTag(iso);
     const arten = [...new Set(eintraege.map((e) => e.art))];
     zellen += `
-      <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}" onclick="oneKalTagWaehlen('${iso}')">
+      <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}${iso === oneKalTagGewaehlt ? " gewaehlt" : ""}" onclick="oneKalTagWaehlen('${iso}')">
         <span class="okal-num">${tag}</span>
         <span class="okal-punkte">${arten.slice(0, 4).map((a) => `<i style="background:${ONE_KAL_FARBEN[a]}"></i>`).join("")}</span>
       </button>`;
@@ -251,13 +256,12 @@ function oneKalTageText(tage) {
 
 function oneKalListe(eintraege, zusammengefasst) {
   if (!eintraege.length) return `<p class="muted" style="margin:10px 2px;">Keine Termine.</p>`;
-  const heute = oneKalHeute();
   return eintraege.map((e) => {
-    // Vergangenes ist nur noch Verlauf - nicht mehr anklickbar (die Tour/der Schein
-    // kann längst archiviert sein; ein Klick würde ins Leere führen). Wiederkehrende
-    // Rundgänge bleiben immer anklickbar (die gibt es weiter).
-    const vergangen = (e.bis || e.von) < heute && e.art !== "checkin";
-    const ziel = vergangen ? null : e.ziel;
+    // Nur ARCHIVIERTE Touren lassen sich nicht mehr öffnen - dann kommt ein kurzer
+    // Hinweis statt einer Navigation ins Leere. Alles andere (auch vergangene, aber
+    // noch nicht archivierte Touren) bleibt normal anklickbar und springt direkt in
+    // die jeweilige Tour bzw. den Schein.
+    const ziel = e.abgelaufen ? null : e.ziel;
     const mehrtaegig = e.bis && e.bis !== e.von;
     // Zusammengefasste Rundgänge zeigen den Rhythmus statt eines einzelnen Datums
     const datum = (zusammengefasst && e.art === "checkin" && e.tage)
@@ -270,9 +274,15 @@ function oneKalListe(eintraege, zusammengefasst) {
         <span>${escapeHtml(e.sub)}${e.zeit ? " · " + escapeHtml(e.zeit) + " Uhr" : ""}</span>
         <span style="font-weight:600; color:var(--text-secondary);">${datum}</span>
       </span>
-      ${ziel ? `<span class="m-pfeil">›</span>` : ""}`;
-    return ziel
-      ? `<a class="okal-eintrag" href="${ziel}">${inner}</a>`
-      : `<div class="okal-eintrag" style="cursor:default;${vergangen ? "opacity:.7;" : ""}">${inner}</div>`;
+      ${ziel ? `<span class="m-pfeil">›</span>` : e.abgelaufen ? `<span class="okal-schloss">🔒</span>` : ""}`;
+    if (ziel) return `<a class="okal-eintrag" href="${ziel}">${inner}</a>`;
+    if (e.abgelaufen) return `<button class="okal-eintrag" style="opacity:.72;" onclick="oneKalAbgelaufen()">${inner}</button>`;
+    return `<div class="okal-eintrag" style="cursor:default;">${inner}</div>`;
   }).join("");
+}
+
+// Kurzer Hinweis beim Antippen einer archivierten Tour - statt einer Navigation,
+// die nur in einer leeren Liste enden würde.
+function oneKalAbgelaufen() {
+  showToast("🔒 Diese Tour ist abgeschlossen und kann nicht mehr geöffnet werden.");
 }

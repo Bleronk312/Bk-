@@ -54,7 +54,26 @@ async function glasMaInit() {
   renderGlasMa(); // Startseite sofort zeigen, Touren laden im Hintergrund
   await glasFlushSignQueue(); // eventuell offline gesammelte Unterschriften zuerst nachsenden
   await loadGlasTouren();
+  glasOeffneTourAusLink(); // aus GEKO One direkt in eine bestimmte Tour springen
   renderGlasMa();
+}
+
+// Wird die App mit "?tour=ID" geöffnet (z.B. per Klick im GEKO-One-Kalender), springt
+// sie direkt in DIESE Tour statt nur in die Tourenliste. Gibt es die Tour nicht (mehr),
+// bleibt es bei der Liste plus kurzem Hinweis - nie eine leere Seite.
+function glasOeffneTourAusLink() {
+  let id = null;
+  try { id = new URLSearchParams(location.search).get("tour"); } catch (e) {}
+  if (!id) return;
+  // Parameter aus der Adresszeile entfernen, damit ein späteres Neuladen bzw. der
+  // Zurück-Knopf nicht immer wieder in dieselbe Tour zurückspringt.
+  try { history.replaceState(null, "", location.pathname); } catch (e) {}
+  if (glasTouren.find((t) => t.id === id)) {
+    glasOpenTourId = id;
+    glasMaScreen = "touren";
+  } else {
+    showToast("Diese Tour ist nicht mehr verfügbar.");
+  }
 }
 
 // Prüft die gespeicherte Anmeldung. Rückgabe true = angemeldet, weiter mit der App.

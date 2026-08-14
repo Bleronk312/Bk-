@@ -70,7 +70,6 @@ html.dark .ci-head{background:linear-gradient(160deg,#2f7ab5,#1f5d92)}
 /* Sobald die obere Leiste (Hub bzw. Start/Zurueck) da ist, braucht der Markenname
    die alte 150px-Reservierung nicht mehr - sonst wird er unnoetig schmal und bricht um. */
 .ci-head-top .brand{padding-right:0;white-space:nowrap;flex:none}
-.ci-head-top .ci-head-actions{margin-left:auto}
 .ci-head-actions{display:flex;gap:7px;flex:none}
 .ci-pill{display:inline-flex;align-items:center;gap:0;background:rgba(255,255,255,.15);
   border:1px solid rgba(255,255,255,.28);color:#fff;text-decoration:none;font-family:var(--font);
@@ -441,12 +440,20 @@ select.f-in{appearance:auto}
 
 /* Einheitliche Kopf-Navigation (GEKO-weit gleich) - identisch zu style.css, damit
    der Hub-/Start-/Zurück-Knopf auf jeder Seite exakt gleich aussieht. */
-.geko-navbtn{ display:inline-flex; align-items:center; gap:5px; padding:8px 13px;
-  border-radius:999px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.32);
-  color:#fff; font-size:13.5px; font-weight:700; font-family:inherit; text-decoration:none;
+.geko-navbtn{ display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:38px; padding:0 14px; border-radius:12px;
+  background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.22);
+  color:#fff; font-size:14px; font-weight:600; font-family:inherit; text-decoration:none;
   cursor:pointer; line-height:1; white-space:nowrap; -webkit-tap-highlight-color:transparent;
-  transition:background .15s ease, transform .1s ease; }
-.geko-navbtn:hover{ background:rgba(255,255,255,.26); }
-.geko-navbtn:active{ transform:scale(.95); }
-.geko-navrow{ display:flex; align-items:center; gap:8px; }
+  backdrop-filter:saturate(140%) blur(2px);
+  transition:background .15s ease, transform .12s ease; }
+.geko-navbtn:hover{ background:rgba(255,255,255,.28); }
+.geko-navbtn:active{ transform:scale(.94); background:rgba(255,255,255,.34); }
+.geko-navbtn.icon{ width:38px; padding:0; font-size:17px; }
+.geko-navrow{ display:flex; align-items:center; gap:8px; min-height:38px; }
 .geko-navrow .geko-navbtn.right{ margin-left:auto; }
+/* Check-ins: gleiche Kopfzeilen-Geometrie wie in den anderen Apps, damit die
+   Knöpfe nicht verschoben wirken. */
+.ci-head-top{ min-height:38px; align-items:center; }
+.ci-head-top .ci-head-actions{ display:flex; align-items:center; gap:8px; flex:none; }
+.ci-head-top .brand{ font-size:13.5px; opacity:.92; }

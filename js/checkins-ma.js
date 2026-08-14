@@ -143,11 +143,11 @@ function ciSetLang(l) {
   if (ciUser) ciRender(); else ciRenderLogin();
 }
 
-function ciLangToggleHtml() {
-  return `<span class="ci-lang">
-    <button class="${ciLang === "de" ? "on" : ""}" onclick="event.stopPropagation();ciSetLang('de')">🇩🇪 DE</button>
-    <button class="${ciLang === "sq" ? "on" : ""}" onclick="event.stopPropagation();ciSetLang('sq')">🇦🇱 SQ</button></span>`;
-}
+// Der Sprach-Umschalter sitzt nicht mehr in der Kopfzeile jeder einzelnen App,
+// sondern zentral im GEKO-One-Menü ("Sprache / Gjuha"). Das hielt die Kopfzeilen
+// uneinheitlich und war doppelt. Die Funktion bleibt leer, damit alte Aufrufe
+// nicht ins Leere laufen.
+function ciLangToggleHtml() { return ""; }
 
 function ciSetHeaderDate() {
   const el = document.getElementById("ci_date");
