@@ -118,6 +118,7 @@ async function ciInit() {
   if (!ok) return; // Login-Screen läuft
   // Benachrichtigungen still erneuern (falls schon erlaubt) – für die Auscheck-Erinnerungen
   if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("checkin_ma", ciUser && ciUser.id);
+  ciTagAusLink(); // aus GEKO One direkt einen bestimmten Tag öffnen
   ciRender();
   await ciFlushQueue();
   await ciFlushShifts();
@@ -559,8 +560,86 @@ async function ciOnPosition(rundgangId, punkt, pos) {
 }
 function ciQueue(item) { const q = ciLoadQueue(); item.pending = true; q.push(item); ciSaveQueue(q); }
 
+/* ---------------- Tages-Ansicht (aus dem GEKO-One-Kalender) ----------------
+   Wird die Seite mit "?datum=YYYY-MM-DD" geöffnet, steht im Verlauf ganz oben
+   genau dieser Tag: welche Punkte abgehakt wurden (mit Uhrzeit), welche gefehlt
+   haben, und die Arbeitszeit an dem Tag. */
+
+let ciTagDetail = null; // ISO-Datum oder null
+
+function ciTagAusLink() {
+  try {
+    const d = new URLSearchParams(location.search).get("datum");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      ciTagDetail = d;
+      ciSeg = "verlauf";
+      // Parameter entfernen, damit ein Neuladen nicht ewig auf dem Tag klebt
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+function ciTagDetailSchliessen() { ciTagDetail = null; renderCheckinsMa(); }
+
+// Dauer zweier Zeitstempel in "H:MM"
+function ciDauerText(vonTs, bisTs) {
+  if (!vonTs || !bisTs) return "";
+  const min = Math.max(0, Math.round((new Date(bisTs) - new Date(vonTs)) / 60000));
+  return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")} h`;
+}
+
+function ciRenderTagDetail(iso) {
+  const logs = (ciData.logs || []).filter((l) => l.datum === iso);
+  const rgs = (ciData.rundgaenge || []).filter((r) => ciRundgangLaeuftAn(r, iso));
+  const d = new Date(iso + "T00:00:00");
+  const titel = `${t("tageLang")[ciIsoDay(d) - 1]}, ${d.getDate()}. ${t("monate")[d.getMonth()]}`;
+
+  const rgHtml = rgs.length ? rgs.map((rg) => {
+    const eintraege = ciSortEintraege(rg, ciRundgangPunkte(rg), ciData.punkte).filter((e) => ciData.punkte[e.punkt_id]);
+    const zeilen = eintraege.map((e) => {
+      const log = logs.find((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id);
+      const p = ciData.punkte[e.punkt_id];
+      const wer = log && log.mitarbeiter_id && ciUser && log.mitarbeiter_id !== ciUser.id
+        ? ` · ${escapeHtml(log.mitarbeiter_name || "Kollege")}` : "";
+      return `<div class="hist-row">
+        <span class="t">${log ? escapeHtml(ciUhrzeit(log.ts)) : "–"}</span>
+        <span class="dotc" style="background:${log ? "var(--green)" : "var(--line)"}"></span>
+        <span>${log ? "" : "<s>"}${escapeHtml((p && p.name) || "Punkt")}${log ? "" : "</s>"}${wer}</span>
+      </div>`;
+    }).join("");
+    const done = eintraege.filter((e) => logs.some((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id)).length;
+    return `<div class="week">
+      <h4>${escapeHtml(rg.name)} · ${done}/${eintraege.length} ${done === eintraege.length && eintraege.length ? "✓" : ""}</h4>
+      ${zeilen || `<p class="ci-empty">${t("keineWoche")}</p>`}
+    </div>`;
+  }).join("") : "";
+
+  // Arbeitszeit an dem Tag
+  const schichten = (ciData.schichten || []).filter((s) => s.datum === iso);
+  const zeitHtml = schichten.length ? `<div class="week"><h4>⏱️ ${t("arbeitszeit") || "Arbeitszeit"}</h4>
+    ${schichten.map((s) => {
+      const ort = (ciData.orte || []).find((o) => o.id === s.ort_id);
+      return `<div class="hist-row">
+        <span class="t">${escapeHtml(ciUhrzeit(s.ein_ts))}${s.aus_ts ? "–" + escapeHtml(ciUhrzeit(s.aus_ts)) : ""}</span>
+        <span class="dotc" style="background:var(--blue)"></span>
+        <span>${escapeHtml((ort && ort.name) || "Arbeitsort")}${s.aus_ts ? ` · <b>${ciDauerText(s.ein_ts, s.aus_ts)}</b>` : " · läuft"}</span>
+      </div>`;
+    }).join("")}</div>` : "";
+
+  return `
+    <div class="week" style="border:2px solid var(--blue);">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <h4 style="margin:0; flex:1;">📅 ${escapeHtml(titel)}</h4>
+        <button class="btn-x" style="font-size:12px; padding:6px 10px;" onclick="ciTagDetailSchliessen()">✕</button>
+      </div>
+      ${rgHtml || `<p class="ci-empty">An dem Tag war kein Rundgang für dich geplant.</p>`}
+      ${zeitHtml}
+    </div>`;
+}
+
 /* ---------------- Verlauf ---------------- */
 function ciRenderVerlauf() {
+  const tagHtml = ciTagDetail ? ciRenderTagDetail(ciTagDetail) : "";
   const logs = (ciData.logs || []).slice();
   const now = new Date();
   const montag = new Date(now); montag.setDate(now.getDate() - (ciIsoDay(now) - 1));
@@ -591,6 +670,7 @@ function ciRenderVerlauf() {
   }).join("") : `<p class="ci-empty">${t("keineWoche")}</p>`;
   return `
     <div class="ci-stagger">
+      ${tagHtml}
       <div class="week"><h4>${t("meineWoche")}</h4>${rgs.length ? grid : `<p class="ci-empty">${t("keinZugeteilt")}</p>`}</div>
       <div class="week"><h4>${t("letzteCheckins")}</h4>${letzteHtml}</div>
     </div>

@@ -24,7 +24,7 @@ const ONE_CI_KEY = "geko_ci_auth";    // Sitzung der Check-ins-App
 const ONE_PUSH_ROLE = "geko_one";     // eigene Push-Rolle: alle MA-Benachrichtigungen laufen hierüber
 
 let oneUser = null;    // {id, name, username, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel}
-let oneScreen = "home"; // "home" | "kalender" | "menu" | "pw" | "pwZwang"
+let oneScreen = "home"; // "home" | "kalender" | "urlaub" | "menu" | "pw" | "pwZwang"
 
 function oneGoHome() { if (oneUser) { oneScreen = oneUser.pw_muss_wechsel ? "pwZwang" : "home"; renderOne(); } }
 
@@ -222,6 +222,7 @@ function renderOne() {
   oneRenderTopbar();
 
   if (oneScreen === "kalender") { oneSetGreeting("Mein Kalender"); view.innerHTML = renderOneKalender(); return; }
+  if (oneScreen === "urlaub") { oneSetGreeting("Meine Urlaubsanträge"); view.innerHTML = renderOneUrlaubHistorie(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
@@ -264,6 +265,12 @@ function renderOneMenu() {
     </div>
 
     <p class="one-label">EINSTELLUNGEN</p>
+
+    <button class="one-menu-row" onclick="oneScreen='urlaub'; renderOne();">
+      <span class="m-ico">🏖️</span>
+      <span style="flex:1;"><b>Meine Urlaubsanträge</b><span>Alle Anträge – auch vergangene</span></span>
+      <span class="m-pfeil">›</span>
+    </button>
 
     <button class="one-menu-row" onclick="oneScreen='pw'; renderOne();">
       <span class="m-ico">🔑</span>
@@ -312,7 +319,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v140</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v141</p>`;
 }
 
 /* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */

@@ -166,7 +166,9 @@ async function oneKalLaden() {
               : teilweise
                 ? `Rundgang · ${gemacht}/${punkte.length} erledigt`
                 : `Rundgang · ${r.fenster_von || "?"}–${r.fenster_bis || "?"}`,
-            ziel: "checkins-ma.html", tage, fertig,
+            // Direkt zu DIESEM Tag springen (nicht nur in die App): dort steht dann,
+            // was an dem Tag abgehakt wurde und wie lange gearbeitet wurde.
+            ziel: `checkins-ma.html?datum=${iso}`, tage, fertig,
           });
         }
       });
@@ -222,6 +224,25 @@ function oneKalNeuLaden() {
 // Alle Termine, die einen bestimmten Tag berühren (mehrtägige Touren zählen an jedem Tag)
 function oneKalAmTag(iso) {
   return (oneKalTermine || []).filter((e) => e.von <= iso && iso <= (e.bis || e.von));
+}
+
+// Die Legende zeigt AUSSCHLIESSLICH das, was auch wirklich freigeschaltet ist -
+// abgeleitet aus den geladenen Terminen. Nimmt das Büro einen Bereich weg, sind
+// dessen Termine beim nächsten Laden weg und die Zeile verschwindet automatisch
+// mit. Kommt einer dazu, erscheint sie von selbst.
+function renderOneKalLegende() {
+  const vorhanden = new Set((oneKalTermine || []).map((e) => (e.fertig ? "erledigt" : e.art)));
+  const zeilen = [
+    ["glas", "Glas-Touren"],
+    ["graffiti", "Graffiti"],
+    ["checkin", "Rundgänge"],
+    ["urlaub", "Dein Urlaub"],
+    ["erledigt", "Erledigt"],
+  ].filter(([k]) => vorhanden.has(k));
+  if (!zeilen.length) return "";
+  return `<div class="okal-legende">${zeilen
+    .map(([k, txt]) => `<span><i style="background:${ONE_KAL_FARBEN[k]}"></i>${txt}</span>`)
+    .join("")}</div>`;
 }
 
 function oneKalMonatName(m) {
@@ -283,13 +304,7 @@ function renderOneKalender() {
     <div class="okal-wochentage">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => `<span>${w}</span>`).join("")}</div>
     <div class="okal-raster">${zellen}</div>
 
-    <div class="okal-legende">
-      ${oneUser.zugang_glas !== false ? `<span><i style="background:${ONE_KAL_FARBEN.glas}"></i>Glas-Touren</span>` : ""}
-      ${oneUser.zugang_graffiti === true ? `<span><i style="background:${ONE_KAL_FARBEN.graffiti}"></i>Graffiti</span>` : ""}
-      ${oneUser.zugang_checkin === true ? `<span><i style="background:${ONE_KAL_FARBEN.checkin}"></i>Rundgänge</span>` : ""}
-      <span><i style="background:${ONE_KAL_FARBEN.urlaub}"></i>Dein Urlaub</span>
-      ${oneUser.zugang_checkin === true ? `<span><i style="background:${ONE_KAL_FARBEN.erledigt}"></i>Erledigt</span>` : ""}
-    </div>
+    ${renderOneKalLegende()}
 
     <button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>
     ${renderOneUrlaubForm()}
@@ -337,9 +352,18 @@ function renderOneUrlaubForm() {
     </div>`;
 }
 
-// Eigene Anträge (offen + abgelehnt) - genehmigte stehen ohnehin als Termin im Kalender.
+// Im Kalender stehen nur AKTUELLE Anträge: alles was noch offen ist, plus kürzlich
+// abgelehnte, deren Zeitraum noch nicht vorbei ist. Alte, erledigte Anträge kleben
+// sonst monatelang unter dem Kalender - die ganze Historie gibt es im Menü unter
+// "Meine Urlaubsanträge".
 function renderOneMeineAntraege() {
-  const liste = (oneMeineAntraege || []).filter((u) => (u.status || "genehmigt") !== "genehmigt");
+  const heute = oneKalHeute();
+  const liste = (oneMeineAntraege || []).filter((u) => {
+    const st = u.status || "genehmigt";
+    if (st === "offen") return true;                       // wartet -> immer zeigen
+    if (st === "abgelehnt") return (u.bis || u.von) >= heute; // nur solange noch aktuell
+    return false;                                           // genehmigt steht als Termin drin
+  });
   if (!liste.length) return "";
   return `
     <p class="one-label">DEINE ANTRÄGE</p>
@@ -416,6 +440,48 @@ async function oneUrlaubZuruecknehmen(id) {
     showToast("Antrag zurückgezogen");
     renderOne();
   } catch (e) { showToast("Konnte nicht zurückgezogen werden"); }
+}
+
+/* ---------------- Alle Urlaubsanträge (Menüpunkt, mit Vergangenheit) ---------------- */
+
+function renderOneUrlaubHistorie() {
+  if (oneMeineAntraege === null) {
+    oneLadeMeineAntraege().then(() => { if (oneScreen === "urlaub") renderOne(); });
+    return `<p class="muted" style="margin-top:20px;"><span class="spinner"></span> Lade deine Anträge…</p>`;
+  }
+  const heute = oneKalHeute();
+  // Neueste zuerst
+  const alle = (oneMeineAntraege || []).slice().sort((a, b) => (b.von || "").localeCompare(a.von || ""));
+  if (!alle.length) {
+    return `<p class="muted" style="margin:18px 2px;">Du hast noch keinen Urlaub beantragt.</p>
+      <button class="btn btn-primary btn-sm" onclick="oneScreen='kalender'; oneUrlaubFormOffen=true; renderOne();">🏖️ Jetzt Urlaub beantragen</button>`;
+  }
+  const laufend = alle.filter((u) => (u.bis || u.von) >= heute);
+  const vorbei = alle.filter((u) => (u.bis || u.von) < heute);
+  const block = (titel, liste) => liste.length ? `
+    <p class="one-label">${titel}</p>
+    ${liste.map(oneAntragZeile).join("")}` : "";
+  return `
+    ${block("AKTUELL & GEPLANT", laufend)}
+    ${block("VERGANGENE ANTRÄGE", vorbei)}
+    <button class="btn btn-sm" style="margin-top:14px;" onclick="oneScreen='kalender'; oneUrlaubFormOffen=true; renderOne();">🏖️ Neuen Urlaub beantragen</button>`;
+}
+
+function oneAntragZeile(u) {
+  const st = u.status || "genehmigt";
+  const farbe = st === "offen" ? "#b5730b" : st === "abgelehnt" ? "#b23a1e" : ONE_KAL_FARBEN.urlaub;
+  const label = st === "offen" ? "⏳ Wartet auf Freigabe" : st === "abgelehnt" ? "❌ Abgelehnt" : "✓ Genehmigt";
+  const zeit = u.bis && u.bis !== u.von ? `${formatGlasDate(u.von)} – ${formatGlasDate(u.bis)}` : formatGlasDate(u.von);
+  const vergangen = (u.bis || u.von) < oneKalHeute();
+  return `<div class="okal-eintrag" style="cursor:default;${vergangen ? "opacity:.72;" : ""}">
+    <span class="okal-strich" style="background:${farbe}"></span>
+    <span style="flex:1; min-width:0;">
+      <b>${label}</b>
+      <span>${escapeHtml(zeit)}${u.notiz ? " · " + escapeHtml(u.notiz) : ""}</span>
+      ${u.antwort ? `<span>Büro: ${escapeHtml(u.antwort)}</span>` : ""}
+    </span>
+    ${st === "offen" ? `<button class="btn btn-sm" style="align-self:center;" onclick="oneUrlaubZuruecknehmen('${u.id}')">Zurückziehen</button>` : ""}
+  </div>`;
 }
 
 // Eigene Anträge laden (nur die eigenen - Datenschutz wie beim Urlaub selbst)
