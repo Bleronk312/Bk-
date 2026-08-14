@@ -4538,7 +4538,9 @@ function glasZaehleUrlaubstage(ranges, jahr) {
 // Urlaubs-Bilanz eines Mitarbeiters: Jahres-Anspruch minus genommene Tage = Rest.
 // "genommen" zählt je nach Arbeitswoche (Mo–Fr oder Mo–Sa) die passenden Tage.
 function glasUrlaubBilanz(m, jahr) {
-  const meine = glasUrlaub.filter((u) => u.mitarbeiter_id === m.id);
+  // Nur gültiger Urlaub zählt gegen den Anspruch: noch offene Anträge sind nicht
+  // entschieden, abgelehnte gelten gar nicht. (Ohne Status = alter Eintrag = gültig.)
+  const meine = glasUrlaub.filter((u) => u.mitarbeiter_id === m.id && (!u.status || u.status === "genehmigt"));
   const { moFr, moSa } = glasZaehleUrlaubstage(meine, jahr);
   const genommen = m.arbeitstage === "mo_sa" ? moSa : moFr;
   const anspruch = m.urlaubsanspruch != null ? m.urlaubsanspruch : 30;
@@ -4596,6 +4598,7 @@ function renderUrlaubKalender() {
   }
 
   return `
+    ${renderUrlaubAntraege()}
     ${chips}
     ${statCard}
     <div style="display:flex; justify-content:flex-end; gap:8px; margin:0 0 4px;">
@@ -4606,13 +4609,94 @@ function renderUrlaubKalender() {
   `;
 }
 
+/* ---------------- Urlaubsanträge aus GEKO One ----------------
+   Die Mitarbeiter beantragen Urlaub selbst in GEKO One; hier landen die offenen
+   Anträge ganz oben im Urlaubskalender, damit sie nicht übersehen werden. */
+
+function glasOffeneUrlaubsantraege() {
+  return glasUrlaub.filter((u) => u.status === "offen");
+}
+
+function renderUrlaubAntraege() {
+  const offene = glasOffeneUrlaubsantraege();
+  if (!offene.length) return "";
+  return `
+    <div class="card" style="border:1.5px solid var(--warning-bg); background:var(--warning-bg); margin-bottom:14px;">
+      <p style="margin:0 0 10px; font-weight:800; font-size:14.5px;">🏖️ ${offene.length} offene${offene.length === 1 ? "r" : ""} Urlaubsantrag${offene.length === 1 ? "" : "e"}</p>
+      ${offene.map((u) => `
+        <div style="background:var(--card); border-radius:11px; padding:11px 13px; margin-bottom:8px;">
+          <p style="margin:0; font-weight:700; font-size:14px;">${escapeHtml(glasMaName(u.mitarbeiter_id))}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:13px;">${formatGlasDateRange(u.von, u.bis)}${u.notiz ? ` · ${escapeHtml(u.notiz)}` : ""}</p>
+          ${(() => {
+            const b = glasUrlaubBilanzOhneOffene(u.mitarbeiter_id, parseInt(u.von.slice(0, 4), 10));
+            const tage = glasUrlaubTageZaehlen(u);
+            return `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">Beantragt: <b>${tage} Tag${tage === 1 ? "" : "e"}</b> · danach noch <b>${b.uebrig - tage}</b> von ${b.anspruch} übrig</p>`;
+          })()}
+          <div style="display:flex; gap:8px; margin-top:9px;">
+            <button class="btn btn-sm btn-primary" onclick="glasUrlaubEntscheiden('${u.id}', 'genehmigt')">✓ Genehmigen</button>
+            <button class="btn btn-sm" style="color:var(--danger);" onclick="glasUrlaubEntscheiden('${u.id}', 'abgelehnt')">✕ Ablehnen</button>
+          </div>
+        </div>`).join("")}
+    </div>`;
+}
+
+// Arbeitstage eines Antrags zählen (wie die Bilanz: je nach 5- oder 6-Tage-Woche)
+function glasUrlaubTageZaehlen(u) {
+  const m = glasMitarbeiter.find((x) => x.id === u.mitarbeiter_id);
+  const sa = m && m.arbeitstage === "mo_sa";
+  let tage = 0;
+  let d = new Date(u.von + "T00:00:00");
+  const bis = new Date((u.bis || u.von) + "T00:00:00");
+  while (d <= bis) {
+    const wt = d.getDay(); // 0=So
+    if (wt !== 0 && (sa || wt !== 6)) tage++;
+    d.setDate(d.getDate() + 1);
+  }
+  return tage;
+}
+
+// Bilanz ohne die noch offenen Anträge - zeigt, was NACH einer Genehmigung übrig bliebe
+function glasUrlaubBilanzOhneOffene(maId, jahr) {
+  const m = glasMitarbeiter.find((x) => x.id === maId) || {};
+  return glasUrlaubBilanz(m, jahr);
+}
+
+async function glasUrlaubEntscheiden(id, status) {
+  const u = glasUrlaub.find((x) => x.id === id);
+  if (!u) return;
+  const name = glasMaName(u.mitarbeiter_id);
+  let antwort = "";
+  if (status === "abgelehnt") {
+    const grund = prompt(`Urlaub von ${name} (${formatGlasDateRange(u.von, u.bis)}) ablehnen.\n\nKurze Begründung für den Mitarbeiter (optional):`, "");
+    if (grund === null) return; // abgebrochen
+    antwort = String(grund).trim();
+  } else if (!confirm(`Urlaub von ${name} (${formatGlasDateRange(u.von, u.bis)}) genehmigen?`)) {
+    return;
+  }
+  const payload = { status, antwort, entschieden_am: new Date().toISOString(), entschieden_von: "Büro" };
+  let { error } = await sb.from("glas_urlaub").update(payload).eq("id", id);
+  if (error && /(status|antwort|entschieden)/i.test(error.message || "")) {
+    showToast("Bitte supabase_add_urlaub_antrag.sql in Supabase ausführen");
+    return;
+  }
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadGlasUrlaub();
+  renderGlasAdmin();
+  showToast(status === "genehmigt" ? `Urlaub von ${name} genehmigt ✓` : `Urlaub von ${name} abgelehnt`);
+  // Der Mitarbeiter sieht die Entscheidung beim nächsten Öffnen von GEKO One.
+  glasPushSend("geko_one", "push_touren", "Urlaubsantrag " + (status === "genehmigt" ? "genehmigt ✓" : "abgelehnt"),
+    `${formatGlasDateRange(u.von, u.bis)}${antwort ? " · " + antwort : ""}`, "/meine.html");
+}
+
 function renderUrlaubMonat() {
   const { year, month } = glasKalenderMonth;
   const monatsNamen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   const todayIso = glasTodayIso();
   const weeks = glasWeeksInRange({ year, month }, { year, month });
 
-  let urlaube = glasUrlaub;
+  // Nur entschiedener (genehmigter) Urlaub steht im Kalender - offene Anträge stehen
+  // oben in der Antragsliste, abgelehnte gelten nicht.
+  let urlaube = glasUrlaub.filter((u) => !u.status || u.status === "genehmigt");
   if (glasUrlaubMaFilter) urlaube = urlaube.filter((u) => u.mitarbeiter_id === glasUrlaubMaFilter);
   const events = urlaube.map((u) => ({
     datum: u.von, datum_bis: u.bis || u.von,

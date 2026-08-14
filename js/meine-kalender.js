@@ -59,18 +59,33 @@ async function oneKalLaden() {
   // --- Glas-Touren -------------------------------------------------------------
   if (oneUser.zugang_glas !== false) {
     aufgaben.push((async () => {
-      const { data } = await oneKalMitTimeout(sb.from("glas_touren").select("id, name, datum, datum_bis, archiviert_am, ma_versteckt").order("datum", { ascending: true }));
-      (data || []).forEach((t) => {
-        // Vom Admin ausgeblendete Touren gehören nie in die MA-Ansicht. Archivierte
-        // bleiben als Verlauf stehen, lassen sich aber nicht mehr öffnen (siehe unten).
+      // Stopps mitladen: nur damit steht fest, ob eine Tour in der Touren-App
+      // überhaupt noch geöffnet werden KANN. Die App blendet alte, komplett
+      // erledigte Touren aus - ohne diese Prüfung landete ein Klick darauf in
+      // einer leeren Liste statt bei der Tour.
+      const [tRes, sRes] = await Promise.all([
+        oneKalMitTimeout(sb.from("glas_touren").select("id, name, datum, datum_bis, archiviert_am, ma_versteckt").order("datum", { ascending: true })),
+        oneKalMitTimeout(sb.from("glas_stopps").select("tour_id, status, signed_at, datum")).catch(() => ({ data: [] })),
+      ]);
+      const stopps = (sRes && sRes.data) || [];
+      const heute = oneKalHeute();
+      (tRes.data || []).forEach((t) => {
+        // Vom Admin ausgeblendete Touren gehören nie in die MA-Ansicht.
         if (!t.datum || t.ma_versteckt) return;
+        const meine = stopps.filter((s) => s.tour_id === t.id);
+        const offen = meine.some((s) => s.status === "offen");
+        const ende = t.datum_bis || t.datum;
+        // "Abgelaufen" = in der Touren-App nicht mehr vorhanden: entweder archiviert
+        // oder vorbei UND vollständig erledigt. Eine vergangene Tour mit noch offenen
+        // Stopps bleibt bewusst öffenbar - die muss der Mitarbeiter ja nacharbeiten.
+        const abgelaufen = !!t.archiviert_am || (ende < heute && meine.length > 0 && !offen);
         eintraege.push({
           art: "glas", ico: "🧽", titel: t.name || "Tour",
-          von: t.datum, bis: t.datum_bis || t.datum,
-          sub: t.archiviert_am ? "Glas-Tour · abgeschlossen" : "Glas-Tour",
+          von: t.datum, bis: ende,
+          sub: abgelaufen ? "Glas-Tour · abgeschlossen" : "Glas-Tour",
           // Direkt IN die Tour springen (nicht nur in die App)
-          ziel: t.archiviert_am ? null : `glas-mitarbeiter.html?tour=${encodeURIComponent(t.id)}`,
-          abgelaufen: !!t.archiviert_am,
+          ziel: abgelaufen ? null : `glas-mitarbeiter.html?tour=${encodeURIComponent(t.id)}`,
+          abgelaufen,
         });
       });
     })());
@@ -129,13 +144,21 @@ async function oneKalLaden() {
 
   // --- Eigener Urlaub (NUR der eigene - Datenschutz) ----------------------------
   aufgaben.push((async () => {
-    const { data } = await oneKalMitTimeout(sb.from("glas_urlaub").select("id, von, bis, notiz, mitarbeiter_id").eq("mitarbeiter_id", ich));
-    (data || []).forEach((u) => {
+    // Mit Status; fehlt die Spalte noch (SQL nicht ausgeführt), ohne sie laden.
+    let res = await oneKalMitTimeout(sb.from("glas_urlaub").select("id, von, bis, notiz, mitarbeiter_id, status, antwort").eq("mitarbeiter_id", ich));
+    if (res.error && /(status|antwort)/i.test(res.error.message || "")) {
+      res = await oneKalMitTimeout(sb.from("glas_urlaub").select("id, von, bis, notiz, mitarbeiter_id").eq("mitarbeiter_id", ich));
+    }
+    (res.data || []).forEach((u) => {
       if (!u.von) return;
+      const st = u.status || "genehmigt";
+      if (st === "abgelehnt") return; // abgelehnte Anträge nicht als Termin zeigen
       eintraege.push({
-        art: "urlaub", ico: "🏖️", titel: "Urlaub",
+        art: "urlaub", ico: st === "offen" ? "⏳" : "🏖️",
+        titel: st === "offen" ? "Urlaub beantragt" : "Urlaub",
         von: u.von, bis: u.bis || u.von,
-        sub: u.notiz || "Dein Urlaub", ziel: null,
+        sub: st === "offen" ? "Wartet auf das Büro" : (u.notiz || "Dein Urlaub"),
+        ziel: null, offen: st === "offen",
       });
     });
   })());
@@ -152,6 +175,7 @@ async function oneKalLaden() {
 function oneKalStarteLaden() {
   if (oneKalLaeuft) return;
   oneKalLaeuft = true;
+  if (oneMeineAntraege === null) oneLadeMeineAntraege(); // eigene Anträge parallel holen
   oneKalLaden()
     .catch(() => { oneKalTermine = oneKalTermine || []; oneKalFehler = "Termine konnten nicht geladen werden. Bitte erneut versuchen."; })
     .finally(() => { oneKalLaeuft = false; if (oneScreen === "kalender") renderOne(); });
@@ -233,12 +257,124 @@ function renderOneKalender() {
       <span><i style="background:${ONE_KAL_FARBEN.urlaub}"></i>Dein Urlaub</span>
     </div>
 
+    <button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>
+    ${renderOneUrlaubForm()}
+    ${renderOneMeineAntraege()}
+
     <p class="one-label">${oneKalTagGewaehlt ? "AM " + formatGlasDate(oneKalTagGewaehlt) : "KOMMENDE TERMINE"}</p>
     ${oneKalListe(oneKalTagGewaehlt ? oneKalAmTag(oneKalTagGewaehlt) : kommend, !oneKalTagGewaehlt)}
     ${oneKalTagGewaehlt ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="oneKalTagGewaehlt=null; renderOne();">Alle kommenden zeigen</button>` : ""}`;
 }
 
 let oneKalTagGewaehlt = null;
+
+/* ---------------- Urlaub beantragen ---------------- */
+
+let oneUrlaubFormOffen = false;
+let oneMeineAntraege = null; // eigene Anträge inkl. offener/abgelehnter (null = ungeladen)
+let oneUrlaubBusy = false;
+
+function oneUrlaubFormOeffnen() {
+  oneUrlaubFormOffen = !oneUrlaubFormOffen;
+  renderOne();
+}
+
+function renderOneUrlaubForm() {
+  if (!oneUrlaubFormOffen) return "";
+  const heute = oneKalHeute();
+  return `
+    <div class="card" style="margin-top:10px;">
+      <p style="margin:0 0 10px; font-weight:700;">🏖️ Urlaub beantragen</p>
+      <div id="url_err"></div>
+      <div class="row" style="display:flex; gap:8px;">
+        <div class="field" style="flex:1;"><label class="muted">Von</label>
+          <input type="date" id="url_von" min="${heute}" value="${oneKalTagGewaehlt || ""}" style="font-size:16px;" /></div>
+        <div class="field" style="flex:1;"><label class="muted">Bis</label>
+          <input type="date" id="url_bis" min="${heute}" value="${oneKalTagGewaehlt || ""}" style="font-size:16px;" /></div>
+      </div>
+      <div class="field"><label class="muted">Notiz ans Büro (optional)</label>
+        <input type="text" id="url_notiz" placeholder="z.B. Familienbesuch" style="font-size:16px;" /></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm" onclick="oneUrlaubFormOffen=false; renderOne();">Abbrechen</button>
+        <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="oneUrlaubSenden()" ${oneUrlaubBusy ? "disabled" : ""}>
+          ${oneUrlaubBusy ? "Sende…" : "Antrag senden"}</button>
+      </div>
+      <p class="muted" style="margin:9px 0 0; font-size:12px;">Das Büro sieht deinen Antrag sofort und gibt ihn frei oder lehnt ab. Du siehst den Stand hier.</p>
+    </div>`;
+}
+
+// Eigene Anträge (offen + abgelehnt) - genehmigte stehen ohnehin als Termin im Kalender.
+function renderOneMeineAntraege() {
+  const liste = (oneMeineAntraege || []).filter((u) => (u.status || "genehmigt") !== "genehmigt");
+  if (!liste.length) return "";
+  return `
+    <p class="one-label">DEINE ANTRÄGE</p>
+    ${liste.map((u) => {
+      const offen = (u.status || "") === "offen";
+      const zeit = u.bis && u.bis !== u.von ? `${formatGlasDate(u.von)} – ${formatGlasDate(u.bis)}` : formatGlasDate(u.von);
+      return `<div class="okal-eintrag" style="cursor:default;">
+        <span class="okal-strich" style="background:${offen ? "#b5730b" : "#b23a1e"}"></span>
+        <span style="flex:1; min-width:0;">
+          <b>${offen ? "⏳ Wartet auf Freigabe" : "❌ Abgelehnt"}</b>
+          <span>${escapeHtml(zeit)}${u.notiz ? " · " + escapeHtml(u.notiz) : ""}</span>
+          ${u.antwort ? `<span>Büro: ${escapeHtml(u.antwort)}</span>` : ""}
+        </span>
+        ${offen ? `<button class="btn btn-sm" style="align-self:center;" onclick="oneUrlaubZuruecknehmen('${u.id}')">Zurückziehen</button>` : ""}
+      </div>`;
+    }).join("")}`;
+}
+
+async function oneUrlaubSenden() {
+  const von = document.getElementById("url_von")?.value || "";
+  const bis = document.getElementById("url_bis")?.value || von;
+  const notiz = (document.getElementById("url_notiz")?.value || "").trim();
+  const fehler = (m) => { const el = document.getElementById("url_err"); if (el) el.innerHTML = `<div class="glas-login-err">${escapeHtml(m)}</div>`; };
+  if (!von) { fehler("Bitte ein Von-Datum wählen."); return; }
+  if (bis && bis < von) { fehler("Das Bis-Datum liegt vor dem Von-Datum."); return; }
+  if (von < oneKalHeute()) { fehler("Urlaub kann nur ab heute beantragt werden."); return; }
+
+  oneUrlaubBusy = true; renderOne();
+  try {
+    const zeile = {
+      id: (typeof genCode === "function" ? genCode() : String(Date.now())),
+      mitarbeiter_id: oneUser.id, von, bis: bis || von, notiz,
+      status: "offen", beantragt_am: new Date().toISOString(),
+    };
+    let { error } = await sb.from("glas_urlaub").insert(zeile);
+    if (error && /(status|beantragt_am)/i.test(error.message || "")) {
+      showToast("Bitte supabase_add_urlaub_antrag.sql in Supabase ausführen – ohne sie kann das Büro Anträge nicht freigeben.");
+      oneUrlaubBusy = false; renderOne(); return;
+    }
+    if (error) throw error;
+    oneUrlaubFormOffen = false;
+    oneKalTermine = null; oneMeineAntraege = null; // neu laden
+    showToast("Antrag gesendet – das Büro entscheidet zeitnah ✓");
+  } catch (e) {
+    fehler("Konnte nicht gesendet werden. Bitte Internet prüfen.");
+  } finally {
+    oneUrlaubBusy = false;
+    renderOne();
+  }
+}
+
+async function oneUrlaubZuruecknehmen(id) {
+  try {
+    const { error } = await sb.from("glas_urlaub").delete().eq("id", id).eq("mitarbeiter_id", oneUser.id);
+    if (error) throw error;
+    oneKalTermine = null; oneMeineAntraege = null;
+    showToast("Antrag zurückgezogen");
+    renderOne();
+  } catch (e) { showToast("Konnte nicht zurückgezogen werden"); }
+}
+
+// Eigene Anträge laden (nur die eigenen - Datenschutz wie beim Urlaub selbst)
+async function oneLadeMeineAntraege() {
+  try {
+    const { data, error } = await sb.from("glas_urlaub")
+      .select("id, von, bis, notiz, status, antwort").eq("mitarbeiter_id", oneUser.id);
+    oneMeineAntraege = error ? [] : (data || []);
+  } catch (e) { oneMeineAntraege = []; }
+}
 
 function oneKalTagWaehlen(iso) {
   oneKalTagGewaehlt = oneKalTagGewaehlt === iso ? null : iso;

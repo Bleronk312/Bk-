@@ -54,13 +54,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);
 /* ---- Kopf ---- */
 /* padding-top berücksichtigt die iPhone-Statusleiste (Notch/Standalone-Modus),
    damit sich der Kopf nicht mit Uhrzeit/Akku überschneidet. */
-.ci-head{background:linear-gradient(160deg,var(--blue),var(--blue-600));color:#fff;
+/* EXAKT derselbe Verlauf wie .app-header in style.css - vorher war der Check-ins-Kopf
+   flacher und dunkler als der aller anderen GEKO-Seiten und stach dadurch heraus. */
+.ci-head{background:linear-gradient(135deg,#3a8fd0 0%,#1f5d92 100%);color:#fff;
   padding:calc(14px + env(safe-area-inset-top)) 18px 18px;position:relative}
-/* Im Dunkelmodus wird var(--blue) hell (#4b9fe0). Der Kopf leuchtete dadurch grell und
-   sah anders aus als auf allen anderen GEKO-Seiten - die nutzen in style.css einen fest
-   verdrahteten dunklen Verlauf. Weisse Schrift braucht ohnehin dunkles Blau. Der Hell-
-   Modus bleibt unveraendert. */
-html.dark .ci-head{background:linear-gradient(160deg,#2f7ab5,#1f5d92)}
+html.dark .ci-head{background:linear-gradient(135deg,#3a8fd0 0%,#1f5d92 100%)}
 .ci-head .brand{display:flex;align-items:center;gap:7px;font-size:12px;opacity:.92;padding-right:150px}
 .ci-head .brand .dot{width:7px;height:7px;border-radius:50%;background:#fff}
 /* Admin-Kopf: Marke links, Aktions-Pillen (Hinweise/Hub) rechts – ruhig & sauber,
