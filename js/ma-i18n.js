@@ -146,6 +146,9 @@
     "Glas-Touren ": "Turne xhami ",
     "Rundgänge": "Rondat",
     "Dein Urlaub": "Pushimi yt",
+    "Lager": "Depoja",
+    "Im Lager sein": "Të jesh në depo",
+    "Das Büro hat dich eingeteilt.": "Zyra të ka caktuar.",
     "Erledigt": "Kryer",
     "Glas-Tour": "Turn xhami",
     "Glas-Tour · abgeschlossen": "Turn xhami · i përfunduar",
@@ -192,6 +195,11 @@
   const RX = [
     [/^Hallo (.+)$/, (m, a) => "Përshëndetje " + a],
     [/^Moin, (.+)$/, (m, a) => "Tungjatjeta, " + a],
+    // Lager-Plan: "Morgen um 05:30 Uhr im Lager" / "15.08.2026 um 06:00 Uhr im Lager"
+    [/^Heute um (\d{1,2}:\d{2}) Uhr im Lager$/, (m, z) => `Sot në orën ${z} në depo`],
+    [/^Morgen um (\d{1,2}:\d{2}) Uhr im Lager$/, (m, z) => `Nesër në orën ${z} në depo`],
+    [/^(\d{2}\.\d{2}\.\d{4}) um (\d{1,2}:\d{2}) Uhr im Lager$/, (m, d, z) => `${d} në orën ${z} në depo`],
+    [/^Im Lager sein · (.+)$/, (m, a) => "Të jesh në depo · " + a],
     // Kalender-Tagesüberschrift "AM 14.08.2026"
     [/^AM (\d{2}\.\d{2}\.\d{4})$/, (m, d) => "MË " + d],
     // Rundgang-Zeilen im GEKO-One-Kalender

@@ -2226,6 +2226,20 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-ma-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 .glas-ma-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 
+/* Lager-Plan: Mitarbeiter zum Antippen. Bewusst große Flächen - das wird morgens
+   in Eile am Handy bedient, nicht in Ruhe am Schreibtisch. */
+.glas-lager-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.glas-lager-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 14px; border-radius: 11px;
+  border: 1.5px solid var(--border); background: var(--card);
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.glas-lager-chip:hover { border-color: var(--blue); }
+.glas-lager-chip.an { background: var(--blue); border-color: var(--blue); color: #fff; }
+.glas-lager-chip.an .glas-ma-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
+
 /* ---------------- Reine Kalender-App (?app=kalender vom Home-Bildschirm) ----------------
    Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich
    auf dem Kalender-Tab - navigiert man weg, erscheint die normale Oberfläche. Der

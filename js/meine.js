@@ -41,9 +41,13 @@ async function oneInit() {
 // pw_muss_wechsel), und falls die noch fehlen (SQL nicht ausgeführt) ohne sie.
 // So verschwinden Bausteine NICHT mehr beim erneuten Öffnen (der alte Bug).
 async function oneLoadUser(feld, wert) {
-  const voll = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel";
+  const voll = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager, pw_muss_wechsel";
+  const mittel = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel";
   const schlank = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin";
   let { data, error } = await sb.from("glas_mitarbeiter").select(voll).eq(feld, wert).maybeSingle();
+  if (error && /zugang_lager/i.test(error.message || "")) {
+    ({ data, error } = await sb.from("glas_mitarbeiter").select(mittel).eq(feld, wert).maybeSingle());
+  }
   if (error && /(zugang_graffiti|pw_muss_wechsel)/i.test(error.message || "")) {
     ({ data, error } = await sb.from("glas_mitarbeiter").select(schlank).eq(feld, wert).maybeSingle());
   }
@@ -74,6 +78,7 @@ async function oneEnsureLoggedIn() {
     oneUser = {
       id: stored.id, name: stored.name || "", username: stored.username || "",
       zugang_glas: stored.zugang_glas, zugang_checkin: stored.zugang_checkin, zugang_graffiti: stored.zugang_graffiti,
+      zugang_lager: stored.zugang_lager,
     };
     return true;
   }
@@ -86,6 +91,7 @@ function oneCacheZugaenge(data, stored) {
     const s = stored || JSON.parse(localStorage.getItem(ONE_AUTH_KEY) || "{}");
     s.name = data.name; s.zugang_glas = data.zugang_glas;
     s.zugang_checkin = data.zugang_checkin; s.zugang_graffiti = data.zugang_graffiti;
+    s.zugang_lager = data.zugang_lager;
     localStorage.setItem(ONE_AUTH_KEY, JSON.stringify(s));
   } catch (e) {}
 }
@@ -141,6 +147,7 @@ async function oneStoreSessions(data) {
   const sitz = {
     id: data.id, tok, name: data.name, username: data.username,
     zugang_glas: data.zugang_glas, zugang_checkin: data.zugang_checkin, zugang_graffiti: data.zugang_graffiti,
+    zugang_lager: data.zugang_lager,
   };
   const roh = JSON.stringify(sitz);
   const schlank = JSON.stringify({ id: data.id, tok, name: data.name, username: data.username });
@@ -233,6 +240,10 @@ function renderOne() {
   if (typeof oneLadeMeineAntraege === "function" && typeof oneMeineAntraege !== "undefined" && oneMeineAntraege === null) {
     oneLadeMeineAntraege().then(() => { if (oneScreen === "home") renderOne(); });
   }
+  // Lager-Plan des Büros: der nächste eigene Termin steht ganz oben.
+  if (oneUser.zugang_lager === true && typeof oneLagerLaden === "function" && typeof oneLagerPlan !== "undefined" && oneLagerPlan === null) {
+    oneLagerLaden().catch(() => { oneLagerPlan = []; }).then(() => { if (oneScreen === "home") renderOne(); });
+  }
   // Freigeschaltete Bausteine (zugang_glas ist historisch "an, außer ausdrücklich aus")
   const kacheln = [];
   let d = 0.1;
@@ -246,6 +257,7 @@ function renderOne() {
       <p class="w-sub">${oneBegruessung()}</p>
     </div>
     ${typeof renderOneEntscheidungen === "function" ? renderOneEntscheidungen() : ""}
+    ${typeof renderOneLagerHinweis === "function" ? renderOneLagerHinweis() : ""}
     <p class="one-label">DEINE BEREICHE</p>
     ${kacheln.length
       ? `<div class="one-raster">${kacheln.join("")}</div>`

@@ -18,6 +18,7 @@ const ONE_KAL_FARBEN = {
   graffiti: "#c2189c",  // Magenta
   checkin: "#ef7d00",   // Orange
   urlaub: "#12a150",    // Grün
+  lager: "#6b4ee6",     // Violett
   erledigt: "#8e99a6",  // Grau: erledigt = tritt zurück
 };
 
@@ -175,6 +176,27 @@ async function oneKalLaden() {
     })());
   }
 
+  // --- Lager-Plan (vom Büro verschickt) ----------------------------------------
+  // Nur die Gruppen, in denen dieser Mitarbeiter selbst steht - wer sonst noch
+  // eingeteilt ist, geht ihn nichts an (dasselbe Prinzip wie beim Urlaub).
+  if (oneUser.zugang_lager === true) {
+    aufgaben.push((async () => {
+      const m = oneKalMonatJetzt();
+      const vonIso = glasIsoFromDate(new Date(m.jahr, m.monat, 1));
+      const bisIso = glasIsoFromDate(new Date(m.jahr, m.monat + 1, 0));
+      const res = await oneKalMitTimeout(oneLagerAbfrage(vonIso, bisIso));
+      (res.data || []).filter((p) => oneLagerIds(p).includes(ich)).forEach((p) => {
+        eintraege.push({
+          art: "lager", ico: "📦", titel: "Lager",
+          von: p.datum, bis: p.datum, zeit: p.uhrzeit || "",
+          // Die Uhrzeit hängt die Liste selbst an - hier nur, WORUM es geht.
+          sub: p.notiz ? "Im Lager sein · " + p.notiz : "Im Lager sein",
+          ziel: null,
+        });
+      });
+    })());
+  }
+
   // --- Eigener Urlaub (NUR der eigene - Datenschutz) ----------------------------
   aufgaben.push((async () => {
     // Mit Status; fehlt die Spalte noch (SQL nicht ausgeführt), ohne sie laden.
@@ -236,6 +258,7 @@ function renderOneKalLegende() {
     ["glas", "Glas-Touren"],
     ["graffiti", "Graffiti"],
     ["checkin", "Rundgänge"],
+    ["lager", "Lager"],
     ["urlaub", "Dein Urlaub"],
     ["erledigt", "Erledigt"],
   ].filter(([k]) => vorhanden.has(k));
@@ -316,6 +339,70 @@ function renderOneKalender() {
 }
 
 let oneKalTagGewaehlt = null;
+
+/* ---------------- Lager-Plan ----------------
+   Das Büro legt fest, wer wann morgens im Lager sein soll, und verschickt es.
+   Hier steht nur, was DIESEN Mitarbeiter betrifft - direkt auf der Startseite,
+   damit man abends nicht erst suchen muss, wann man morgen da sein soll. */
+
+let oneLagerPlan = null; // eigene Einträge ab heute (null = noch nicht geladen)
+
+function oneLagerIds(p) {
+  try { return Array.isArray(p.mitarbeiter_ids) ? p.mitarbeiter_ids : JSON.parse(p.mitarbeiter_ids || "[]"); }
+  catch (e) { return []; }
+}
+
+// Fragt den Zeitraum ab und filtert schon in der Datenbank auf die eigene ID.
+// Kann die Umgebung den jsonb-Filter nicht (ältere PostgREST-Version), wird ohne
+// ihn geholt und hier ausgesiebt - das Ergebnis ist in beiden Fällen dasselbe.
+async function oneLagerAbfrage(vonIso, bisIso) {
+  const spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz";
+  const basis = () => sb.from("glas_lager_plan").select(spalten).gte("datum", vonIso).lte("datum", bisIso).order("datum", { ascending: true });
+  let res;
+  try {
+    res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id]));
+  } catch (e) { res = { error: e }; }
+  if (res && res.error) { try { res = await basis(); } catch (e) { res = { data: [], error: e }; } }
+  return res && !res.error ? res : { data: [] };
+}
+
+async function oneLagerLaden() {
+  if (!oneUser || oneUser.zugang_lager !== true) { oneLagerPlan = []; return; }
+  const heute = oneKalHeute();
+  // Ein Jahr nach vorne reicht mehr als aus - der Lager-Plan wird tageweise gemacht.
+  const res = await oneLagerAbfrage(heute, glasAddDaysIso(heute, 365));
+  oneLagerPlan = (res.data || []).filter((p) => oneLagerIds(p).includes(oneUser.id));
+}
+
+// Der nächste Termin ab heute - genau der gehört auf die Startseite.
+function oneLagerNaechster() {
+  const heute = oneKalHeute();
+  return (oneLagerPlan || [])
+    .filter((p) => p.datum >= heute)
+    .sort((a, b) => (a.datum === b.datum ? (a.uhrzeit || "").localeCompare(b.uhrzeit || "") : a.datum.localeCompare(b.datum)))[0] || null;
+}
+
+// "Heute" / "Morgen" statt eines nackten Datums - so liest es sich im Vorbeigehen.
+function oneLagerTagText(iso) {
+  const heute = oneKalHeute();
+  if (iso === heute) return "Heute";
+  if (iso === glasAddDaysIso(heute, 1)) return "Morgen";
+  return formatGlasDate(iso);
+}
+
+function renderOneLagerHinweis() {
+  if (!oneUser || oneUser.zugang_lager !== true) return "";
+  const p = oneLagerNaechster();
+  if (!p) return "";
+  return `
+    <div class="one-lager-karte">
+      <span class="l-ico">📦</span>
+      <span class="l-text">
+        <b>${escapeHtml(oneLagerTagText(p.datum))} um ${escapeHtml(p.uhrzeit || "?")} Uhr im Lager</b>
+        <span>${p.notiz ? escapeHtml(p.notiz) : "Das Büro hat dich eingeteilt."}</span>
+      </span>
+    </div>`;
+}
 
 /* ---------------- Urlaub beantragen ---------------- */
 

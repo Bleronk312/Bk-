@@ -623,6 +623,7 @@ function goGlasHome() {
 }
 
 function glasNavigate(page) {
+  glasLagerOffen = false; // Lager-Plan ist eine Unterseite - jede Navigation schließt sie
   // Beim Öffnen des Kalenders die Ebenen auf Standard: Touren+Termine an, Urlaub aus.
   if (page.type === "tabs" && page.tab === "kalender" && !(glasPage && glasPage.type === "tabs" && glasPage.tab === "kalender")) {
     glasResetKalEbenen();
@@ -776,6 +777,7 @@ function renderGlasAdmin() {
   if (glasPage.type === "objekt-form") { view.innerHTML = renderObjektForm(); glasViewEintritt(view); glasPortalModals(); return; }
   if (glasPage.type === "statistik") { view.innerHTML = renderStatistikPage(); glasViewEintritt(view); glasAnimateProgress(); glasPortalModals(); return; }
   if (glasPage.type === "jahr") { view.innerHTML = renderJahrPage(); glasViewEintritt(view); glasPortalModals(); return; }
+  if (glasLagerOffen) { view.innerHTML = renderLagerPlan(); glasViewEintritt(view); glasPortalModals(); return; }
 
   // Startseite (Dashboard) und alle Reiter teilen sich dieselbe Reiter-Leiste, damit die
   // Navigation immer erreichbar ist - auch direkt vom Dashboard aus.
@@ -1019,6 +1021,210 @@ function glasSheetZu(el, danach) {
 // "Mehr" ist eine EIGENE SEITE wie jeder andere Reiter (kein Bottom-Sheet/Dropdown
 // mehr - die blieben auf dem iPhone teils offen hängen). Öffnet ganz normal mit der
 // Tab-Animation und schließt sich von selbst, sobald man ein Ziel antippt.
+/* ==========================================================================
+   LAGER-PLAN
+   Bewusst geradeaus: Datum wählen -> Uhrzeit wählen -> Leute antippen -> senden.
+   Für die nächste Gruppe (andere Uhrzeit) dasselbe nochmal. Keine Ausnahmen,
+   keine Regeln - was dasteht, ist genau das, was verschickt wurde.
+   ========================================================================== */
+
+let glasLagerOffen = false;        // Bildschirm sichtbar?
+let glasLagerPlan = [];            // geladene Einträge
+let glasLagerDatum = null;         // gewähltes Datum (ISO), null = morgen
+let glasLagerUhrzeit = "06:00";    // Uhrzeit der Gruppe, die gerade zusammengestellt wird
+let glasLagerAuswahl = new Set();  // markierte Mitarbeiter
+let glasLagerNotiz = "";
+let glasLagerBusy = false;
+
+function glasOpenLager() {
+  glasLagerOffen = true;
+  glasLagerAuswahl = new Set();
+  glasLagerNotiz = "";
+  loadGlasLagerPlan().then(renderGlasAdmin);
+  renderGlasAdmin();
+}
+
+function glasLagerSchliessen() { glasLagerOffen = false; renderGlasAdmin(); }
+
+// Standard-Datum: morgen (das ist der übliche Fall - abends den nächsten Tag planen)
+function glasLagerDatumJetzt() {
+  return glasLagerDatum || glasAddDaysIso(glasTodayIso(), 1);
+}
+
+async function loadGlasLagerPlan() {
+  const { data, error } = await sb.from("glas_lager_plan").select("*").order("uhrzeit", { ascending: true });
+  if (!error) glasLagerPlan = data || [];
+}
+
+// Nur Mitarbeiter, die den Lager-Baustein freigeschaltet haben - genau die sehen
+// die Nachricht auch in GEKO One.
+function glasLagerMitarbeiter() {
+  return glasMitarbeiter.filter((m) => m.zugang_lager === true);
+}
+
+// Wer ist an dem Tag schon in einer anderen Gruppe eingeteilt? (dann nicht doppelt)
+function glasLagerSchonEingeteilt(datum, ausserId) {
+  const drin = new Set();
+  glasLagerPlan.filter((p) => p.datum === datum && p.id !== ausserId).forEach((p) => {
+    (glasLagerIds(p) || []).forEach((id) => drin.add(id));
+  });
+  return drin;
+}
+
+function glasLagerIds(p) {
+  try { return Array.isArray(p.mitarbeiter_ids) ? p.mitarbeiter_ids : JSON.parse(p.mitarbeiter_ids || "[]"); }
+  catch (e) { return []; }
+}
+
+function glasLagerToggle(id) {
+  if (glasLagerAuswahl.has(id)) glasLagerAuswahl.delete(id); else glasLagerAuswahl.add(id);
+  glasLagerSyncForm();
+  renderGlasAdmin();
+}
+
+// Uhrzeit/Notiz aus den Feldern lesen, damit sie beim Neuzeichnen nicht verloren gehen
+function glasLagerSyncForm() {
+  const u = document.getElementById("lager_uhrzeit");
+  const n = document.getElementById("lager_notiz");
+  if (u && u.value) glasLagerUhrzeit = u.value;
+  if (n) glasLagerNotiz = n.value;
+}
+
+function glasLagerDatumSetzen(v) {
+  glasLagerSyncForm();
+  glasLagerDatum = v;
+  glasLagerAuswahl = new Set();
+  renderGlasAdmin();
+}
+
+function renderLagerPlan() {
+  const datum = glasLagerDatumJetzt();
+  const leute = glasLagerMitarbeiter();
+  const eintraege = glasLagerPlan.filter((p) => p.datum === datum).sort((a, b) => (a.uhrzeit || "").localeCompare(b.uhrzeit || ""));
+  const schon = glasLagerSchonEingeteilt(datum);
+  const offen = leute.filter((m) => !schon.has(m.id));
+
+  // ---- Übersicht: was ist an dem Tag schon verschickt? ----
+  const uebersicht = eintraege.length ? eintraege.map((p) => {
+    const ids = glasLagerIds(p);
+    const namen = ids.map((id) => glasMaName(id)).filter(Boolean);
+    return `
+      <div class="card" style="margin:0 0 10px; padding:13px 15px;">
+        <div style="display:flex; align-items:center; gap:11px;">
+          <span style="font-size:20px; font-weight:800; color:var(--blue); flex:none;">${escapeHtml(p.uhrzeit)}</span>
+          <span style="flex:1; min-width:0;">
+            <span style="display:block; font-size:14px; font-weight:600;">${namen.length} ${namen.length === 1 ? "Person" : "Personen"}</span>
+            <span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">${escapeHtml(namen.join(", ")) || "niemand"}</span>
+          </span>
+          <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">Entfernen</button>
+        </div>
+        ${p.notiz ? `<p class="muted" style="margin:8px 0 0; font-size:12.5px;">📝 ${escapeHtml(p.notiz)}</p>` : ""}
+        <p class="muted" style="margin:6px 0 0; font-size:11.5px;">${p.gesendet_am ? "✓ Benachrichtigung verschickt" : "noch nicht verschickt"}</p>
+      </div>`;
+  }).join("") : `<p class="muted" style="margin:6px 2px 14px;">Für diesen Tag ist noch nichts eingeteilt.</p>`;
+
+  // ---- Neue Gruppe zusammenstellen ----
+  const auswahlHtml = offen.length ? offen.map((m) => {
+    const an = glasLagerAuswahl.has(m.id);
+    return `
+      <button class="glas-lager-chip${an ? " an" : ""}" onclick="glasLagerToggle('${m.id}')">
+        <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)};"></span>
+        ${escapeHtml(m.name)}${an ? " ✓" : ""}
+      </button>`;
+  }).join("") : `<p class="muted" style="margin:6px 2px;">Alle freigeschalteten Mitarbeiter sind für diesen Tag schon eingeteilt.</p>`;
+
+  return `
+    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasLagerSchliessen()">&larr; Zurück</button>
+    <h2 style="margin:0 0 4px;">📦 Lager-Plan</h2>
+    <p class="muted" style="margin:0 0 14px;">Uhrzeit wählen, Leute antippen, senden. Für die nächste Gruppe einfach nochmal.</p>
+
+    <div class="field">
+      <label class="muted">Tag</label>
+      <input type="date" id="lager_datum" value="${datum}" min="${glasTodayIso()}" onchange="glasLagerDatumSetzen(this.value)" />
+    </div>
+
+    <p class="glas-section-title" style="margin:16px 0 6px;">Eingeteilt an diesem Tag</p>
+    ${uebersicht}
+
+    <div class="card" style="margin-top:16px;">
+      <p style="margin:0 0 12px; font-weight:700; font-size:15px;">➕ Gruppe hinzufügen</p>
+      <div class="row" style="display:flex; gap:10px;">
+        <div class="field" style="flex:0 0 130px;">
+          <label class="muted">Uhrzeit</label>
+          <input type="time" id="lager_uhrzeit" value="${escapeHtml(glasLagerUhrzeit)}" step="300" onchange="glasLagerSyncForm()" />
+        </div>
+        <div class="field" style="flex:1;">
+          <label class="muted">Notiz (optional)</label>
+          <input type="text" id="lager_notiz" value="${escapeHtml(glasLagerNotiz)}" placeholder="z.B. Material für Kreishaus" oninput="glasLagerSyncForm()" />
+        </div>
+      </div>
+      <label class="muted" style="display:block; margin-bottom:6px;">Wer soll um diese Zeit da sein? (${glasLagerAuswahl.size} gewählt)</label>
+      ${leute.length ? `<div class="glas-lager-chips">${auswahlHtml}</div>` : `
+        <p class="muted" style="margin:6px 2px;">Noch niemand für den Lager-Plan freigeschaltet.
+        Das stellst du beim Mitarbeiter unter „📦 Lager-Plan“ ein.</p>`}
+      <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px; padding:13px;"
+        onclick="glasLagerSenden()" ${glasLagerBusy || !glasLagerAuswahl.size ? "disabled" : ""}>
+        ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : `📲 An ${glasLagerAuswahl.size || ""} ${glasLagerAuswahl.size === 1 ? "Person" : "Personen"} senden`}
+      </button>
+    </div>`;
+}
+
+async function glasLagerSenden() {
+  if (glasLagerBusy || !glasLagerAuswahl.size) return;
+  glasLagerSyncForm();
+  const datum = glasLagerDatumJetzt();
+  const ids = [...glasLagerAuswahl];
+  glasLagerBusy = true; renderGlasAdmin();
+  try {
+    const zeile = {
+      id: genCode(), datum, uhrzeit: glasLagerUhrzeit || "06:00",
+      mitarbeiter_ids: ids, notiz: glasLagerNotiz || "",
+      gesendet_am: new Date().toISOString(),
+    };
+    const { error } = await sb.from("glas_lager_plan").insert(zeile);
+    if (error) {
+      showToast(/glas_lager_plan/i.test(error.message || "")
+        ? "Bitte supabase_add_lager.sql in Supabase ausführen"
+        : "Fehler: " + error.message);
+      return;
+    }
+    // Benachrichtigung gezielt an die eingeteilten Mitarbeiter
+    const an = !glasEinstellungen || glasEinstellungen.push_lager !== false;
+    if (an) {
+      const datumTxt = formatGlasDate(datum);
+      ids.forEach((id) => {
+        try {
+          sb.functions.invoke("send-push", { body: {
+            role: "geko_one",
+            title: `📦 Lager: ${zeile.uhrzeit} Uhr`,
+            body: `${datumTxt} · bitte um ${zeile.uhrzeit} im Lager sein${zeile.notiz ? " · " + zeile.notiz : ""}`,
+            url: "/meine.html",
+            mitarbeiter_id: id,
+          } }).catch(() => {});
+        } catch (e) {}
+      });
+    }
+    glasLagerAuswahl = new Set();
+    glasLagerNotiz = "";
+    await loadGlasLagerPlan();
+    showToast(`Verschickt an ${ids.length} ${ids.length === 1 ? "Person" : "Personen"} ✓`);
+  } finally {
+    glasLagerBusy = false;
+    renderGlasAdmin();
+  }
+}
+
+async function glasLagerLoeschen(id) {
+  const p = glasLagerPlan.find((x) => x.id === id);
+  if (!p) return;
+  if (!confirm(`Gruppe ${p.uhrzeit} Uhr wirklich entfernen?\n\nDie Mitarbeiter sehen den Eintrag dann nicht mehr.`)) return;
+  const { error } = await sb.from("glas_lager_plan").delete().eq("id", id);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  await loadGlasLagerPlan();
+  renderGlasAdmin();
+  showToast("Entfernt");
+}
+
 function renderMehrTab() {
   const item = (icon, label, sub, onclick) => `
     <button class="glas-menu-item" style="padding:16px;" onclick="${onclick}">
@@ -1034,6 +1240,7 @@ function renderMehrTab() {
   return `
     <h2 style="margin:2px 0 12px;">Mehr</h2>
     <div class="card" style="padding:0; overflow:hidden;">
+      ${item("📦", "Lager-Plan", "Wer muss morgens wann im Lager sein – mit Benachrichtigung", "glasOpenLager()")}
       ${item("📅", "Jahresvorschau", "Anstehende Reinigungen pro Monat – erledigt, geplant, offen", "glasOpenJahr()")}
       ${item("📊", "Statistiken", "Reinigungen, Jahres-QM und Kunden-Auswertung", "glasOpenStatistik()")}
       ${item("👥", "Mitarbeiter & Zugänge", "Benutzer & Passwörter anlegen, App-Zugang sperren/entsperren", "goGlasMaVerwaltung()")}
@@ -2724,6 +2931,10 @@ function renderPushEinstellungen() {
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
       <input type="checkbox" style="width:auto;" ${e.push_urlaub !== false ? "checked" : ""} onchange="glasSavePushSchalter('push_urlaub', this.checked)" />
       <span style="font-size:13.5px;">🏖️ Neue Urlaubsanträge der Mitarbeiter &middot; <span class="muted">Glasreinigung-App</span></span>
+    </label>
+    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+      <input type="checkbox" style="width:auto;" ${e.push_lager !== false ? "checked" : ""} onchange="glasSavePushSchalter('push_lager', this.checked)" />
+      <span style="font-size:13.5px;">📦 Lager-Plan an die Mitarbeiter schicken &middot; <span class="muted">GEKO One</span></span>
     </label>
     <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
       <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
@@ -4892,6 +5103,7 @@ function glasMaZugangBadges(m) {
   if (m.zugang_glas !== false) frei.push("🧽 Glas");
   if (m.zugang_graffiti === true) frei.push("🎨 Graffiti");
   if (m.zugang_checkin === true) frei.push("📍 Check-ins");
+  if (m.zugang_lager === true) frei.push("📦 Lager");
   return frei.length ? escapeHtml(frei.join(" · ")) : "<i>keine Bereiche freigeschaltet</i>";
 }
 
@@ -4951,6 +5163,7 @@ function renderMaForm() {
         <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren-App</span></label>
         <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_graffiti" ${m.zugang_graffiti === true ? "checked" : ""} /> <span>🎨 Graffiti-App</span></label>
         <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_checkin" ${m.zugang_checkin === true ? "checked" : ""} /> <span>📍 Check-ins-App</span></label>
+        <label class="glas-aktiv-toggle" style="margin-top:6px;"><input type="checkbox" id="ma_zugang_lager" ${m.zugang_lager === true ? "checked" : ""} /> <span>📦 Lager-Plan</span></label>
         <p class="muted" style="margin:5px 0 0; font-size:12px;">Bestimmt, in welche App sich dieser Login einloggen darf – und welche Kacheln er in GEKO One sieht. Dasselbe Konto, aber du wählst wo es funktioniert.</p>
       </div>
 
@@ -5009,11 +5222,19 @@ async function saveGlasMa() {
   const zGlasEl = document.getElementById("ma_zugang_glas");
   const zGraffitiEl = document.getElementById("ma_zugang_graffiti");
   const zCheckinEl = document.getElementById("ma_zugang_checkin");
+  const zLagerEl = document.getElementById("ma_zugang_lager");
   if (zGlasEl) payload.zugang_glas = zGlasEl.checked;
   if (zGraffitiEl) payload.zugang_graffiti = zGraffitiEl.checked;
   if (zCheckinEl) payload.zugang_checkin = zCheckinEl.checked;
+  if (zLagerEl) payload.zugang_lager = zLagerEl.checked;
 
   let { error } = await sb.from("glas_mitarbeiter").upsert(payload);
+  // Lager-Spalte fehlt evtl. noch (supabase_add_lager.sql nicht ausgeführt)
+  if (error && /zugang_lager/i.test(error.message || "")) {
+    delete payload.zugang_lager;
+    showToast("Lager-Freischaltung nicht gespeichert – bitte supabase_add_lager.sql in Supabase ausführen");
+    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
+  }
   // Graffiti-Spalte fehlt evtl. noch (neueste SQL nicht ausgeführt) -> ohne sie erneut versuchen
   if (error && /zugang_graffiti/i.test(error.message || "")) {
     delete payload.zugang_graffiti;
@@ -5022,14 +5243,14 @@ async function saveGlasMa() {
   }
   if (error && /(zugang_glas|zugang_checkin)/i.test(error.message || "")) {
     // Zugangs-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
-    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin;
+    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin; delete payload.zugang_lager;
     showToast("Per-App-Zugang nicht gespeichert – bitte supabase_add_checkins.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
   if (error && /(username|pass_hash|pass_salt|pass_klar|login_aktiv)/i.test(error.message || "")) {
     // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
     delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.pass_klar; delete payload.login_aktiv;
-    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin;
+    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin; delete payload.zugang_lager;
     showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
