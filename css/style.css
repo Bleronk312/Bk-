@@ -2240,37 +2240,90 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-lager-chip.an { background: var(--blue); border-color: var(--blue); color: #fff; }
 .glas-lager-chip.an .glas-ma-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
 
-/* Tages-Chips: seitlich wischbar statt Datumsfeld (das native Feld lief auf dem
-   iPhone aus dem Bildschirm). Der kleine Punkt = an dem Tag ist schon was geplant. */
-.glas-lager-tage { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px;
+/* ---- Lager-Plan: eigener, moderner Look. Akzentfarbe Violett - so hebt sich die
+   Seite bewusst von Glas (blau) und Check-ins (orange) ab. ---- */
+
+/* Tages-Pills: zweizeilig wie im Kalender einer Buchungs-App - Wochentag klein oben,
+   Tag groß darunter. Seitlich wischbar. Punkt = an dem Tag ist schon etwas geplant. */
+.glas-lager-tage { display: flex; gap: 9px; overflow-x: auto; padding: 4px 2px 10px;
   -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .glas-lager-tage::-webkit-scrollbar { display: none; }
-.glas-lager-tag { flex: none; display: inline-flex; align-items: center; gap: 6px;
-  padding: 10px 15px; border-radius: 12px; border: 1.5px solid var(--border);
-  background: var(--card); font-size: 13.5px; font-weight: 700; color: var(--text);
-  font-family: inherit; cursor: pointer; white-space: nowrap;
-  transition: background .15s, border-color .15s, color .15s; }
-.glas-lager-tag.an { background: #6b4ee6; border-color: #6b4ee6; color: #fff; }
-.glas-lager-tag .lt-punkt { width: 7px; height: 7px; border-radius: 50%; background: #6b4ee6; display: inline-block; }
-.glas-lager-tag.an .lt-punkt { background: #fff; }
+.glas-lager-tag { flex: none; display: flex; flex-direction: column; align-items: center;
+  gap: 1px; min-width: 58px; padding: 9px 10px 7px; border-radius: 15px;
+  border: 1.5px solid var(--border); background: var(--card); color: var(--text);
+  font-family: inherit; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .12s, box-shadow .15s; }
+.glas-lager-tag:active { transform: scale(.94); }
+.glas-lager-tag .lt-wt { font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-secondary); }
+.glas-lager-tag .lt-nr { font-size: 19px; font-weight: 800; line-height: 1.15;
+  font-variant-numeric: tabular-nums; }
+.glas-lager-tag .lt-punkt { width: 5px; height: 5px; border-radius: 50%; background: transparent; margin-top: 2px; }
+.glas-lager-tag .lt-punkt.da { background: #6b4ee6; }
+.glas-lager-tag.an { background: linear-gradient(150deg, #7a5cf0, #5b3fd4); border-color: #6b4ee6;
+  color: #fff; box-shadow: 0 5px 14px rgba(107, 78, 230, .35); }
+.glas-lager-tag.an .lt-wt { color: rgba(255, 255, 255, .82); }
+.glas-lager-tag.an .lt-punkt.da { background: #fff; }
 
-/* Uhrzeit-Schnellwahl: bleibt markiert, bis man eine andere antippt */
-.glas-lager-zeiten { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* Uhrzeit-Schnellwahl: gleichmäßiges Raster, bleibt markiert bis man umtippt */
+.glas-lager-zeiten { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 8px; align-items: center; }
 .glas-lager-zeit { display: inline-flex; align-items: center; justify-content: center;
-  min-width: 64px; padding: 11px 14px; border-radius: 12px;
+  padding: 12px 6px; border-radius: 13px;
   border: 1.5px solid var(--border); background: var(--card);
   font-size: 15px; font-weight: 700; color: var(--text); font-family: inherit;
   font-variant-numeric: tabular-nums; cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s; }
-.glas-lager-zeit:hover { border-color: var(--blue); }
-.glas-lager-zeit.an { background: var(--blue); border-color: var(--blue); color: #fff; }
+  transition: background .15s, border-color .15s, color .15s, transform .12s, box-shadow .15s; }
+.glas-lager-zeit:active { transform: scale(.94); }
+.glas-lager-zeit.an { background: linear-gradient(150deg, #7a5cf0, #5b3fd4); border-color: #6b4ee6;
+  color: #fff; box-shadow: 0 5px 14px rgba(107, 78, 230, .35); }
 /* Eigene Uhrzeit + Notiz: mindestens 16px Schrift, sonst zoomt iOS beim Antippen in
    die Seite hinein und alles wirkt "verschoben". appearance:none, damit das Feld
    seine Breite respektiert statt mit iOS-Eigenmaßen überzulaufen. */
 .glas-lager-zeitfeld { -webkit-appearance: none; appearance: none; width: auto; min-width: 96px;
-  padding: 9px 12px; font-size: 16px; font-weight: 700; border-radius: 12px;
-  border: 1.5px solid var(--blue); font-variant-numeric: tabular-nums; }
-.glas-lager-notiz { font-size: 16px; -webkit-appearance: none; appearance: none; border-radius: 11px; }
+  padding: 10px 12px; font-size: 16px; font-weight: 700; border-radius: 13px;
+  border: 1.5px solid #6b4ee6; font-variant-numeric: tabular-nums; }
+.glas-lager-notiz { font-size: 16px; -webkit-appearance: none; appearance: none; border-radius: 12px; padding: 11px 13px; }
+
+/* Mitarbeiter-Chips: Initialen-Kreis in der Mitarbeiter-Farbe statt Mini-Punkt */
+.glas-lager-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.glas-lager-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 15px 8px 8px; border-radius: 999px;
+  border: 1.5px solid var(--border); background: var(--card);
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  font-family: inherit; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .12s, box-shadow .15s;
+}
+.glas-lager-chip:active { transform: scale(.95); }
+.glas-lager-chip:hover { border-color: #6b4ee6; }
+.glas-lager-chip.an { background: linear-gradient(150deg, #7a5cf0, #5b3fd4); border-color: #6b4ee6;
+  color: #fff; box-shadow: 0 5px 14px rgba(107, 78, 230, .35); }
+.glas-lager-avatar { width: 27px; height: 27px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-size: 12.5px; font-weight: 800; color: #fff; }
+.glas-lager-chip.an .glas-lager-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
+/* Chips ohne Avatar (z.B. "Alle Mitarbeiter") brauchen links normalen Innenabstand */
+.glas-lager-chip > .glas-ma-dot:first-child { margin-left: 6px; }
+
+/* Senden: der eine große Knopf der Seite - Violett wie die Auswahl */
+.glas-lager-senden { width: 100%; display: flex; align-items: center; justify-content: center;
+  gap: 8px; margin-top: 14px; padding: 15px; border: none; border-radius: 15px;
+  background: linear-gradient(150deg, #7a5cf0, #5b3fd4); color: #fff;
+  font-size: 15.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(107, 78, 230, .38); transition: transform .12s, opacity .15s; }
+.glas-lager-senden:active { transform: scale(.98); }
+.glas-lager-senden[disabled] { opacity: .45; box-shadow: none; cursor: default; }
+
+/* PDF-Block: eingeklappte Kopfzeile, klappt bei Bedarf auf */
+.glas-lager-pdfkopf { width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 14px 15px; border-radius: 15px; border: 1px solid var(--border);
+  background: var(--card); font-family: inherit; cursor: pointer; color: var(--text);
+  transition: border-color .15s; }
+.glas-lager-pdfkopf:hover { border-color: #6b4ee6; }
+.glas-lager-pdfkopf .pk-pfeil { flex: none; font-size: 19px; color: var(--text-secondary);
+  transition: transform .2s ease; }
+.glas-lager-pdfkopf.auf { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.glas-lager-pdfkopf.auf .pk-pfeil { transform: rotate(90deg); }
 
 /* Gelesen-Etiketten im Admin: grün = in GEKO One abgehakt, grau = noch nicht */
 .glas-lager-gelesen { display: inline-flex; align-items: center; padding: 3px 9px;

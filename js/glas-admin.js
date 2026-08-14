@@ -435,7 +435,12 @@ async function glasInit() {
   if (glasLagerApp) { glasLagerOffen = true; loadGlasLagerPlan().then(renderGlasAdmin); }
   renderGlasAdmin(); // Startseite sofort zeigen, Daten laden im Hintergrund
   await Promise.all([loadGlasKunden(), loadGlasObjekte(), loadGlasObjektPositionen(), loadGlasTouren(), loadGlasPositionen(), loadGlasTermine(), loadGlasEingeplantePositionen(), loadGlasEinstellungen(), loadGlasMitarbeiter(), loadGlasUrlaub(), loadGlasGraffitiTermine()]);
-  window.addEventListener("hashchange", () => { glasPage = glasParseHash(); renderGlasAdmin(); });
+  window.addEventListener("hashchange", () => {
+    // Browser-Zurück soll die Lager-Unterseite verlassen (außer sie IST die App)
+    if (!glasLagerApp) glasLagerOffen = false;
+    glasPage = glasParseHash();
+    renderGlasAdmin();
+  });
   renderGlasAdmin();
   glasGeocodeFehlende();
   try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription(glasPushRole()); } catch (e) {}
@@ -1062,6 +1067,7 @@ function glasLagerSchliessen() { glasLagerOffen = false; renderGlasAdmin(); }
 
 // Standard-Datum: morgen (das ist der übliche Fall - abends den nächsten Tag planen)
 function glasLagerDatumJetzt() {
+  if (glasLagerDatum && glasLagerDatum < glasTodayIso()) glasLagerDatum = null;
   return glasLagerDatum || glasAddDaysIso(glasTodayIso(), 1);
 }
 
@@ -1122,7 +1128,7 @@ function glasLagerDatumSetzen(v) {
 
 // Die üblichen Lager-Zeiten als Schnellwahl. Angetippt = bleibt markiert.
 // "Andere…" öffnet ein Zeitfeld für alles, was nicht im Raster liegt.
-const GLAS_LAGER_ZEITEN = ["05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00"];
+const GLAS_LAGER_ZEITEN = ["05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00"];
 let glasLagerEigeneZeit = false; // Zeitfeld für eigene Uhrzeit sichtbar?
 
 function glasLagerZeitWaehlen(z) {
@@ -1143,6 +1149,12 @@ function glasLagerEigeneZeitAn() {
 function glasLagerEigeneZeitSetzen(v) {
   if (v) glasLagerUhrzeit = v;
   renderGlasAdmin();
+}
+
+// Initialen für den Farbkreis am Mitarbeiter-Chip ("Adnan Beispiel" -> "AB")
+function glasLagerInitialen(name) {
+  const teile = String(name || "?").trim().split(/\s+/);
+  return ((teile[0] || "")[0] || "?").toUpperCase() + (teile.length > 1 ? ((teile[teile.length - 1][0] || "").toUpperCase()) : "");
 }
 
 // Kurze Tages-Beschriftung für die Datums-Chips: "Heute", "Morgen", sonst "Mo 17.08."
@@ -1167,10 +1179,16 @@ function renderLagerPlan() {
   // iPhone aus dem Bildschirm und die Tastatur verschob alles) ----
   const tage = [];
   for (let i = 0; i < 14; i++) tage.push(glasAddDaysIso(heute, i));
-  const tageHtml = tage.map((iso) => `
+  const tageHtml = tage.map((iso) => {
+    const d = new Date(iso + "T12:00:00");
+    const oben = iso === heute ? "Heute" : iso === glasAddDaysIso(heute, 1) ? "Morgen" : ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()];
+    return `
     <button class="glas-lager-tag${iso === datum ? " an" : ""}" onclick="glasLagerDatumSetzen('${iso}')">
-      ${glasLagerTagLabel(iso)}${glasLagerPlan.some((p) => p.datum === iso) ? `<i class="lt-punkt"></i>` : ""}
-    </button>`).join("");
+      <span class="lt-wt">${oben}</span>
+      <span class="lt-nr">${d.getDate()}</span>
+      <span class="lt-punkt${glasLagerPlan.some((p) => p.datum === iso) ? " da" : ""}"></span>
+    </button>`;
+  }).join("");
 
   // ---- Uhrzeit: Schnellwahl-Chips, eigene Uhrzeit bei Bedarf ----
   const eigene = !GLAS_LAGER_ZEITEN.includes(glasLagerUhrzeit);
@@ -1214,8 +1232,8 @@ function renderLagerPlan() {
     const an = glasLagerAuswahl.has(m.id);
     return `
       <button class="glas-lager-chip${an ? " an" : ""}" onclick="glasLagerToggle('${m.id}')">
-        <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)};"></span>
-        ${escapeHtml(m.name)}${an ? " ✓" : ""}
+        <span class="glas-lager-avatar" style="background:${glasMaFarbe(m.id)};">${an ? "✓" : glasLagerInitialen(m.name)}</span>
+        ${escapeHtml(m.name)}
       </button>`;
   }).join("") : `<p class="muted" style="margin:6px 2px;">Alle freigeschalteten Mitarbeiter sind für diesen Tag schon eingeteilt.</p>`;
 
@@ -1255,9 +1273,8 @@ function renderLagerPlan() {
       <input type="text" id="lager_notiz" class="glas-lager-notiz" value="${escapeHtml(glasLagerNotiz)}" placeholder="z.B. Material für Kreishaus mitnehmen" oninput="glasLagerSyncForm()" />
     </div>
 
-    <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px; padding:14px; font-size:15px; border-radius:13px;"
-      onclick="glasLagerSenden()" ${glasLagerBusy || !n ? "disabled" : ""}>
-      ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : n ? `📲 Senden an ${n} ${n === 1 ? "Person" : "Personen"} · ${escapeHtml(glasLagerUhrzeit)} Uhr` : `📲 Erst Leute antippen`}
+    <button class="glas-lager-senden" onclick="glasLagerSenden()" ${glasLagerBusy || !n ? "disabled" : ""}>
+      ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : n ? `📲 Senden an ${n} ${n === 1 ? "Person" : "Personen"} · ${escapeHtml(glasLagerUhrzeit)} Uhr` : `Erst Leute antippen`}
     </button>
 
     ${renderLagerPdfBlock()}`;
@@ -1269,6 +1286,13 @@ function renderLagerPlan() {
 
 let glasLagerPdfMonat = null; // {year, month} - null = aktueller Monat
 let glasLagerPdfWer = "alle"; // "alle" oder Mitarbeiter-ID
+let glasLagerPdfOffen = false; // Block eingeklappt, bis man ihn braucht - weniger auf einmal
+
+function glasLagerPdfToggle() {
+  glasLagerPdfOffen = !glasLagerPdfOffen;
+  glasLagerSyncForm();
+  renderGlasAdmin();
+}
 
 function glasLagerPdfMonatJetzt() {
   if (glasLagerPdfMonat) return glasLagerPdfMonat;
@@ -1300,20 +1324,32 @@ function renderLagerPdfBlock() {
   const imMonat = new Set();
   glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).forEach((p) => glasLagerIds(p).forEach((id) => imMonat.add(id)));
   const wer = glasMitarbeiter.filter((x) => x.zugang_lager === true || imMonat.has(x.id));
+  if (glasLagerPdfWer !== "alle" && !wer.some((x) => x.id === glasLagerPdfWer)) glasLagerPdfWer = "alle";
   const anzahl = glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).length;
 
+  const kopf = `
+    <button class="glas-lager-pdfkopf${glasLagerPdfOffen ? " auf" : ""}" onclick="glasLagerPdfToggle()">
+      <span style="font-size:19px;">📄</span>
+      <span style="flex:1; text-align:left;">
+        <b style="display:block; font-size:14.5px;">Einsatzplan als PDF</b>
+        <span style="display:block; font-size:12px; color:var(--text-secondary); margin-top:1px;">Monatsplan für alle oder einen Mitarbeiter</span>
+      </span>
+      <span class="pk-pfeil">›</span>
+    </button>`;
+  if (!glasLagerPdfOffen) return `<div style="margin-top:26px;">${kopf}</div>`;
+
   return `
-    <p class="glas-section-title" style="margin:26px 0 8px;">📄 Einsatzplan als PDF</p>
-    <div class="card" style="padding:14px 15px;">
+    <div style="margin-top:26px;">${kopf}</div>
+    <div class="card" style="padding:14px 15px; border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-top:0;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
         <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(-1)">‹</button>
         <span style="flex:1; text-align:center; font-weight:700; font-size:14.5px;">${label}</span>
         <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(1)">›</button>
       </div>
       <div class="glas-lager-chips glas-lager-pdfwer" style="margin-bottom:12px;">
-        <button class="glas-lager-chip${glasLagerPdfWer === "alle" ? " an" : ""}" onclick="glasLagerPdfWerSetzen('alle')">👥 Alle Mitarbeiter</button>
+        <button class="glas-lager-chip${glasLagerPdfWer === "alle" ? " an" : ""}" style="padding-left:15px;" onclick="glasLagerPdfWerSetzen('alle')">👥 Alle Mitarbeiter</button>
         ${wer.map((x) => `<button class="glas-lager-chip${glasLagerPdfWer === x.id ? " an" : ""}" onclick="glasLagerPdfWerSetzen('${x.id}')">
-          <span class="glas-ma-dot" style="background:${glasMaFarbe(x.id)};"></span>${escapeHtml(x.name)}</button>`).join("")}
+          <span class="glas-lager-avatar" style="background:${glasMaFarbe(x.id)};">${glasLagerInitialen(x.name)}</span>${escapeHtml(x.name)}</button>`).join("")}
       </div>
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="glasLagerPdf()">
         📄 PDF erstellen${glasLagerPdfWer === "alle" ? ` (${anzahl} ${anzahl === 1 ? "Einteilung" : "Einteilungen"})` : ""}

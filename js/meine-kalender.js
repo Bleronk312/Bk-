@@ -347,6 +347,7 @@ let oneKalTagGewaehlt = null;
 
 let oneLagerPlan = null;      // eigene Einträge (null = noch nicht geladen)
 let oneLagerFehlt = false;    // Tabelle/Spalte fehlt noch (SQL nicht ausgeführt)
+let oneLagerFehler = false;   // Laden fehlgeschlagen (kein Netz o.ä.) - nicht als "leer" ausgeben
 
 function oneLagerIds(p) {
   try { return Array.isArray(p.mitarbeiter_ids) ? p.mitarbeiter_ids : JSON.parse(p.mitarbeiter_ids || "[]"); }
@@ -372,11 +373,13 @@ async function oneLagerAbfrage(vonIso, bisIso) {
   // Fehlt die Tabelle noch, wird das gemerkt statt still verschluckt - sonst sieht
   // es aus, als wäre einfach nichts eingeteilt, und keiner weiß warum.
   if (res && res.error && /glas_lager_plan/i.test(res.error.message || "")) oneLagerFehlt = true;
+  else if (res && res.error) oneLagerFehler = true; // Netz-/Serverfehler - kein leerer Plan
   return res && !res.error ? res : { data: [] };
 }
 
 async function oneLagerLaden() {
   if (!oneUser) { oneLagerPlan = []; return; }
+  oneLagerFehler = false;
   const heute = oneKalHeute();
   // Rückblick von 60 Tagen (für den Verlauf) und ein Jahr nach vorne - der
   // Lager-Plan wird tageweise gemacht, mehr braucht es nicht.
@@ -390,8 +393,15 @@ function oneLagerStarteLaden() {
   if (oneLagerPlan !== null) return;
   oneLagerPlan = [];  // sperrt weitere Läufe
   oneLagerLaden()
-    .catch(() => {})
+    .catch(() => { oneLagerFehler = true; })
     .then(() => { if (oneScreen === "home" || oneScreen === "lager") renderOne(); });
+}
+
+// "Erneut versuchen" nach einem Netzfehler
+function oneLagerNeuLaden() {
+  oneLagerPlan = null;
+  oneLagerStarteLaden();
+  renderOne();
 }
 
 // Der nächste Termin ab heute - genau der gehört auf die Startseite.
@@ -469,7 +479,7 @@ function renderOneLagerHinweis() {
 
 // Untertitel der Kachel: sagt schon von außen, ob überhaupt etwas ansteht.
 function oneLagerKachelSub() {
-  if (oneLagerPlan === null) return "Wann du im Lager sein sollst";
+  if (oneLagerPlan === null || oneLagerFehler) return "Wann du im Lager sein sollst";
   const p = oneLagerNaechster();
   return p ? `${oneLagerTagText(p.datum)} um ${p.uhrzeit || "?"} Uhr` : "Nichts eingeteilt";
 }
@@ -499,6 +509,12 @@ function renderOneLager() {
     return `<div class="card" style="margin-top:10px;">
       <p style="margin:0; font-size:14px;">📦 Der Lager-Plan ist noch nicht eingerichtet.</p>
       <p class="muted" style="margin:6px 0 0; font-size:12.5px;">Bitte im Büro Bescheid geben.</p>
+    </div>`;
+  }
+  if (oneLagerFehler) {
+    return `<div class="card" style="margin-top:10px;">
+      <p style="margin:0; font-size:14px;">Keine Verbindung – dein Lager-Plan konnte nicht geladen werden.</p>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="oneLagerNeuLaden()">↻ Erneut versuchen</button>
     </div>`;
   }
 
