@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Touren" />
 <meta name="theme-color" content="#1f5d92" />
 <title>Glasreinigung - Meine Touren</title>
-<link rel="stylesheet" href="css/style.css?v=133" />
+<link rel="stylesheet" href="css/style.css?v=134" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
@@ -20,9 +20,10 @@
 <body class="glas-logo-left">
 
   <div class="app-header">
-    <div class="brand-row geko-navrow"><span class="dot"></span>Glasreinigung
-      <a href="meine.html" class="geko-navbtn right">🏠 Start</a>
-      <button class="geko-navbtn" onclick="if(history.length>1)history.back();else location.href='meine.html'">‹ Zurück</button>
+    <div class="brand-row geko-navrow">
+      <button class="geko-navbtn" onclick="glasMaZurueck()">‹ Zurück</button>
+      <a href="meine.html" class="geko-navbtn">🏠 Start</a>
+      <span class="geko-brand"><span class="dot"></span>Glasreinigung</span>
     </div>
     <div class="greeting">Meine Touren</div>
   </div>
@@ -41,16 +42,16 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
-  <script src="js/config.js?v=133"></script>
-  <script src="js/fehler.js?v=133"></script>
-  <script src="js/logo-asset.js?v=133"></script>
-  <script src="js/supabase-client.js?v=133"></script>
-  <script src="js/app-shared.js?v=133"></script>
-  <script src="js/glas-shared.js?v=133"></script>
-  <script defer src="js/pdf-fonts.js?v=133"></script>
-  <script defer src="js/pdf-template.js?v=133"></script>
-  <script defer src="js/glas-logo-sub.js?v=133"></script>
-  <script defer src="js/glas-pdf-template.js?v=133"></script>
-  <script src="js/glas-mitarbeiter.js?v=133"></script>
+  <script src="js/config.js?v=134"></script>
+  <script src="js/fehler.js?v=134"></script>
+  <script src="js/logo-asset.js?v=134"></script>
+  <script src="js/supabase-client.js?v=134"></script>
+  <script src="js/app-shared.js?v=134"></script>
+  <script src="js/glas-shared.js?v=134"></script>
+  <script defer src="js/pdf-fonts.js?v=134"></script>
+  <script defer src="js/pdf-template.js?v=134"></script>
+  <script defer src="js/glas-logo-sub.js?v=134"></script>
+  <script defer src="js/glas-pdf-template.js?v=134"></script>
+  <script src="js/glas-mitarbeiter.js?v=134"></script>
 </body>
 </html>

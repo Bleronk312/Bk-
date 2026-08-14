@@ -2542,3 +2542,5 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a; --jv-none:#7
 .geko-navbtn:active{ transform:scale(.95); }
 .geko-navrow{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .geko-navrow .geko-navbtn.right{ margin-left:auto; }
+/* Nav-Knöpfe stehen IMMER oben links; der Seitenname rutscht nach rechts. */
+.geko-brand{ margin-left:auto; display:inline-flex; align-items:center; gap:7px; font-weight:600; opacity:.95; }

@@ -4857,7 +4857,12 @@ async function saveGlasMa() {
   } else {
     payload.username = null; // kein Login für diesen MA
   }
-  if (passRaw) {
+  // WICHTIG: Nur neu verschlüsseln, wenn das Passwort auch WIRKLICH geändert wurde.
+  // Das Feld ist mit dem bisherigen Passwort vorausgefüllt - würde man bei jedem
+  // Speichern neu hashen (neues Salt = neuer Hash), verlieren alle Geräte des
+  // Mitarbeiters ihre Anmeldung und er müsste sich jedes Mal neu einloggen, nur
+  // weil im Büro z.B. ein Haken gesetzt wurde. Genau das war der Fehler.
+  if (passRaw && passRaw !== (m.pass_klar || "")) {
     const salt = gekoMakeSalt();
     payload.pass_salt = salt;
     payload.pass_hash = await gekoHashPw(passRaw, salt);

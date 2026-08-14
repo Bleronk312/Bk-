@@ -10,7 +10,9 @@ document.title = "Glasreinigung - Meine Touren";
 })();
 
 let glasTouren = [];
-let glasMaScreen = "home"; // "home" (Logo-Startseite) | "touren"
+// Startet direkt in der Tourenliste: GEKO One ist jetzt die Startseite, eine zweite
+// Begrüßungsseite davor wäre doppelt gemoppelt.
+let glasMaScreen = "touren"; // "touren" | "home" (alte Logo-Startseite, nicht mehr angesteuert)
 let glasOpenTourId = null; // gerade geöffnete Tour im Vollbild (ersetzt die Liste)
 let glasOpenStopId = null; // aufgeklappter Stopp (Akkordeon)
 let glasSignStopId = null; // Stopp, bei dem gerade das Unterschrift-Formular offen ist
@@ -222,13 +224,20 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) glas
 // 3) Als Sicherheitsnetz alle 60 Sekunden, solange etwas in der Warteschlange liegt.
 setInterval(glasTrySync, 60000);
 
-// Logo oben links -> zurück zur Startseite (schließt auch eine offene Tour)
+// Logo antippen -> zurück zur Tourenliste (schließt auch eine offene Tour)
 function glasMaGoHome() {
-  glasMaScreen = "home";
+  glasMaScreen = "touren";
   glasOpenTourId = null;
   glasOpenStopId = null;
   glasSignStopId = null;
   renderGlasMa();
+}
+
+// "Zurück" oben links: erst innerhalb der App eine Ebene hoch (offene Tour schließen),
+// und erst von der Tourenliste aus zurück nach GEKO One.
+function glasMaZurueck() {
+  if (glasOpenTourId) { glasMaGoHome(); return; }
+  location.href = "meine.html";
 }
 
 async function loadGlasTouren() {
@@ -399,7 +408,6 @@ function renderGlasMa() {
 
   if (!glasTouren.length) {
     view.innerHTML = `
-      <button class="btn btn-sm" style="margin:16px 0;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
       ${glasOfflineBanner()}
       <div class="glas-empty">
         <div class="glas-empty-icon">${glasOfflineModus ? "📴" : "🧽"}</div>
@@ -410,7 +418,6 @@ function renderGlasMa() {
   }
 
   view.innerHTML = `
-    <button class="btn btn-sm" style="margin:16px 0 4px;" onclick="glasMaScreen = 'home'; renderGlasMa();">&larr; Start</button>
     ${glasRefreshButton()}
     ${glasOfflineBanner()}
     ${renderGlasTourList()}`;

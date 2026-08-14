@@ -24,7 +24,7 @@ const ONE_CI_KEY = "geko_ci_auth";    // Sitzung der Check-ins-App
 const ONE_PUSH_ROLE = "geko_one";     // eigene Push-Rolle: alle MA-Benachrichtigungen laufen hierüber
 
 let oneUser = null;    // {id, name, username, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel}
-let oneScreen = "home"; // "home" | "menu" | "pw" | "pwZwang"
+let oneScreen = "home"; // "home" | "kalender" | "menu" | "pw" | "pwZwang"
 
 function oneGoHome() { if (oneUser) { oneScreen = oneUser.pw_muss_wechsel ? "pwZwang" : "home"; renderOne(); } }
 
@@ -170,7 +170,7 @@ function oneRenderTopbar() {
   if (oneUser) {
     if (oneScreen === "home") {
       links = `<button class="geko-navbtn" onclick="oneScreen='menu'; renderOne();">☰ Menü</button>`;
-    } else if (oneScreen === "menu" || oneScreen === "pw") {
+    } else if (oneScreen !== "pwZwang") {
       links = `<button class="geko-navbtn" onclick="oneGoHome()">‹ Zurück</button>
                <button class="geko-navbtn" onclick="oneGoHome()">🏠 Start</button>`;
     }
@@ -211,6 +211,7 @@ function renderOne() {
   if (!view) return;
   oneRenderTopbar();
 
+  if (oneScreen === "kalender") { oneSetGreeting("Mein Kalender"); view.innerHTML = renderOneKalender(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
@@ -232,9 +233,12 @@ function renderOne() {
     ${kacheln.length
       ? `<div class="one-raster">${kacheln.join("")}</div>`
       : `<p class="muted" style="margin:10px 2px;">Noch keine Bereiche freigeschaltet - das Büro schaltet dir deine Bereiche frei.</p>`}
-    <p class="one-label">BALD IN GEKO ONE</p>
+    <p class="one-label">FÜR DICH</p>
     <div class="one-raster">
-      ${oneKachelBald("📅", "Kalender", "Termine & Urlaub", d + 0.14)}
+      <button class="one-kachel" style="animation-delay:${d + 0.14}s;" onclick="oneScreen='kalender'; renderOne();">
+        <span class="k-ico" style="background:#0f7d74;">📅</span>
+        <b>Mein Kalender</b><span>Touren, Termine & dein Urlaub</span>
+      </button>
       ${oneKachelBald("📄", "Meine Dokumente", "Lohnabrechnungen & Infos", d + 0.21)}
     </div>`;
 }
@@ -287,7 +291,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v133</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v134</p>`;
 }
 
 /* ---------------- Darstellung (Hell / Dunkel / Auto) ---------------- */

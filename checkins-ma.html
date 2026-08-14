@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Check-ins" />
 <meta name="theme-color" content="#1f5d92" />
 <title>Check-ins</title>
-<link rel="stylesheet" href="css/checkins.css?v=133" />
+<link rel="stylesheet" href="css/checkins.css?v=134" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
@@ -19,11 +19,11 @@
 
   <div class="ci-head">
     <div class="ci-head-top">
-      <div class="brand"><span class="dot"></span>GEKO Check-ins</div>
       <div class="ci-head-actions">
-        <a href="meine.html" class="geko-navbtn">🏠 Start</a>
         <button class="geko-navbtn" onclick="if(history.length>1)history.back();else location.href='meine.html'">‹ Zurück</button>
+        <a href="meine.html" class="geko-navbtn">🏠 Start</a>
       </div>
+      <div class="brand" style="margin-left:auto;"><span class="dot"></span>GEKO Check-ins</div>
     </div>
     <h1>📍 Check-ins</h1>
     <div class="sub" id="ci_date">Heute</div>
@@ -39,14 +39,14 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=133"></script>
-  <script src="js/fehler.js?v=133"></script>
-  <script src="js/pull-refresh.js?v=133"></script>
-  <script src="js/supabase-client.js?v=133"></script>
-  <script src="js/app-shared.js?v=133"></script>
-  <script src="js/glas-shared.js?v=133"></script>
-  <script src="js/checkins-shared.js?v=133"></script>
-  <script src="js/push.js?v=133"></script>
-  <script src="js/checkins-ma.js?v=133"></script>
+  <script src="js/config.js?v=134"></script>
+  <script src="js/fehler.js?v=134"></script>
+  <script src="js/pull-refresh.js?v=134"></script>
+  <script src="js/supabase-client.js?v=134"></script>
+  <script src="js/app-shared.js?v=134"></script>
+  <script src="js/glas-shared.js?v=134"></script>
+  <script src="js/checkins-shared.js?v=134"></script>
+  <script src="js/push.js?v=134"></script>
+  <script src="js/checkins-ma.js?v=134"></script>
 </body>
 </html>
