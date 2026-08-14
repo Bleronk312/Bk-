@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO One" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO One - Meine Übersicht</title>
-<link rel="stylesheet" href="css/style.css?v=139" />
+<link rel="stylesheet" href="css/style.css?v=140" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
@@ -88,11 +88,17 @@ html.dark .one-kachel { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 .okal-tag.gewaehlt .okal-num { color: #fff; font-weight: 800; }
 .okal-tag.gewaehlt .okal-punkte i { box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
 .okal-schloss { margin-left: auto; font-size: 14px; opacity: .8; flex: none; align-self: center; }
-.okal-tag .okal-punkte { display: flex; gap: 2px; height: 6px; }
-.okal-tag .okal-punkte i { width: 5px; height: 5px; border-radius: 50%; display: block; }
-.okal-legende { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-.okal-legende span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-secondary); }
-.okal-legende i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+/* Kräftigere, größere Punkte - vorher waren 5px kaum zu erkennen */
+.okal-tag .okal-punkte { display: flex; gap: 3px; height: 8px; }
+.okal-tag .okal-punkte i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+/* Tage mit Terminen bekommen zusätzlich einen leichten Farbton */
+.okal-tag.hat { background: var(--blue-050, rgba(22,104,184,.06)); border-color: rgba(22,104,184,.22); }
+html.dark .okal-tag.hat { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.14); }
+.okal-legende { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
+.okal-legende span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); font-weight: 500; }
+.okal-legende i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+/* Erledigter Eintrag: durchgestrichen und zurückgenommen */
+.okal-fertig { text-decoration: line-through; opacity: .72; }
 .okal-eintrag { display: flex; align-items: stretch; gap: 11px; background: var(--card); border: 1px solid var(--border);
   border-radius: 13px; padding: 11px 13px; margin-bottom: 8px; text-decoration: none; overflow: hidden; }
 .okal-strich { width: 4px; border-radius: 3px; flex: none; }
@@ -119,14 +125,16 @@ html.dark .one-kachel { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=139"></script>
-  <script src="js/fehler.js?v=139"></script>
-  <script src="js/logo-asset.js?v=139"></script>
-  <script src="js/supabase-client.js?v=139"></script>
-  <script src="js/app-shared.js?v=139"></script>
-  <script src="js/glas-shared.js?v=139"></script>
-  <script src="js/push.js?v=139"></script>
-  <script src="js/meine-kalender.js?v=5"></script>
+  <script src="js/config.js?v=140"></script>
+  <script src="js/fehler.js?v=140"></script>
+  <script src="js/logo-asset.js?v=140"></script>
+  <script src="js/supabase-client.js?v=140"></script>
+  <script src="js/app-shared.js?v=140"></script>
+  <script src="js/glas-shared.js?v=140"></script>
+  <script src="js/push.js?v=140"></script>
+  <script src="js/meine-kalender.js?v=6"></script>
+  <!-- Übersetzung (Albanisch) - legt sich über das gerenderte Deutsch, siehe ma-i18n.js -->
+  <script src="js/ma-i18n.js?v=140"></script>
   <script src="js/meine.js?v=5"></script>
 </body>
 </html>

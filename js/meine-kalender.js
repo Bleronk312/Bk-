@@ -11,11 +11,14 @@
 // von Kollegen taucht hier nie auf. Auch Rundgänge erscheinen nur, wenn sie dem
 // Mitarbeiter zugewiesen sind (oder ausdrücklich für alle gelten).
 
+// Kräftige, klar unterscheidbare Farben je Bereich - im Monatsraster sind das nur
+// kleine Punkte, deshalb bewusst satt statt pastellig.
 const ONE_KAL_FARBEN = {
-  glas: "#1f5d92",
-  graffiti: "#a52d82",
-  checkin: "#cf6a12",
-  urlaub: "#1f7a4d",
+  glas: "#1668b8",      // Blau
+  graffiti: "#c2189c",  // Magenta
+  checkin: "#ef7d00",   // Orange
+  urlaub: "#12a150",    // Grün
+  erledigt: "#8e99a6",  // Grau: erledigt = tritt zurück
 };
 
 let oneKalTermine = null;   // geladene Termine (Array) oder null = noch nicht geladen
@@ -114,8 +117,25 @@ async function oneKalLaden() {
   // aufgelöst. Nur die, die diesem Mitarbeiter zugewiesen sind (oder allen).
   if (oneUser.zugang_checkin === true) {
     aufgaben.push((async () => {
-      const { data } = await oneKalMitTimeout(sb.from("checkin_rundgaenge").select("id, name, mitarbeiter_id, mitarbeiter_ids, tage, fenster_von, fenster_bis, aktiv"));
       const m = oneKalMonatJetzt();
+      const vonIso = glasIsoFromDate(new Date(m.jahr, m.monat, 1));
+      const bisIso = glasIsoFromDate(new Date(m.jahr, m.monat + 1, 0));
+      // Rundgänge + die eigenen Check-ins des Monats gemeinsam laden. Aus den Logs
+      // ergibt sich, welche Rundgänge an welchem Tag schon erledigt wurden.
+      const [rRes, lRes] = await Promise.all([
+        oneKalMitTimeout(sb.from("checkin_rundgaenge").select("id, name, mitarbeiter_id, mitarbeiter_ids, tage, fenster_von, fenster_bis, aktiv, punkte")),
+        oneKalMitTimeout(sb.from("checkin_logs").select("rundgang_id, datum, mitarbeiter_id")
+          .eq("mitarbeiter_id", ich).gte("datum", vonIso).lte("datum", bisIso)).catch(() => ({ data: [] })),
+      ]);
+      const data = rRes.data;
+      const logs = (lRes && lRes.data) || [];
+      // "rundgang_id|datum" -> Anzahl abgehakter Punkte an dem Tag
+      const erledigt = new Map();
+      logs.forEach((l) => {
+        if (!l.rundgang_id || !l.datum) return;
+        const k = l.rundgang_id + "|" + l.datum;
+        erledigt.set(k, (erledigt.get(k) || 0) + 1);
+      });
       const letzter = new Date(m.jahr, m.monat + 1, 0).getDate();
       (data || []).forEach((r) => {
         if (r.aktiv === false) return;
@@ -131,11 +151,22 @@ async function oneKalLaden() {
           const wt = d.getDay() === 0 ? 7 : d.getDay(); // 1=Mo … 7=So
           if (!tage.includes(wt)) continue;
           const iso = glasIsoFromDate(d);
+          // Wie viele Punkte hat der Rundgang, und wie viele davon sind an dem Tag
+          // schon abgehakt? Daraus ergibt sich "erledigt" bzw. "teilweise".
+          let punkte = [];
+          try { punkte = Array.isArray(r.punkte) ? r.punkte : JSON.parse(r.punkte || "[]"); } catch (e) { punkte = []; }
+          const gemacht = erledigt.get(r.id + "|" + iso) || 0;
+          const fertig = punkte.length > 0 && gemacht >= punkte.length;
+          const teilweise = gemacht > 0 && !fertig;
           eintraege.push({
-            art: "checkin", ico: "📍", titel: r.name || "Rundgang",
+            art: "checkin", ico: fertig ? "✅" : "📍", titel: r.name || "Rundgang",
             von: iso, bis: iso, zeit: r.fenster_von || "",
-            sub: `Rundgang · ${r.fenster_von || "?"}–${r.fenster_bis || "?"}`,
-            ziel: "checkins-ma.html", tage,
+            sub: fertig
+              ? `Rundgang · erledigt${punkte.length ? ` (${gemacht}/${punkte.length})` : ""}`
+              : teilweise
+                ? `Rundgang · ${gemacht}/${punkte.length} erledigt`
+                : `Rundgang · ${r.fenster_von || "?"}–${r.fenster_bis || "?"}`,
+            ziel: "checkins-ma.html", tage, fertig,
           });
         }
       });
@@ -216,7 +247,9 @@ function renderOneKalender() {
   for (let tag = 1; tag <= letzterTag; tag++) {
     const iso = glasIsoFromDate(new Date(m.jahr, m.monat, tag));
     const eintraege = oneKalAmTag(iso);
-    const arten = [...new Set(eintraege.map((e) => e.art))];
+    // Erledigte Einträge bekommen im Raster den grauen Punkt - so sieht man auf einen
+    // Blick, welche Tage schon abgehakt sind.
+    const arten = [...new Set(eintraege.map((e) => (e.fertig ? "erledigt" : e.art)))];
     zellen += `
       <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}${iso === oneKalTagGewaehlt ? " gewaehlt" : ""}" onclick="oneKalTagWaehlen('${iso}')">
         <span class="okal-num">${tag}</span>
@@ -255,6 +288,7 @@ function renderOneKalender() {
       ${oneUser.zugang_graffiti === true ? `<span><i style="background:${ONE_KAL_FARBEN.graffiti}"></i>Graffiti</span>` : ""}
       ${oneUser.zugang_checkin === true ? `<span><i style="background:${ONE_KAL_FARBEN.checkin}"></i>Rundgänge</span>` : ""}
       <span><i style="background:${ONE_KAL_FARBEN.urlaub}"></i>Dein Urlaub</span>
+      ${oneUser.zugang_checkin === true ? `<span><i style="background:${ONE_KAL_FARBEN.erledigt}"></i>Erledigt</span>` : ""}
     </div>
 
     <button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>
@@ -421,9 +455,9 @@ function oneKalListe(eintraege, zusammengefasst) {
       ? `${oneKalTageText(e.tage)} · immer wieder`
       : mehrtaegig ? `${formatGlasDate(e.von)} – ${formatGlasDate(e.bis)}` : formatGlasDate(e.von);
     const inner = `
-      <span class="okal-strich" style="background:${ONE_KAL_FARBEN[e.art]}"></span>
+      <span class="okal-strich" style="background:${e.fertig ? ONE_KAL_FARBEN.erledigt : ONE_KAL_FARBEN[e.art]}"></span>
       <span style="flex:1; min-width:0;">
-        <b>${e.ico} ${escapeHtml(e.titel)}</b>
+        <b${e.fertig ? ` class="okal-fertig"` : ""}>${e.ico} ${escapeHtml(e.titel)}</b>
         <span>${escapeHtml(e.sub)}${e.zeit ? " · " + escapeHtml(e.zeit) + " Uhr" : ""}</span>
         <span style="font-weight:600; color:var(--text-secondary);">${datum}</span>
       </span>

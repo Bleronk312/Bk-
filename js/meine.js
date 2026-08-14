@@ -312,7 +312,7 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v139</p>`;
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v140</p>`;
 }
 
 /* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */
@@ -323,9 +323,13 @@ function renderOneMenu() {
 const ONE_LANG_KEYS = ["geko_ma_lang", "geko_ci_lang"];
 function oneGetLang() { try { return localStorage.getItem(ONE_LANG_KEYS[0]) || "de"; } catch (e) { return "de"; } }
 function oneSetLang(l) {
+  if (oneGetLang() === l) return;
   try { ONE_LANG_KEYS.forEach((k) => localStorage.setItem(k, l)); } catch (e) {}
-  renderOne();
+  // Neu laden ist hier der einzig saubere Weg: Die Übersetzung legt sich über den
+  // bereits gerenderten deutschen Text - zurück auf Deutsch käme man ohne Neuladen
+  // nicht mehr. Die Anmeldung bleibt dabei erhalten.
   showToast(l === "sq" ? "Gjuha: Shqip ✓" : "Sprache: Deutsch ✓");
+  setTimeout(() => location.reload(), 350);
 }
 
 /* ---------------- Darstellung (Hell / Dunkel / Auto) ---------------- */
