@@ -1183,15 +1183,26 @@ function renderLagerPlan() {
   // ---- Übersicht: was ist an dem Tag schon verschickt? ----
   const uebersicht = eintraege.length ? eintraege.map((p) => {
     const ids = glasLagerIds(p);
-    const namen = ids.map((id) => glasMaName(id)).filter(Boolean);
+    const best = p.bestaetigt || {};
+    const gelesen = ids.filter((id) => best[id]).length;
+    // Jeder Name als kleines Etikett: GRÜN mit Haken = hat in GEKO One abgehakt,
+    // grau = noch nicht gelesen. So sieht das Büro auf einen Blick, wer Bescheid weiß.
+    const namenHtml = ids.map((id) => {
+      const nm = glasMaName(id);
+      if (!nm) return "";
+      return `<span class="glas-lager-gelesen${best[id] ? " ok" : ""}">${best[id] ? "✓ " : ""}${escapeHtml(nm)}</span>`;
+    }).join("");
     return `
       <div class="card" style="margin:0 0 10px; padding:13px 15px; border-left:4px solid #6b4ee6;">
         <div style="display:flex; align-items:center; gap:12px;">
           <span style="font-size:20px; font-weight:800; color:#6b4ee6; flex:none; min-width:56px;">${escapeHtml(p.uhrzeit)}</span>
           <span style="flex:1; min-width:0;">
-            <span style="display:block; font-size:14px; font-weight:600;">${escapeHtml(namen.join(", ")) || "niemand"}</span>
-            ${p.notiz ? `<span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;">📝 ${escapeHtml(p.notiz)}</span>` : ""}
-            <span style="display:block; font-size:11.5px; color:var(--text-secondary); margin-top:2px;">${p.gesendet_am ? "✓ Benachrichtigung verschickt" : "noch nicht verschickt"}</span>
+            <span style="display:flex; flex-wrap:wrap; gap:5px;">${namenHtml || `<span class="muted">niemand</span>`}</span>
+            ${p.notiz ? `<span style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:4px;">📝 ${escapeHtml(p.notiz)}</span>` : ""}
+            <span style="display:block; font-size:11.5px; color:var(--text-secondary); margin-top:4px;">
+              ${p.gesendet_am ? "✓ verschickt" : "noch nicht verschickt"}
+              &nbsp;·&nbsp; ${ids.length && gelesen === ids.length ? `<b style="color:#12a150;">von allen gelesen ✓</b>` : `gelesen von ${gelesen}/${ids.length}`}
+            </span>
           </span>
           <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">✕</button>
         </div>

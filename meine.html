@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO One" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO One - Meine Übersicht</title>
-<link rel="stylesheet" href="css/style.css?v=145" />
+<link rel="stylesheet" href="css/style.css?v=146" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
@@ -53,6 +53,21 @@
 .one-lager-karte .l-text span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35; }
 .one-lager-karte .m-pfeil { flex: none; color: var(--text-secondary); font-size: 18px; }
 html.dark .one-lager-karte { box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+
+/* Lese-Bestätigung: ROT = noch abhaken (Handlung nötig), GRÜN = bestätigt.
+   Der Haken sitzt rechts als eigene, große Tippfläche. */
+.one-lager-karte.rot { border-left-color: #d0654a; }
+.one-lager-karte.rot .l-ico { background: rgba(208, 101, 74, .16); }
+.one-lager-karte.gruen { border-left-color: #12a150; }
+.one-lager-karte.gruen .l-ico { background: rgba(18, 161, 80, .14); }
+.l-check { flex: none; width: 42px; height: 42px; border-radius: 13px; display: grid;
+  place-items: center; font-size: 20px; font-weight: 800; font-family: inherit;
+  cursor: pointer; border: 2px solid #d0654a; color: #d0654a; background: transparent;
+  transition: transform .12s ease; }
+.l-check:active { transform: scale(.9); }
+.l-check.ok { border-color: #12a150; background: #12a150; color: #fff; cursor: default; }
+html.dark .l-check { border-color: #e0795e; color: #e0795e; }
+html.dark .l-check.ok { border-color: #16b25c; background: #16b25c; color: #fff; }
 
 /* Lager-Seite: eine Zeile je Einteilung. Die Uhrzeit steht groß vorne - danach
    sucht man, nicht nach dem Datum. Vergangene treten grau zurück. */
@@ -170,16 +185,16 @@ html.dark .okal-tag.hat { background: rgba(255,255,255,.05); border-color: rgba(
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=145"></script>
-  <script src="js/fehler.js?v=145"></script>
-  <script src="js/logo-asset.js?v=145"></script>
-  <script src="js/supabase-client.js?v=145"></script>
-  <script src="js/app-shared.js?v=145"></script>
-  <script src="js/glas-shared.js?v=145"></script>
-  <script src="js/push.js?v=145"></script>
+  <script src="js/config.js?v=146"></script>
+  <script src="js/fehler.js?v=146"></script>
+  <script src="js/logo-asset.js?v=146"></script>
+  <script src="js/supabase-client.js?v=146"></script>
+  <script src="js/app-shared.js?v=146"></script>
+  <script src="js/glas-shared.js?v=146"></script>
+  <script src="js/push.js?v=146"></script>
   <script src="js/meine-kalender.js?v=8"></script>
   <!-- Übersetzung (Albanisch) - legt sich über das gerenderte Deutsch, siehe ma-i18n.js -->
-  <script src="js/ma-i18n.js?v=145"></script>
+  <script src="js/ma-i18n.js?v=146"></script>
   <script src="js/meine.js?v=5"></script>
 </body>
 </html>

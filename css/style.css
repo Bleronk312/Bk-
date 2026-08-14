@@ -2272,6 +2272,13 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
   border: 1.5px solid var(--blue); font-variant-numeric: tabular-nums; }
 .glas-lager-notiz { font-size: 16px; -webkit-appearance: none; appearance: none; border-radius: 11px; }
 
+/* Gelesen-Etiketten im Admin: grün = in GEKO One abgehakt, grau = noch nicht */
+.glas-lager-gelesen { display: inline-flex; align-items: center; padding: 3px 9px;
+  border-radius: 9px; font-size: 12.5px; font-weight: 600;
+  background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+.glas-lager-gelesen.ok { background: rgba(18, 161, 80, .12); color: #0e8443; border-color: rgba(18, 161, 80, .35); }
+html.dark .glas-lager-gelesen.ok { color: #35c97e; }
+
 /* ---------------- Reine Kalender-App (?app=kalender vom Home-Bildschirm) ----------------
    Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich
    auf dem Kalender-Tab - navigiert man weg, erscheint die normale Oberfläche. Der

@@ -25,3 +25,7 @@ alter table glas_mitarbeiter add column if not exists zugang_lager boolean not n
 
 -- Benachrichtigung ans Handy, wenn das Buero den Lager-Plan verschickt.
 alter table glas_einstellungen add column if not exists push_lager boolean not null default true;
+
+-- Lese-Bestaetigung: der Mitarbeiter hakt seine Einteilung in GEKO One ab.
+-- Aufbau: { "<mitarbeiter_id>": "<zeitstempel>" } - das Buero sieht, wer's gelesen hat.
+alter table glas_lager_plan add column if not exists bestaetigt jsonb not null default '{}'::jsonb;

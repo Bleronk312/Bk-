@@ -357,12 +357,17 @@ function oneLagerIds(p) {
 // Kann die Umgebung den jsonb-Filter nicht (ältere PostgREST-Version), wird ohne
 // ihn geholt und hier ausgesiebt - das Ergebnis ist in beiden Fällen dasselbe.
 async function oneLagerAbfrage(vonIso, bisIso) {
-  const spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz";
+  let spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz, bestaetigt";
   const basis = () => sb.from("glas_lager_plan").select(spalten).gte("datum", vonIso).lte("datum", bisIso).order("datum", { ascending: true });
   let res;
   try {
     res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id]));
   } catch (e) { res = { error: e }; }
+  // bestaetigt-Spalte fehlt evtl. noch (SQL nicht erneut ausgefuehrt) -> ohne sie
+  if (res && res.error && /bestaetigt/i.test(res.error.message || "")) {
+    spalten = "id, datum, uhrzeit, mitarbeiter_ids, notiz";
+    try { res = await basis().filter("mitarbeiter_ids", "cs", JSON.stringify([oneUser.id])); } catch (e) { res = { error: e }; }
+  }
   if (res && res.error) { try { res = await basis(); } catch (e) { res = { data: [], error: e }; } }
   // Fehlt die Tabelle noch, wird das gemerkt statt still verschluckt - sonst sieht
   // es aus, als wäre einfach nichts eingeteilt, und keiner weiß warum.
@@ -405,19 +410,61 @@ function oneLagerTagText(iso) {
   return formatGlasDate(iso);
 }
 
+// Hat DIESER Mitarbeiter die Einteilung schon abgehakt?
+function oneLagerIstBestaetigt(p) {
+  return !!(p && p.bestaetigt && oneUser && p.bestaetigt[oneUser.id]);
+}
+
+let oneLagerBestBusy = false;
+
+// Haken antippen: Bestätigung in die Zeile schreiben - das Büro sieht dann im
+// Lager-Plan, dass gelesen wurde. Erst frisch lesen, dann zusammenführen, damit
+// die Haken der Kollegen nicht überschrieben werden.
+async function oneLagerBestaetigen(id, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (oneLagerBestBusy || !oneUser) return;
+  const p = (oneLagerPlan || []).find((x) => x.id === id);
+  if (!p || oneLagerIstBestaetigt(p)) return;
+  oneLagerBestBusy = true;
+  // Sofort grün zeigen - das Speichern läuft im Hintergrund
+  p.bestaetigt = Object.assign({}, p.bestaetigt, { [oneUser.id]: new Date().toISOString() });
+  renderOne();
+  try {
+    const { data } = await sb.from("glas_lager_plan").select("bestaetigt").eq("id", id).maybeSingle();
+    const zusammen = Object.assign({}, (data && data.bestaetigt) || {}, { [oneUser.id]: p.bestaetigt[oneUser.id] });
+    const { error } = await sb.from("glas_lager_plan").update({ bestaetigt: zusammen }).eq("id", id);
+    if (error) throw error;
+    showToast("Bestätigt ✓");
+  } catch (e) {
+    if (/bestaetigt/i.test((e && e.message) || "")) showToast("Bitte supabase_add_lager.sql erneut ausführen");
+    else showToast("Keine Verbindung – bitte später erneut abhaken");
+    delete p.bestaetigt[oneUser.id];
+    renderOne();
+  } finally {
+    oneLagerBestBusy = false;
+  }
+}
+
 function renderOneLagerHinweis() {
   if (!oneUser || oneUser.zugang_lager !== true) return "";
   const p = oneLagerNaechster();
   if (!p) return "";
+  const ok = oneLagerIstBestaetigt(p);
+  // Rot = noch nicht abgehakt (Handlung nötig), Grün = bestätigt. Die Karte bleibt
+  // auch nach dem Abhaken stehen - man soll ja weiter sehen, wann man da sein muss.
   return `
-    <button class="one-lager-karte" onclick="oneScreen='lager'; renderOne();">
+    <div class="one-lager-karte ${ok ? "gruen" : "rot"}" onclick="oneScreen='lager'; renderOne();">
       <span class="l-ico">📦</span>
       <span class="l-text">
         <b>${escapeHtml(oneLagerTagText(p.datum))} um ${escapeHtml(p.uhrzeit || "?")} Uhr im Lager</b>
-        <span>${p.notiz ? escapeHtml(p.notiz) : "Das Büro hat dich eingeteilt."}</span>
+        <span>${ok
+          ? "✓ Bestätigt" + (p.notiz ? " · " + escapeHtml(p.notiz) : " – das Büro weiß Bescheid.")
+          : p.notiz ? escapeHtml(p.notiz) : "Das Büro hat dich eingeteilt."}</span>
       </span>
-      <span class="m-pfeil">›</span>
-    </button>`;
+      ${ok
+        ? `<span class="l-check ok">✓</span>`
+        : `<button class="l-check" onclick="oneLagerBestaetigen('${p.id}', event)" title="Gelesen – bin da!">✓</button>`}
+    </div>`;
 }
 
 // Untertitel der Kachel: sagt schon von außen, ob überhaupt etwas ansteht.
@@ -443,6 +490,9 @@ function renderOneLager() {
         <b>${escapeHtml(oneLagerTagText(p.datum))}</b>
         <span>${p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
       </span>
+      ${alt ? "" : oneLagerIstBestaetigt(p)
+        ? `<span class="l-check ok" style="flex:none;">✓</span>`
+        : `<button class="l-check" style="flex:none;" onclick="oneLagerBestaetigen('${p.id}', event)" title="Gelesen – bin da!">✓</button>`}
     </div>`;
 
   if (oneLagerFehlt) {
