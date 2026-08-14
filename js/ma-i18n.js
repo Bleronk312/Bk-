@@ -172,18 +172,23 @@
     if (!row || document.getElementById("maLangBtn")) return;
     const btn = document.createElement("button");
     btn.id = "maLangBtn";
-    btn.className = "btn btn-sm";
+    // Gleicher Knopf-Stil wie Start/Zurück (geko-navbtn), damit die Kopfzeile
+    // einheitlich aussieht. Kompakt (nur Flagge + Kürzel), damit alles nebeneinander
+    // passt; die Leiste bricht bei sehr schmalen Geräten sauber um.
+    btn.className = "geko-navbtn";
     btn.type = "button";
-    btn.style.cssText = "background:rgba(255,255,255,0.15); border-color:rgba(255,255,255,0.3); color:white; margin-left:8px;";
-    btn.textContent = lang() === "sq" ? "🇦🇱 Shqip" : "🇩🇪 Deutsch";
-    btn.title = "Sprache / Gjuha";
+    btn.textContent = lang() === "sq" ? "🇦🇱" : "🇩🇪";
+    btn.title = lang() === "sq" ? "Gjuha: Shqip (ndrysho)" : "Sprache: Deutsch (wechseln)";
+    btn.setAttribute("aria-label", "Sprache wechseln / Ndrysho gjuhën");
     btn.addEventListener("click", () => {
       const next = lang() === "sq" ? "de" : "sq";
       try { localStorage.setItem(LS, next); } catch (e) {}
       location.reload();
     });
-    const push = document.getElementById("pushBtn");
-    if (push && push.parentNode === row) row.insertBefore(btn, push);
+    // Vor den ersten Nav-Knopf (Start) setzen, damit die Reihenfolge
+    // [Sprache][Start][Zurück] bleibt und die drei als Gruppe rechts stehen.
+    const ersterNav = row.querySelector(".geko-navbtn.right");
+    if (ersterNav) { ersterNav.classList.remove("right"); btn.classList.add("right"); row.insertBefore(btn, ersterNav); }
     else row.appendChild(btn);
   }
 

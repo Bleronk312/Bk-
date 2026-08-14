@@ -2528,3 +2528,17 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a; --jv-none:#7
 @keyframes jvSlideR{ from{opacity:0;transform:translateX(-24px)} to{opacity:1;transform:none} }
 @keyframes jvPop{ from{opacity:0;transform:translateY(12px) scale(.96)} to{opacity:1;transform:none} }
 @media (prefers-reduced-motion:reduce){ .jv-ytile,.jv-anim-l,.jv-anim-r{ animation:none!important; } .jv-objs{ transition:none!important; } }
+
+/* ---------------- Einheitliche Kopf-Navigation (GEKO-weit gleich) ----------------
+   Ein Knopf-Stil für Hub / Start / Zurück auf ALLEN Seiten - identisch in style.css
+   UND checkins.css, damit er überall pixelgleich aussieht. Großes Tippziel, schnell
+   zu treffen, halbtransparent weiß (steht auf jedem farbigen Kopf gut). */
+.geko-navbtn{ display:inline-flex; align-items:center; gap:5px; padding:8px 13px;
+  border-radius:999px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.32);
+  color:#fff; font-size:13.5px; font-weight:700; font-family:inherit; text-decoration:none;
+  cursor:pointer; line-height:1; white-space:nowrap; -webkit-tap-highlight-color:transparent;
+  transition:background .15s ease, transform .1s ease; }
+.geko-navbtn:hover{ background:rgba(255,255,255,.26); }
+.geko-navbtn:active{ transform:scale(.95); }
+.geko-navrow{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.geko-navrow .geko-navbtn.right{ margin-left:auto; }
