@@ -619,17 +619,53 @@ function ciQueue(item) { const q = ciLoadQueue(); item.pending = true; q.push(it
    haben, und die Arbeitszeit an dem Tag. */
 
 let ciTagDetail = null; // ISO-Datum oder null
+let ciTagLaedt = false;           // laedt gerade die Daten dieses Tages nach
+const ciTagExtra = { geladen: [], fehler: null };  // welche Tage schon nachgeladen sind
 
 function ciTagAusLink() {
   try {
     const d = new URLSearchParams(location.search).get("datum");
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      ciTagDetail = d;
-      ciSeg = "verlauf";
+      ciTagOeffnen(d);
       // Parameter entfernen, damit ein Neuladen nicht ewig auf dem Tag klebt
       try { history.replaceState(null, "", location.pathname); } catch (e) {}
     }
   } catch (e) {}
+}
+
+// Einen bestimmten Tag anzeigen. Die laufende Woche liegt schon vor (ciLoadData
+// laedt ab Montag); fuer aeltere Tage muessen die Check-ins erst geholt werden -
+// sonst stand dort "0/5", obwohl der Rundgang gemacht wurde. Nur die Daten
+// fehlten.
+async function ciTagOeffnen(iso) {
+  ciTagDetail = iso;
+  ciSeg = "verlauf";
+  ciTagLaedt = false;
+  renderCheckinsMa();
+
+  const inGeladen = (ciData.logs || []).some((l) => l.datum === iso)
+    || (ciTagExtra.geladen || []).includes(iso);
+  if (inGeladen) return;
+
+  ciTagLaedt = true;
+  renderCheckinsMa();
+  try {
+    const [logRes, schichtRes] = await Promise.all([
+      sb.from("checkin_logs").select("*").eq("datum", iso),
+      sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).eq("datum", iso),
+    ]);
+    // Zu den vorhandenen dazulegen, ohne Doppelte
+    const bekannt = new Set((ciData.logs || []).map((l) => l.id));
+    (logRes.data || []).forEach((l) => { if (!bekannt.has(l.id)) ciData.logs.push(l); });
+    const bekanntS = new Set((ciData.schichten || []).map((x) => x.id));
+    (schichtRes.data || []).forEach((x) => { if (!bekanntS.has(x.id)) ciData.schichten.push(x); });
+    ciTagExtra.geladen = [...(ciTagExtra.geladen || []), iso];
+  } catch (e) {
+    ciTagExtra.fehler = iso;      // im Blatt als Hinweis zeigen
+  } finally {
+    ciTagLaedt = false;
+    renderCheckinsMa();
+  }
 }
 
 function ciTagDetailSchliessen() { ciTagDetail = null; renderCheckinsMa(); }
@@ -654,15 +690,20 @@ function ciRenderTagDetail(iso) {
       const p = ciData.punkte[e.punkt_id];
       const wer = log && log.mitarbeiter_id && ciUser && log.mitarbeiter_id !== ciUser.id
         ? ` · ${escapeHtml(log.mitarbeiter_name || "Kollege")}` : "";
+      // Nicht eingecheckte Punkte wurden frueher DURCHGESTRICHEN - das liest sich
+      // wie "abgehakt" und meint das Gegenteil. Jetzt: eingecheckt mit Uhrzeit in
+      // normaler Schrift, nicht eingecheckt blass mit klarem Wort dahinter.
       return `<div class="hist-row">
-        <span class="t">${log ? escapeHtml(ciUhrzeit(log.ts)) : "–"}</span>
+        <span class="t">${log ? escapeHtml(ciUhrzeit(log.ts)) : "—"}</span>
         <span class="dotc" style="background:${log ? "var(--green)" : "var(--line)"}"></span>
-        <span>${log ? "" : "<s>"}${escapeHtml((p && p.name) || "Punkt")}${log ? "" : "</s>"}${wer}</span>
+        <span${log ? "" : ' style="opacity:.6;"'}>${escapeHtml((p && p.name) || "Punkt")}${wer}${
+          log ? "" : ` · <span style="color:var(--danger, #d13438); font-size:12px;">nicht eingecheckt</span>`}</span>
       </div>`;
     }).join("");
     const done = eintraege.filter((e) => logs.some((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id)).length;
+    const alles = eintraege.length > 0 && done === eintraege.length;
     return `<div class="week">
-      <h4>${escapeHtml(rg.name)} · ${done}/${eintraege.length} ${done === eintraege.length && eintraege.length ? "✓" : ""}</h4>
+      <h4>${escapeHtml(rg.name)} · <span style="color:${alles ? "var(--green)" : done ? "inherit" : "var(--danger, #d13438)"}">${done}/${eintraege.length}</span> ${alles ? "✓" : ""}</h4>
       ${zeilen || `<p class="ci-empty">${t("keineWoche")}</p>`}
     </div>`;
   }).join("") : "";
@@ -685,7 +726,9 @@ function ciRenderTagDetail(iso) {
         <h4 style="margin:0; flex:1;">📅 ${escapeHtml(titel)}</h4>
         <button class="btn-x" style="font-size:12px; padding:6px 10px;" onclick="ciTagDetailSchliessen()">✕</button>
       </div>
-      ${rgHtml || `<p class="ci-empty">An dem Tag war kein Rundgang für dich geplant.</p>`}
+      ${ciTagLaedt ? `<p class="ci-empty"><span class="spinner"></span> Lade die Check-ins dieses Tages…</p>` : ""}
+      ${ciTagExtra.fehler === iso ? `<p class="ci-empty" style="color:var(--danger, #d13438);">Die Check-ins dieses Tages konnten nicht geladen werden.</p>` : ""}
+      ${rgHtml || (ciTagLaedt ? "" : `<p class="ci-empty">An dem Tag war kein Rundgang für dich geplant.</p>`)}
       ${zeitHtml}
     </div>`;
 }
@@ -709,7 +752,9 @@ function ciRenderVerlauf() {
       const res = ciRundgangErgebnis(done, eintraege.length);
       const cls = res === "ok" ? "c-ok" : res === "part" ? "c-part" : res === "miss" ? "c-miss" : "c-off";
       const txt = res === "ok" ? "✓" : res === "part" ? `${done}/${eintraege.length}` : res === "miss" ? "✗" : "·";
-      grid += `<span class="cellb ${cls}">${txt}</span>`;
+      // Antippbar: oeffnet den Tag mit allen Uhrzeiten. Vorher war das Raster
+      // reine Anzeige - man sah, DASS etwas fehlte, aber nicht was.
+      grid += `<span class="cellb ${cls}" style="cursor:pointer;" onclick="ciTagOeffnen('${iso}')" title="Tag ansehen">${txt}</span>`;
     });
   });
   grid += `</div>`;
