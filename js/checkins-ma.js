@@ -620,7 +620,11 @@ function ciQueue(item) { const q = ciLoadQueue(); item.pending = true; q.push(it
 
 let ciTagDetail = null; // ISO-Datum oder null
 let ciTagLaedt = false;           // laedt gerade die Daten dieses Tages nach
-const ciTagExtra = { geladen: [], fehler: null };  // welche Tage schon nachgeladen sind
+// Nachgeladene Tage liegen BEWUSST getrennt von ciData: ciLoadData() baut
+// ciData bei jedem Aufruf komplett neu auf (auch beim Zurueckkehren in die
+// App). Lagen die nachgeladenen Check-ins darin, waren sie danach wieder weg
+// und der Tag stand erneut auf 0/5.
+const ciTagExtra = { geladen: [], logs: [], schichten: [], fehler: null };
 
 function ciTagAusLink() {
   try {
@@ -659,12 +663,12 @@ async function ciTagOeffnen(iso) {
       sb.from("checkin_logs").select("*").eq("datum", iso),
       sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).eq("datum", iso),
     ]);
-    // Zu den vorhandenen dazulegen, ohne Doppelte
-    const bekannt = new Set((ciData.logs || []).map((l) => l.id));
-    (logRes.data || []).forEach((l) => { if (!bekannt.has(l.id)) ciData.logs.push(l); });
-    const bekanntS = new Set((ciData.schichten || []).map((x) => x.id));
-    (schichtRes.data || []).forEach((x) => { if (!bekanntS.has(x.id)) ciData.schichten.push(x); });
-    ciTagExtra.geladen = [...(ciTagExtra.geladen || []), iso];
+    const bekannt = new Set(ciTagExtra.logs.map((l) => l.id));
+    (logRes.data || []).forEach((l) => { if (!bekannt.has(l.id)) ciTagExtra.logs.push(l); });
+    const bekanntS = new Set(ciTagExtra.schichten.map((x) => x.id));
+    (schichtRes.data || []).forEach((x) => { if (!bekanntS.has(x.id)) ciTagExtra.schichten.push(x); });
+    ciTagExtra.geladen = [...new Set([...(ciTagExtra.geladen || []), iso])];
+    ciTagExtra.fehler = null;
   } catch (e) {
     ciTagExtra.fehler = iso;      // im Blatt als Hinweis zeigen
   } finally {
@@ -683,7 +687,16 @@ function ciDauerText(vonTs, bisTs) {
 }
 
 function ciRenderTagDetail(iso) {
-  const logs = (ciData.logs || []).filter((l) => l.datum === iso);
+  // Aus beiden Quellen: laufende Woche aus ciData, aeltere Tage aus ciTagExtra.
+  const alle = [...(ciData.logs || []), ...(ciTagExtra.logs || [])];
+  const gesehen = new Set();
+  const logs = alle.filter((l) => {
+    if (l.datum !== iso) return false;
+    const k = l.id || (l.rundgang_id + "|" + l.punkt_id + "|" + l.ts);
+    if (gesehen.has(k)) return false;
+    gesehen.add(k);
+    return true;
+  });
   const rgs = (ciData.rundgaenge || []).filter((r) => ciRundgangLaeuftAn(r, iso));
   const d = new Date(iso + "T00:00:00");
   const titel = `${t("tageLang")[ciIsoDay(d) - 1]}, ${d.getDate()}. ${t("monate")[d.getMonth()]}`;
@@ -714,7 +727,8 @@ function ciRenderTagDetail(iso) {
   }).join("") : "";
 
   // Arbeitszeit an dem Tag
-  const schichten = (ciData.schichten || []).filter((s) => s.datum === iso);
+  const schichten = [...(ciData.schichten || []), ...(ciTagExtra.schichten || [])]
+    .filter((s, i, arr) => s.datum === iso && arr.findIndex((x) => x.id === s.id) === i);
   const zeitHtml = schichten.length ? `<div class="week"><h4>⏱️ ${t("arbeitszeit") || "Arbeitszeit"}</h4>
     ${schichten.map((s) => {
       const ort = (ciData.orte || []).find((o) => o.id === s.ort_id);
