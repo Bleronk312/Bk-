@@ -19,6 +19,14 @@
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
 <body>
+  <div id="gekoAuthOverlay" style="position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">Anmeldung wird gepr&uuml;ft &hellip;</div>
+  <!-- Zugangsschutz: Graffiti-Bereich nur fuer Angemeldete mit Freischaltung.
+       Beide Seiten waren bisher komplett offen ("wer den Link kennt, kommt rein"). -->
+  <script>
+  window.addEventListener("load", function () {
+    gekoSchuetze({ bereich: "graffiti", overlay: true, titel: "Graffiti – Abnahmescheine" });
+  });
+  </script>
 
   <div class="app-header">
     <div class="brand-row geko-navrow">
@@ -46,6 +54,7 @@
   <script src="js/fehler.js?v=161"></script>
   <script src="js/logo-asset.js?v=161"></script>
   <script src="js/supabase-client.js?v=161"></script>
+  <script src="js/geko-auth.js?v=161"></script>
   <script src="js/app-shared.js?v=161"></script>
   <script defer src="js/pdf-seiten.js?v=161"></script>
   <script defer src="js/pdf-fonts.js?v=161"></script>

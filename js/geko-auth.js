@@ -96,8 +96,8 @@ function gekoDarf(sitzung, bereich) {
   switch (bereich) {
     case "glas":     return ma.zugang_glas !== false;
     case "checkin":  return ma.zugang_checkin === true;
-    case "graffiti": return ma.zugang_graffiti !== false;
-    case "lager":    return ma.zugang_lager !== false;
+    case "graffiti": return ma.zugang_graffiti === true;
+    case "lager":    return ma.zugang_lager === true;
     default:         return true;
   }
 }
