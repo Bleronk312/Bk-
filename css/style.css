@@ -328,7 +328,10 @@ label {
   border: none;
   border-top: 1px solid #eceef2;
   transition: background 0.12s ease;
-  overflow: hidden;
+  /* NICHT hidden: die Beschriftung eines mehrtägigen Balkens läuft bewusst über
+     die Tagesgrenzen (siehe .ccal-txt). Einzelne Chips schneiden ihren Text
+     weiterhin selbst ab (overflow am Chip), es läuft also nichts anderes aus. */
+  overflow: visible;
 }
 .glas-cal-cell:hover { background: #f5f7fa; }
 .glas-cal-cell.is-selected { background: #eaf2fb; }
@@ -386,10 +389,36 @@ label {
 /* Fortsetzungstage tragen jetzt selbst Textstücke (siehe glasCalTextAufTage) und
    werden mittig gesetzt - so liest sich der Name über den ganzen Balken. */
 .glas-cal-chip { text-align: center; }
-.glas-cal-chip.chip-start { text-align: left; }
-/* Chip ohne Textstück: nie durchstreichen - der Strich auf dem Leerzeichen sah
-   bei erledigten Touren aus wie ein kleiner Bindestrich mitten im Balken. */
-.glas-cal-chip.chip-leer { text-decoration: none !important; }
+/* Beschriftung eines mehrtägigen Balkens: EIN Textfeld über den gesamten
+   Wochen-Abschnitt (--span Tage), mittig. So liest sich der Balken als EIN
+   Termin - Wörter auf die Tage zu verteilen sah aus wie mehrere Einzeltermine. */
+.glas-cal-chip { position: relative; }
+/* Der Chip mit der Beschriftung darf sie ueber die Tagesgrenze hinaus zeigen -
+   der Text selbst schneidet an SEINER Breite ab, es laeuft also nichts aus.
+   Alle anderen Chips behalten ihr overflow:hidden. */
+/* z-index: der beschriftete Chip muss ueber den Folgetagen liegen, sonst wird
+   sein ueberstehender Text davon verdeckt. Betraf besonders erledigte Touren:
+   deren opacity:0.92 macht einen eigenen Stapel-Kontext auf, in dem der Text
+   sonst gefangen ist - der Name war dort komplett unsichtbar. */
+.glas-cal-chip.chip-mittext { overflow: visible; z-index: 3; }
+/* Haelt die Zeilenhoehe, ohne sichtbar zu sein (auch nicht durchgestrichen) */
+.ccal-h { visibility: hidden; }
+.ccal-txt {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  /* border-box: sonst kommt der Innenabstand zur Breite dazu und der Text ragt
+     bei Einzelterminen seitlich aus der Tageszelle heraus. */
+  box-sizing: border-box;
+  width: calc(var(--span, 1) * 100%);
+  /* Einzeltermine linksbündig: zentriert würde bei zu langem Namen VORNE
+     abgeschnitten ("platz Außenber" statt "Burgplatz Auß"). Nur echte
+     Mehrtages-Balken werden mittig gesetzt - dort ist Platz genug. */
+  display: flex; align-items: center; justify-content: flex-start;
+  padding: 0 4px;
+  overflow: hidden; white-space: nowrap;
+  pointer-events: none; z-index: 2;
+}
+.chip-mittext .ccal-txt { justify-content: center; }
+
 /* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
 .glas-cal-chip.is-urlaub {
   background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);

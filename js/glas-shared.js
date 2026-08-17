@@ -311,49 +311,21 @@ function renderGlasStundenInputs(s, cssKlasse) {
 }
 
 /* ---------------- Beschriftung mehrtägiger Kalender-Balken ----------------
-   Ein Balken über mehrere Tage besteht aus einem Chip je Tag. Stand der Name nur
-   im ersten Chip, war er dort abgeschnitten ("Iserlohn – Ba…") und weiter hinten
-   im Balken wusste man gar nicht mehr, worum es geht.
-   Hier wird der Text stattdessen auf die Tage des Segments verteilt: wortweise,
-   so viel wie in einen Chip passt, und der Block wird mittig gesetzt.
+   Ein Balken über mehrere Tage besteht technisch aus einem Chip je Tag. Der Name
+   darf aber NICHT in Stücke zerlegt auf die Tage verteilt werden - dann sieht ein
+   durchgehender Balken aus wie mehrere einzelne Termine.
+   Stattdessen bekommt der ERSTE Chip eines Wochen-Abschnitts den vollständigen
+   Namen in einem Textfeld, das über die gesamte Breite des Abschnitts läuft und
+   dort mittig steht. Optisch ist es damit EIN Balken mit EINER Beschriftung.
 
-   text  : die Beschriftung
-   tage  : Anzahl Tage, die der Balken in DIESER Woche hat
-   proTag: wie viele Zeichen ungefähr in einen Chip passen (Handy schmaler)
-   ergibt: Array der Länge "tage" - je Tag ein Stück (oder "" für leer) */
-function glasCalTextAufTage(text, tage, proTag) {
-  const leer = new Array(Math.max(tage, 0)).fill("");
-  const t = String(text || "").trim();
-  if (!t || tage <= 0) return leer;
-  if (tage === 1) return [t];
-
-  const max = proTag || 14;
-  // Wortweise auffüllen: ein Wort, das allein schon zu lang ist, bekommt trotzdem
-  // seinen eigenen Chip (abschneiden ist besser als es ganz zu verlieren).
-  const woerter = t.split(/\s+/);
-  const stuecke = [];
-  let akt = "";
-  woerter.forEach((w) => {
-    if (!akt) { akt = w; return; }
-    if ((akt + " " + w).length <= max) akt += " " + w;
-    else { stuecke.push(akt); akt = w; }
-  });
-  if (akt) stuecke.push(akt);
-
-  // Passt nicht in die verfügbaren Tage? Dann die letzten Stücke zusammenziehen -
-  // lieber am Ende abgeschnitten als Wörter komplett unterschlagen.
-  while (stuecke.length > tage) {
-    const letztes = stuecke.pop();
-    stuecke[stuecke.length - 1] += " " + letztes;
-  }
-
-  // Mittig setzen: der Textblock rückt in die Mitte des Segments, damit er auch
-  // bei langen Balken dort steht, wo man hinschaut. Gerundet (nicht abgerundet),
-  // sonst sitzt er bei ungerader Restbreite sichtbar zu weit links.
-  const versatz = Math.max(0, Math.min(tage - stuecke.length, Math.round((tage - stuecke.length) / 2)));
-  const ergebnis = leer.slice();
-  stuecke.forEach((st, i) => { ergebnis[versatz + i] = st; });
-  return ergebnis;
+   Diese Funktion liefert je Tag des Abschnitts, was zu tun ist:
+     { text, span }  -> voller Name, der über "span" Tage läuft (nur der 1. Tag)
+     { text: "", span: 0 } -> Fortsetzungstag ohne eigene Beschriftung          */
+function glasCalBalkenText(text, tage) {
+  const n = Math.max(0, tage | 0);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ text: i === 0 ? String(text || "") : "", span: i === 0 ? n : 0 });
+  return out;
 }
 
 /* ---------------- Unterschreiben (von Mitarbeiter- UND Admin-Seite genutzt) ---------------- */

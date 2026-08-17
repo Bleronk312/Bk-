@@ -35,11 +35,6 @@ let glasTourDetailId = null;
 let glasManualOrder = []; // Array von Objekt-IDs in der vom Admin festgelegten Reihenfolge
 let glasCalChipText = new Map(); // "terminIndex|iso" -> Textstück des Chips
 
-// Wie viele Zeichen passen ungefähr in einen Tages-Chip? Auf dem Handy sind die
-// Spalten schmal (8px Schrift), am Rechner deutlich breiter (11.5px, breitere Zelle).
-function glasCalZeichenProChip() {
-  try { return window.innerWidth >= 760 ? 18 : 10; } catch (e) { return 12; }
-}
 let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), gesetzt bei "Jetzt planen"
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
@@ -5466,7 +5461,7 @@ function renderUrlaubMonat() {
     events.forEach((t, ti) => {
       const seg = week.filter((iso) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
       if (!seg.length) return;
-      const teile = glasCalTextAufTage(t.label || "", seg.length, glasCalZeichenProChip());
+      const teile = glasCalBalkenText(t.label || "", seg.length);
       seg.forEach((iso, i) => urlaubText.set(ti + "|" + iso, teile[i]));
     });
   });
@@ -5478,8 +5473,11 @@ function renderUrlaubMonat() {
     const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
     const chips = dayEvents.slice(0, maxChips).map((t) => {
       const contLeft = t.datum < iso, contRight = (t.datum_bis || t.datum) > iso;
-      const teil = urlaubText.get(events.indexOf(t) + "|" + iso);
-      return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${!contLeft && !contRight ? " chip-start" : ""}${teil ? "" : " chip-leer"}" style="background:${t.bg}; color:${t.fg};">${teil ? escapeHtml(teil) : "&nbsp;"}</div>`;
+      const teil = urlaubText.get(events.indexOf(t) + "|" + iso) || { text: "", span: 0 };
+      const txt = `<span class="ccal-h">&nbsp;</span>` + (teil.text
+        ? `<span class="ccal-txt" style="--span:${teil.span};">${escapeHtml(teil.text)}</span>`
+        : "");
+      return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${teil.span > 1 ? " chip-mittext" : ""}" style="background:${t.bg}; color:${t.fg};">${txt}</div>`;
     }).join("");
     const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
     return `
@@ -6651,7 +6649,7 @@ function renderKalenderMonat() {
     events.forEach((t, ti) => {
       const seg = week.filter((iso) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
       if (!seg.length) return;
-      const teile = glasCalTextAufTage(t.label || "", seg.length, glasCalZeichenProChip());
+      const teile = glasCalBalkenText(t.label || "", seg.length);
       seg.forEach((iso, i) => glasCalChipText.set(ti + "|" + iso, teile[i]));
     });
   });
@@ -6675,11 +6673,16 @@ function renderKalenderMonat() {
             if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
             const contLeft = t.datum < iso;
             const contRight = (t.datum_bis || t.datum) > iso;
-            const teil = glasCalChipText.get(events.indexOf(t) + "|" + iso);
-            const txt = teil ? escapeHtml(teil) : "&nbsp;";
-            // Leere Chips dürfen KEINE Durchstreichung bekommen - bei erledigten
-            // Touren sah das Leerzeichen sonst aus wie ein kleiner Strich.
-            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${!contLeft && !contRight ? " chip-start" : ""}${teil ? "" : " chip-leer"}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${txt}</div>`;
+            const teil = glasCalChipText.get(events.indexOf(t) + "|" + iso) || { text: "", span: 0 };
+            // Der Name läuft als EIN Textfeld über den ganzen Abschnitt (span Tage)
+            // und steht dort mittig - sonst sähe ein Balken aus wie mehrere Termine.
+            // Unsichtbarer Platzhalter haelt die Zeilenhoehe (der Balkentext liegt
+            // absolut darueber und traegt selbst keine Hoehe bei). Als eigenes Span,
+            // damit bei erledigten Touren nicht das Leerzeichen durchgestrichen wird.
+            const txt = `<span class="ccal-h">&nbsp;</span>` + (teil.text
+              ? `<span class="ccal-txt" style="--span:${teil.span};">${escapeHtml(teil.text)}</span>`
+              : "");
+            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${teil.span > 1 ? " chip-mittext" : ""}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${txt}</div>`;
           }).join("")
         : "";
       const more = overflow ? `<div class="glas-cal-more">+${overflow}</div>` : "";
