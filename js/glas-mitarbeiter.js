@@ -1249,8 +1249,8 @@ function downloadGlasPdf(tourId, stopId) {
 // Admin-Einstellungen an ist). Fehler hier dürfen den Mitarbeiter nie stören.
 async function glasPushUnterschriftAnAdmin(stop, name, zusatz, tourName) {
   try {
-    const { data } = await sb.from("glas_einstellungen").select("push_unterschrift").eq("id", "default").limit(1);
-    if (!data || !data[0] || !data[0].push_unterschrift) return;
+    // Frueher haing das an einem Haken in den Glas-Einstellungen. Den gibt es
+    // nicht mehr - eine eingehende Unterschrift ist immer eine Meldung wert.
     sb.functions.invoke("send-push", {
       body: {
         role: "glas",

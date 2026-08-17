@@ -846,8 +846,7 @@ async function oneUrlaubSenden() {
     // "Neue Urlaubsanträge" dort an ist. Läuft im Hintergrund: schlägt es fehl, ist der
     // Antrag trotzdem gestellt und steht im Admin in der Liste.
     try {
-      const { data: eins } = await sb.from("glas_einstellungen").select("push_urlaub").eq("id", "default").limit(1);
-      const an = !eins || !eins[0] || eins[0].push_urlaub !== false; // fehlt die Spalte -> an
+      const an = true;  // Urlaubsantraege werden immer gemeldet (Haken entfallen)
       if (an) {
         const zeit = zeile.bis && zeile.bis !== zeile.von
           ? `${formatGlasDate(zeile.von)} – ${formatGlasDate(zeile.bis)}` : formatGlasDate(zeile.von);

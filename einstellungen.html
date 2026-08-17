@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Einstellungen" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
-<link rel="stylesheet" href="css/style.css?v=168" />
+<link rel="stylesheet" href="css/style.css?v=169" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -56,10 +56,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=168"></script>
-  <script src="js/supabase-client.js?v=168"></script>
-  <script src="js/geko-auth.js?v=168"></script>
-  <script src="js/push.js?v=168"></script>
+  <script src="js/config.js?v=169"></script>
+  <script src="js/supabase-client.js?v=169"></script>
+  <script src="js/geko-auth.js?v=169"></script>
+  <script src="js/push.js?v=169"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -78,6 +78,7 @@
   let bearbeiten = null;        // Mitarbeiter im Formular (null = Liste)
   let meinEndpoint = null;      // Push-Anmeldung dieses Geraets
   let meineAbos = [];           // welche Kanaele dieses Geraet empfaengt
+  let binOberAdmin = false;     // nur der darf Zugaenge verwalten
 
   function showToast(text) {
     const t = document.getElementById("toast");
@@ -122,6 +123,7 @@
       sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, status"),
     ]);
     zugangsdaten = liste;
+    binOberAdmin = !!(liste && liste.ich_bin_oberadmin);
     pushEinstellungen = (einst && einst.data) || {};
     mitarbeiter = (ma && ma.data) || [];
     urlaube = (url && url.data) || [];
@@ -220,7 +222,7 @@
             <p class="est-sub" style="margin:0 0 10px;">Urlaub ${new Date().getFullYear()}: ${b.genommen} genommen von ${b.anspruch}</p>
             <div class="est-btns">
               <button class="btn btn-primary" onclick="maBearbeiten('${m.id}')">Bearbeiten</button>
-              ${k.hat_konto ? `
+              ${!binOberAdmin ? "" : k.hat_konto ? `
                 <button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Passwort</button>
                 <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${sicher(m.name)}')">Rolle</button>
                 <button class="btn" onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${sicher(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>`
@@ -239,6 +241,7 @@
         ${fehler}
         ${liste.length ? liste.map(karte).join("") : '<p class="muted" style="margin:0;">Noch keine Mitarbeiter angelegt.</p>'}
         <button class="btn btn-primary" style="margin-top:12px;" onclick="maNeu()">+ Neuer Mitarbeiter</button>
+        ${binOberAdmin ? "" : '<p class="muted" style="margin:8px 0 0; font-size:12px;">Stammdaten und Bausteine kannst du pflegen. Zugänge und Passwörter verwaltet der Ober-Admin.</p>'}
         <p class="muted" style="margin:8px 0 0; font-size:12px;">Urlaub eintragen und Anträge genehmigen läuft weiter im Kalender der Glas-Verwaltung – dort steht der Monatsüberblick, wer wann weg ist.</p>
       </div>`;
   }
@@ -278,7 +281,7 @@
 
       <div style="display:flex; gap:8px; margin-top:4px;">
         <button class="btn btn-primary" onclick="maSpeichern()">Speichern</button>
-        ${neu ? "" : `<button class="btn" style="color:var(--danger); margin-left:auto;" onclick="maLoeschen('${m.id}')">Löschen</button>`}
+        ${(neu || !binOberAdmin) ? "" : `<button class="btn" style="color:var(--danger); margin-left:auto;" onclick="maLoeschen('${m.id}')">Löschen</button>`}
       </div>`;
   }
 
@@ -288,10 +291,10 @@
     const zeile = (a) => `
       <div class="est-zeile"><div style="flex:1; min-width:150px;">
         <div class="est-name">${sicher(a.name || a.email)}
-          <span class="est-marke m-admin">Verwaltung</span>
+          <span class="est-marke m-admin">${a.oberadmin ? "Ober-Admin" : "Verwaltung"}</span>
           ${a.gesperrt ? '<span class="est-marke m-rot">gesperrt</span>' : ""}</div>
         <div class="est-sub">${sicher(a.email)}${a.user_id === meineSitzung?.user?.id ? " · das bist du" : ""}</div>
-      </div><div class="est-btns">${a.user_id === meineSitzung?.user?.id ? "" : `
+      </div><div class="est-btns">${(!binOberAdmin || a.user_id === meineSitzung?.user?.id) ? "" : `
         <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
         <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
         <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${sicher(a.name || a.email)}')">Löschen</button>`}</div></div>`;
@@ -299,8 +302,10 @@
       <p class="est-sec-title">Weitere Verwaltungs-Zugänge</p>
       <div class="card">
         ${freie.length ? freie.map(zeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine.</p>'}
-        <button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
-        <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind – sie tauchen in Touren, Urlaub und Lager nicht auf.</p>
+        ${binOberAdmin
+          ? `<button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
+             <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind – sie tauchen in Touren, Urlaub und Lager nicht auf.</p>`
+          : `<p class="muted" style="margin:8px 0 0; font-size:12px;">Zugänge anlegen, Passwörter zurücksetzen und sperren darf nur der Ober-Admin. Grund: Wer ein Passwort zurücksetzen kann, kann sich anschließend als der Betreffende anmelden.</p>`}
       </div>`;
   }
 
@@ -409,7 +414,7 @@
           <p style="margin:0 0 8px; color:var(--danger); font-weight:600;">Dieses Gerät blockiert Benachrichtigungen.</p>
           <p class="muted" style="margin:0;">Das lässt sich nur am Gerät selbst aufheben: iPhone → Einstellungen → Apps → Safari → Erweitert → Website-Daten, oder in den Mitteilungs-Einstellungen der installierten App. Danach hier neu laden.</p>
         </div>
-        ${renderThemen(e)}`;
+`;
     }
 
     return `
@@ -420,7 +425,7 @@
         ${fehlen.length > 1 ? `<button class="btn btn-primary" style="margin-top:12px;" id="pushAnKnopf" onclick="pushAlleAktivieren()">🔔 Alle einschalten</button>` : ""}
         <p class="muted" style="margin:10px 0 0; font-size:12px;">„Test" schickt eine echte Benachrichtigung über genau diesen Kanal – <b>nur an dieses Gerät</b>, niemand sonst bekommt etwas mit.</p>
       </div>
-      ${renderThemen(e)}`;
+`;
   }
 
   // Einzelnen Bereich an- oder abschalten.
@@ -442,25 +447,6 @@
     }
     await meineAbosLaden();
     render();
-  }
-
-  function renderThemen(e) {
-    const schalter = (key, an, icon, text, quelle) => `
-      <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-        <input type="checkbox" style="width:auto;" ${an ? "checked" : ""} onchange="pushSchalter('${key}', this.checked)" />
-        <span style="font-size:13.5px;">${icon} ${text} &middot; <span class="muted">${quelle}</span></span>
-      </label>`;
-    return `
-      <p class="est-sec-title">Wovon berichtet wird</p>
-      <div class="card">
-        <p class="muted" style="margin:0 0 4px; font-size:12.5px;">Gilt für alle Geräte der Verwaltung.</p>
-        ${schalter("push_touren", !!e.push_touren, "🚐", "Touren (neu/geändert/archiviert)", "Glasreinigung")}
-        ${schalter("push_unterschrift", !!e.push_unterschrift, "✍️", "Eingehende Unterschriften", "Glasreinigung")}
-        ${schalter("push_urlaub", e.push_urlaub !== false, "🏖️", "Neue Urlaubsanträge", "Glasreinigung")}
-        ${schalter("push_lager", e.push_lager !== false, "📦", "Lager-Plan an die Mitarbeiter", "GEKO One")}
-        ${schalter("push_kalender", !!e.push_kalender, "📅", "Kalender-Termine (neu/geändert/gelöscht)", "Kalender")}
-        <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein.</p>
-      </div>`;
   }
 
   async function pushAlleAktivieren() {

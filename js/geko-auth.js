@@ -80,7 +80,16 @@ async function gekoSitzung(neuLaden) {
     .select("id, name, username, login_aktiv, pw_muss_wechsel, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager")
     .eq("auth_user_id", session.user.id).maybeSingle();
 
-  _gekoSitzung = { user: session.user, ma: ma || null, rolle, istAdmin: rolle === "admin" };
+  _gekoSitzung = {
+    user: session.user,
+    ma: ma || null,
+    rolle,
+    istAdmin: rolle === "admin",
+    // Ober-Admin: darf als Einziger Zugaenge verwalten. Steht in app_metadata,
+    // also nur serverseitig setzbar - eine Anzeige hier ist nur Bequemlichkeit,
+    // entschieden wird es in der Edge Function.
+    istOberAdmin: session.user?.app_metadata?.geko_super === true,
+  };
   return _gekoSitzung;
 }
 
@@ -127,10 +136,11 @@ async function gekoSchuetze(optionen) {
     gekoZeigeSperre("Für diesen Bereich ist dein Zugang nicht freigeschaltet.", sitzung, opt);
     return;
   }
-  // Erstanmeldung (oder nach einem Zuruecksetzen durchs Buero): erst den
-  // Willkommens-Ablauf - eigenes Passwort setzen UND Benachrichtigungen
-  // einschalten. Danach geht es in die App.
-  if (sitzung.ma?.pw_muss_wechsel && !opt.nurAdmin) {
+  // Erstanmeldung: eigenes Passwort setzen UND Benachrichtigungen einschalten.
+  // Mitarbeiter erkennt man an pw_muss_wechsel (setzt das Buero beim Anlegen
+  // und Zuruecksetzen), neue Verwaltungskonten am Merker geko_neu.
+  const istNeuerAdmin = sitzung.istAdmin && sitzung.user?.user_metadata?.geko_neu === true;
+  if (istNeuerAdmin || (sitzung.ma?.pw_muss_wechsel && !sitzung.istAdmin)) {
     gekoWillkommen(opt, sitzung);
     return;
   }
@@ -247,7 +257,12 @@ function gekoZeigeSperre(text, sitzung, opt) {
 function gekoWillkommen(opt, sitzung) {
   gekoWillkommenAblauf({
     maId: sitzung.ma && sitzung.ma.id,
-    pushRolle: opt && opt.pushRolle,
+    // Verwaltungskonten haben keine Mitarbeiterzeile; ihr Merker sitzt am Konto
+    // selbst und wird nach der Einfuehrung dort geloescht.
+    istAdmin: sitzung.istAdmin,
+    pushRollen: sitzung.istAdmin
+      ? ["glas", "kalender", "graffiti", "checkin_admin"]
+      : [(opt && opt.pushRolle) || "geko_one"],
     overlay: opt && opt.overlay,
     fertig: () => { _gekoSitzung = null; if (opt && opt.overlay) location.reload(); else gekoSchuetze(opt); },
   });
@@ -325,6 +340,9 @@ function _gekoSchrittPasswort(k) {
     }
 
     if (k.maId) await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", k.maId);
+    if (k.istAdmin) {
+      try { await sb.auth.updateUser({ data: { geko_neu: false } }); } catch (e) {}
+    }
     _gekoSitzung = null;
     _gekoSchrittBenachrichtigungen(k);
   };
@@ -332,8 +350,8 @@ function _gekoSchrittPasswort(k) {
 
 // Schritt 2: Benachrichtigungen einschalten.
 function _gekoSchrittBenachrichtigungen(k) {
-  const rolle = k.pushRolle || "geko_one";
-  const kannPush = typeof enablePushNotifications === "function"
+  const rollen = k.pushRollen || ["geko_one"];
+  const kannPush = typeof gekoPushAktivierenFuer === "function"
     && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
 
   // iPhone/iPad meldet Push nur, wenn die Seite als App auf dem Home-Bildschirm
@@ -383,7 +401,7 @@ function _gekoSchrittBenachrichtigungen(k) {
   knopf.onclick = async () => {
     knopf.disabled = true; knopf.textContent = "Moment …";
     try {
-      await enablePushNotifications(rolle, k.maId);
+      await gekoPushAktivierenFuer(rollen, k.maId);
     } catch (e) { /* Meldung kommt aus push.js */ }
     if (typeof Notification !== "undefined" && Notification.permission === "granted") { weiter(); return; }
     // Abgelehnt: nicht blockieren, aber ehrlich sagen, was das bedeutet.

@@ -1409,7 +1409,7 @@ async function glasLagerSenden() {
       return;
     }
     // Benachrichtigung gezielt an die eingeteilten Mitarbeiter
-    const an = !glasEinstellungen || glasEinstellungen.push_lager !== false;
+    const an = true;   // Benachrichtigung gehoert zum Verschicken des Lager-Plans dazu
     if (an) {
       const datumTxt = formatGlasDate(datum);
       ids.forEach((id) => {
@@ -3118,21 +3118,15 @@ function renderEinstellungenTab() {
   // (Design + Benachrichtigungen) - Statistik/Positionen/Archiv sind Glas-Verwaltung.
   // Allgemeines (Zugaenge, Benachrichtigungen, Darstellung) lebt zentral im
   // Hub unter Einstellungen - hier bleibt nur, was wirklich Glas ist.
-  // Die Aktivierung MUSS hier in der App bleiben: jedes App-Symbol hat seinen
-  // eigenen Benachrichtigungs-Kanal und meldet sich selbst an (eine Rolle pro
-  // Geraet/Symbol, siehe push.js). WAS gemeldet wird, stellt man zentral ein.
+  // Benachrichtigungen und Darstellung liegen zentral im Hub unter
+  // Einstellungen - dort wird pro Geraet EINMAL fuer alle Bereiche
+  // eingeschaltet. Eine zweite Bedienstelle hier waere nur eine Quelle fuer
+  // widerspruechliche Einstellungen.
   const wegweiser = `
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-      <div style="flex:1; min-width:170px;">
-        <p style="margin:0; font-weight:600;">🔔 Benachrichtigungen</p>
-        <p class="muted" style="margin:3px 0 0;">Einmal pro Gerät für die ${glasCalApp ? "Kalender" : "Glasreinigung"}-App aktivieren</p>
-      </div>
-      <button class="btn btn-primary" onclick="glasPushAktivieren()">Auf diesem Gerät aktivieren</button>
-    </div>
     <a class="card" href="einstellungen.html" style="display:flex; justify-content:space-between; align-items:center; text-decoration:none; color:inherit;">
       <div>
         <p style="margin:0; font-weight:600;">⚙️ Allgemeine Einstellungen</p>
-        <p class="muted" style="margin:3px 0 0;">Zugänge &amp; Passwörter, Benachrichtigungs-Themen, Darstellung – im Hub</p>
+        <p class="muted" style="margin:3px 0 0;">Zugänge &amp; Passwörter, Benachrichtigungen, Darstellung – im Hub</p>
       </div>
       <span style="font-size:18px; color:var(--text-secondary);">›</span>
     </a>`;
@@ -3170,72 +3164,6 @@ function renderDarstellungEinstellung() {
 
 /* ---------------- Benachrichtigungen (nur Admin) ---------------- */
 
-function renderPushEinstellungen() {
-  const e = glasEinstellungen || {};
-  setTimeout(glasUpdatePushStatus, 80);
-  return `
-    <p class="muted" style="margin:0 0 6px;">In <b>jeder</b> App (Glasreinigung, Kalender, Graffiti) einmal „aktivieren" antippen – dann bekommt jede App genau ihre eigenen Benachrichtigungen, ohne Doppelungen. iPhone: geht nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
-    <p class="muted" style="margin:0 0 10px; font-size:12px;">Dieses Gerät zählt aktuell als: <b>${glasCalApp ? "📅 Kalender-App" : "🪟 Glasreinigung-App"}</b>.</p>
-    <button class="btn btn-primary" onclick="glasPushAktivieren()">🔔 Auf diesem Gerät aktivieren</button>
-    <p class="muted" id="glasPushStatus" style="margin:8px 0 14px; font-size:12px;"></p>
-    <p class="glas-section-title" style="margin:6px 0 2px;">Wovon möchtest du benachrichtigt werden?</p>
-    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_touren ? "checked" : ""} onchange="glasSavePushSchalter('push_touren', this.checked)" />
-      <span style="font-size:13.5px;">🚐 Touren (neu/geändert/archiviert) &middot; <span class="muted">Glasreinigung-App</span></span>
-    </label>
-    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_unterschrift ? "checked" : ""} onchange="glasSavePushSchalter('push_unterschrift', this.checked)" />
-      <span style="font-size:13.5px;">✍️ Eingehende Unterschriften &middot; <span class="muted">Glasreinigung-App</span></span>
-    </label>
-    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_urlaub !== false ? "checked" : ""} onchange="glasSavePushSchalter('push_urlaub', this.checked)" />
-      <span style="font-size:13.5px;">🏖️ Neue Urlaubsanträge der Mitarbeiter &middot; <span class="muted">Glasreinigung-App</span></span>
-    </label>
-    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_lager !== false ? "checked" : ""} onchange="glasSavePushSchalter('push_lager', this.checked)" />
-      <span style="font-size:13.5px;">📦 Lager-Plan an die Mitarbeiter schicken &middot; <span class="muted">GEKO One</span></span>
-    </label>
-    <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
-      <input type="checkbox" style="width:auto;" ${e.push_kalender ? "checked" : ""} onchange="glasSavePushSchalter('push_kalender', this.checked)" />
-      <span style="font-size:13.5px;">📅 Kalender-Termine (neu/geändert/gelöscht) &middot; <span class="muted">Kalender-App</span></span>
-    </label>
-    <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein – sie kommen morgens gegen 8 Uhr in der Kalender-App an.</p>
-  `;
-}
-
-async function glasPushAktivieren() {
-  if (typeof enablePushNotifications !== "function") { showToast("Push-Skript nicht geladen"); return; }
-  await enablePushNotifications(glasPushRole());
-  glasUpdatePushStatus();
-}
-
-async function glasUpdatePushStatus() {
-  const el = document.getElementById("glasPushStatus");
-  if (!el) return;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    el.textContent = "❌ Auf diesem Gerät/Browser nicht unterstützt (iPhone: Seite als Home-Bildschirm-App öffnen).";
-    return;
-  }
-  if (typeof Notification !== "undefined" && Notification.permission === "denied") {
-    el.textContent = "🚫 Benachrichtigungen sind in den Geräte-Einstellungen blockiert.";
-    return;
-  }
-  try {
-    const reg = await navigator.serviceWorker.getRegistration("sw.js");
-    const sub = reg ? await reg.pushManager.getSubscription() : null;
-    el.textContent = sub
-      ? "✅ Auf diesem Gerät aktiv – erneuert sich bei jedem Öffnen von selbst."
-      : "Auf diesem Gerät noch nicht aktiviert.";
-  } catch (e) { el.textContent = ""; }
-}
-
-async function glasSavePushSchalter(schalter, wert) {
-  glasEinstellungen = { ...(glasEinstellungen || {}), id: "default", [schalter]: wert };
-  try { localStorage.setItem("glas_einstellungen", JSON.stringify(glasEinstellungen)); } catch (e) {}
-  const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", [schalter]: wert });
-  if (error) { showToast("Fehler: " + error.message + " (neueste SQL-Datei schon ausgeführt?)"); return; }
-  showToast(wert ? "Eingeschaltet – bleibt dauerhaft an" : "Ausgeschaltet");
-}
 
 let glasPositionEditingId = null; // null = keine Bearbeitung, "" = neu, sonst id
 
@@ -4560,7 +4488,6 @@ function glasPushRole() { return glasCalApp ? "kalender" : "glas"; }
 // Läuft im Hintergrund - Fehler stören den normalen Ablauf nie.
 function glasPushSend(role, schalter, title, body, url) {
   try {
-    if (!glasEinstellungen || !glasEinstellungen[schalter]) return;
     const fallback = role === "kalender" ? "/kalender.html#/tab/kalender" : "/glas-admin.html#/tab/touren";
     sb.functions.invoke("send-push", { body: { role, title, body, url: url || fallback } }).catch(() => {});
   } catch (e) {}

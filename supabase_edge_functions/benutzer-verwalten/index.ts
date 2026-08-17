@@ -47,7 +47,9 @@ function nameSaeubern(roh: string): string {
 
 const mailFuer = (benutzername: string) => `${benutzername}@${MAIL_DOMAIN}`;
 
-// Ist der Aufrufer wirklich ein angemeldeter Admin?
+// Ist der Aufrufer wirklich ein angemeldeter Admin? Und ist er der Ober-Admin?
+// Beides steht in app_metadata und kann nur serverseitig gesetzt werden -
+// niemand kann sich über die App selbst befördern.
 async function istAdmin(req: Request, admin: ReturnType<typeof createClient>) {
   const kopf = req.headers.get("Authorization") || "";
   const token = kopf.replace(/^Bearer\s+/i, "").trim();
@@ -58,6 +60,14 @@ async function istAdmin(req: Request, admin: ReturnType<typeof createClient>) {
   if (error || !data?.user) return null;
   if ((data.user.app_metadata as Record<string, unknown> | null)?.geko_rolle !== "admin") return null;
   return data.user;
+}
+
+// Zugaenge verwalten (Konten anlegen/loeschen, Passwoerter, Sperren, Rollen)
+// darf nur der Ober-Admin. Begruendung: Wer ein Passwort zuruecksetzen kann,
+// kann sich anschliessend als der Betreffende anmelden. Diese Macht soll an
+// einer Person haengen, nicht an jedem, der Touren eintragen darf.
+function istOberAdmin(user: { app_metadata?: Record<string, unknown> } | null) {
+  return !!user && (user.app_metadata as Record<string, unknown> | undefined)?.geko_super === true;
 }
 
 Deno.serve(async (req) => {
@@ -107,6 +117,11 @@ Deno.serve(async (req) => {
     return { ma: null, uid: null };
   }
 
+  // Alles ausser dem reinen Ansehen ist dem Ober-Admin vorbehalten.
+  if (aktion !== "liste" && !istOberAdmin(aufrufer)) {
+    return antwort({ error: "Zugänge verwalten darf nur der Ober-Admin." }, 403);
+  }
+
   try {
     switch (aktion) {
 
@@ -124,7 +139,10 @@ Deno.serve(async (req) => {
           password: passwort,
           email_confirm: true,
           app_metadata: { geko_rolle: "admin" },
-          user_metadata: { name: String(eingabe.name || roh) },
+          // geko_neu: loest beim ersten Anmelden die Einfuehrung aus (Passwort
+          // setzen + Benachrichtigungen). Steht bewusst in user_metadata, damit
+          // der Betreffende den Merker nach der Einfuehrung selbst loeschen kann.
+          user_metadata: { name: String(eingabe.name || roh), geko_neu: true },
         });
         if (error) {
           const doppelt = /already|registered|exists/i.test(error.message || "");
@@ -252,11 +270,13 @@ Deno.serve(async (req) => {
             email: u.email || "",
             name: String((u.user_metadata as Record<string, unknown>)?.name || u.email || ""),
             rolle: rollen.get(u.id) || "mitarbeiter",
+            oberadmin: (u.app_metadata as Record<string, unknown>)?.geko_super === true,
             gesperrt: !!(u as unknown as { banned_until?: string }).banned_until
               && new Date((u as unknown as { banned_until: string }).banned_until) > new Date(),
           }));
         return antwort({
           ok: true,
+          ich_bin_oberadmin: istOberAdmin(aufrufer),
           gesamt: liste.length,
           admins_ohne_mitarbeiter: freie,
           mitarbeiter: liste.map((m) => ({
