@@ -185,15 +185,51 @@ Deno.serve(async (_req) => {
           // weder an den Mitarbeiter noch ans Büro. Fehlt das Feld, wird erinnert
           // (so verhalten sich alle bestehenden Rundgänge unverändert weiter).
           if (e && e.erinnern === false) continue;
+
           const f = effFenster(rg, e, p);
-          if (f.von == null || f.bis == null) continue; // nur Punkte mit Zeitfenster
           const done = (logRes.data || []).some((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id && l.datum === berlinDate);
           if (done) continue;
 
-          const startTol = f.von - f.tol, endTol = f.bis + f.tol;
           const sid = `${rg.id}__${e.punkt_id}__${berlinDate}`;
           const st = stMap[sid] || {};
           const assigned = rgMitarbeiter(rg); // alle zugeteilten MA (leer = alle dürfen)
+
+          // ---- Feste Uhrzeit: GENAU EINE Meldung pro Tag --------------------
+          // Gilt an jedem Tag, an dem der Rundgang läuft (die Wochentagsprüfung
+          // ist oben schon passiert). Braucht kein Zeitfenster - wer nur einmal
+          // morgens erinnert werden will, soll dafür keins erfinden müssen.
+          const erinnernUm = (e && e.erinnern_um) ? timeToMin(e.erinnern_um) : null;
+          if (erinnernUm != null) {
+            // Der Zeitplan läuft alle 5 Minuten; 10 Minuten Fenster fangen auch
+            // einen verzögerten Lauf ab, ohne doppelt zu melden (Merker faellig).
+            if (nowMin >= erinnernUm && nowMin < erinnernUm + 10 && !st.faellig) {
+              for (const maId of assigned) {
+                const subs = await getMaSubs(maId);
+                if (subs.length) await sendPush(supabase, subs, "📍 Rundgang", `${p.name} · Rundgang ${rg.name}`, "/checkins-ma.html");
+              }
+              await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, faellig: true });
+              faellig++;
+            }
+            // Das Büro soll trotzdem erfahren, wenn ein Punkt ganz ausfällt -
+            // dafür braucht es aber ein Fenster, sonst gibt es kein "zu spät".
+            if (f.von != null && f.bis != null) {
+              const endeTol = f.bis + f.tol;
+              if (nowMin >= endeTol && nowMin <= endeTol + 60 && !st.verpasst) {
+                if (adminSubs && adminSubs.length) {
+                  const wem = assigned.length ? ` · zugeteilt: ${assigned.map((id) => maName[id] || "?").join(", ")}` : "";
+                  await sendPush(supabase, adminSubs, "⚠️ Punkt verpasst", `${p.name} · Rundgang ${rg.name}${wem}`, "/checkins-admin.html");
+                }
+                await supabase.from("checkin_erinnerungen").upsert({ id: sid, datum: berlinDate, verpasst: true });
+                verpasstN++;
+              }
+            }
+            continue;
+          }
+
+          // ---- Sonst wie bisher: am Zeitfenster entlang ---------------------
+          if (f.von == null || f.bis == null) continue; // ohne Fenster gibt es nichts zu melden
+
+          const startTol = f.von - f.tol, endTol = f.bis + f.tol;
 
           // c) Verpasst -> Admin (nur frisch, bis 60 Min nach Ablauf, damit kein Nachholen)
           if (nowMin >= endTol && nowMin <= endTol + 60 && !st.verpasst) {

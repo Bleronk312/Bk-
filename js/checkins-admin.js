@@ -818,9 +818,13 @@ function ciaRenderRgForm() {
           ${[["","Std."],["0","± 0"],["15","± 15"],["30","± 30"],["60","± 60"]].map(([v,l])=>`<option value="${v}" ${String((e&&e.toleranz_min)??"")===v?"selected":""}>${l}</option>`).join("")}
         </select>
         · <label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
-            <input type="checkbox" id="rgerin_${p.id}" ${(e && e.erinnern === false) ? "" : "checked"} style="width:auto;margin:0;" />
+            <input type="checkbox" id="rgerin_${p.id}" ${(e && e.erinnern === false) ? "" : "checked"} style="width:auto;margin:0;"
+                   onchange="ciaErinZeit('${p.id}', this.checked)" />
             🔔 erinnern
           </label>
+        <input class="f-mini" id="rgerinum_${p.id}" value="${escapeHtml((e && e.erinnern_um) || "")}"
+               placeholder="wenn fällig" title="Feste Uhrzeit, z.B. 07:30 – leer = beim Fällig-Werden"
+               style="width:82px;${(e && e.erinnern === false) ? "display:none;" : ""}" />
       </div></div>`;
   }).join("") : `<p class="ci-empty">Erst im Reiter „Punkte" GPS-Punkte anlegen.</p>`;
 
@@ -835,7 +839,7 @@ function ciaRenderRgForm() {
       ${CI_TAGE_KURZ.map((t,i) => `<button type="button" class="dchip ${tage.includes(i+1)?"on":""}" data-d="${i+1}" onclick="this.classList.toggle('on')">${t}</button>`).join("")}
     </div>
     <div class="f-lbl">Standard-Zeitfenster (gilt, wenn ein Punkt nichts Eigenes hat)</div>
-    <p class="ci-hint" style="margin:0 0 6px;font-size:12px;opacity:.75;">Erinnerungen laufen über das Zeitfenster: Der Mitarbeiter bekommt eine Meldung, wenn ein Punkt fällig wird und nochmal 15 Minuten vor Ablauf. Läuft das Fenster ab, ohne dass eingecheckt wurde, meldet sich das Büro. Mit dem Haken „🔔 erinnern" lässt sich das je Punkt abschalten – ohne das Zeitfenster zu verlieren.</p>
+    <p class="ci-hint" style="margin:0 0 6px;font-size:12px;opacity:.75;">Erinnerungen laufen über das Zeitfenster: Der Mitarbeiter bekommt eine Meldung, wenn ein Punkt fällig wird und nochmal 15 Minuten vor Ablauf. Läuft das Fenster ab, ohne dass eingecheckt wurde, meldet sich das Büro. Mit dem Haken „🔔 erinnern" lässt sich das je Punkt abschalten – ohne das Zeitfenster zu verlieren. Trägst du daneben eine feste Uhrzeit ein (z.B. <b>07:30</b>), kommt stattdessen genau <b>eine</b> Meldung zu dieser Zeit – an jedem Tag, an dem der Rundgang läuft.</p>
     <div style="display:flex;gap:8px;align-items:center;">
       <input class="f-in" id="rg_von" style="flex:1;" value="${escapeHtml(f.fenster_von||"")}" placeholder="06:00" />
       <span class="muted">bis</span>
@@ -852,6 +856,13 @@ function ciaRenderRgForm() {
       <button class="btn-pri" onclick="ciaSaveRg()">Rundgang speichern</button>
     </div>
   </div>`;
+}
+
+// Uhrzeitfeld nur zeigen, solange erinnert wird - ein Feld, das nichts bewirkt,
+// verwirrt mehr als es hilft.
+function ciaErinZeit(punktId, an) {
+  const el = document.getElementById(`rgerinum_${punktId}`);
+  if (el) el.style.display = an ? "" : "none";
 }
 
 function ciaTogglePtOv(id, on) {
@@ -877,8 +888,14 @@ async function ciaSaveRg() {
     if (tolRaw !== "") eintrag.toleranz_min = parseInt(tolRaw, 10);
     // Nur speichern, wenn AUSgeschaltet - so bleiben bestehende Rundgänge
     // unverändert und erinnern wie bisher (fehlendes Feld = an).
-    if (document.getElementById(`rgerin_${p.id}`) && !document.getElementById(`rgerin_${p.id}`).checked) {
+    const erinCb = document.getElementById(`rgerin_${p.id}`);
+    if (erinCb && !erinCb.checked) {
       eintrag.erinnern = false;
+    } else {
+      // Feste Uhrzeit? Dann kommt GENAU EINE Meldung zu dieser Zeit - an jedem
+      // Tag, an dem der Rundgang laeuft. Leer = wie bisher beim Faellig-Werden.
+      const um = (document.getElementById(`rgerinum_${p.id}`)?.value || "").trim();
+      if (/^\d{1,2}:\d{2}$/.test(um)) eintrag.erinnern_um = um.padStart(5, "0");
     }
     punkte.push(eintrag);
   });
