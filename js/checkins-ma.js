@@ -319,8 +319,17 @@ async function ciLoadData() {
   try {
     const heute = ciTodayIso();
     const now = new Date();
+    // Rueckblick: 90 Tage statt nur "ab Montag dieser Woche". Die Mitarbeiter
+    // sollen auch aeltere Tage aufmachen koennen ("wann war ich wo?") - mit dem
+    // Wochen-Fenster stand dort immer 0/5, weil die Check-ins gar nicht geladen
+    // waren. Vor dem Auswertungsstart (CI_START) gibt es ohnehin nichts.
+    const rueck = new Date(now); rueck.setDate(now.getDate() - 90);
+    const vonIso = (function () {
+      const kandidat = ciIsoFromDate(rueck);
+      return kandidat < CI_START ? CI_START : kandidat;
+    })();
+    // Die laufende Woche wird an mehreren Stellen gebraucht (Wochenraster).
     const montag = new Date(now); montag.setDate(now.getDate() - (ciIsoDay(now) - 1));
-    const vonIso = ciIsoFromDate(montag);
     const [rgRes, ptRes, logRes, orteRes, schichtRes] = await Promise.all([
       sb.from("checkin_rundgaenge").select("*").eq("aktiv", true),
       sb.from("checkin_punkte").select("*"),
@@ -329,7 +338,7 @@ async function ciLoadData() {
       // niemand muss denselben Stopp ein zweites Mal abhaken.
       sb.from("checkin_logs").select("*").gte("datum", vonIso),
       sb.from("checkin_orte").select("*").eq("aktiv", true),
-      sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", ciAddDays(vonIso, -7)),
+      sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", vonIso),
     ]);
     const punkte = {};
     (ptRes.data || []).forEach((p) => { punkte[p.id] = p; });
@@ -345,6 +354,7 @@ async function ciLoadData() {
     const rgIds = new Set(rundgaenge.map((r) => r.id));
     const logs = (logRes.data || []).filter((l) => rgIds.has(l.rundgang_id));
     ciData = { rundgaenge, punkte, logs, orte, schichten: (schichtRes.data || []), heute };
+    ciTagGeladen = true;
     await ciAutoCloseOldShifts();
   } catch (e) { /* offline: alte ciData behalten */ }
 }
@@ -620,6 +630,7 @@ function ciQueue(item) { const q = ciLoadQueue(); item.pending = true; q.push(it
 
 let ciTagDetail = null; // ISO-Datum oder null
 let ciTagLaedt = false;           // laedt gerade die Daten dieses Tages nach
+let ciTagGeladen = false;         // ciLoadData() ist mindestens einmal durch
 // Nachgeladene Tage liegen BEWUSST getrennt von ciData: ciLoadData() baut
 // ciData bei jedem Aufruf komplett neu auf (auch beim Zurueckkehren in die
 // App). Lagen die nachgeladenen Check-ins darin, waren sie danach wieder weg
@@ -647,13 +658,15 @@ async function ciTagOeffnen(iso) {
   ciTagLaedt = false;
   renderCheckinsMa();
 
-  const heute = ciTodayIso();
-  const montag = ciIsoFromDate((function () {
-    const n = new Date(); n.setDate(n.getDate() - (ciIsoDay(n) - 1)); return n;
-  })());
-  // Die laufende Woche ist beim Start vollständig geladen (inkl. Kollegen);
-  // alles davor muss geholt werden.
-  const schonDa = (iso >= montag && iso <= heute) || (ciTagExtra.geladen || []).includes(iso);
+  // Die letzten 90 Tage liegen nach ciLoadData() vollständig vor (inkl. der
+  // Check-ins von Kollegen). Nur noch ältere Tage müssen geholt werden.
+  const grenze = (function () {
+    const n = new Date(); n.setDate(n.getDate() - 90);
+    const k = ciIsoFromDate(n);
+    return k < CI_START ? CI_START : k;
+  })();
+  const schonDa = (iso >= grenze && iso <= ciTodayIso() && (ciData.logs || []).length >= 0
+      && ciTagGeladen) || (ciTagExtra.geladen || []).includes(iso);
   if (schonDa) return;
 
   ciTagLaedt = true;
@@ -746,6 +759,7 @@ function ciRenderTagDetail(iso) {
         <button class="btn-x" style="font-size:12px; padding:6px 10px;" onclick="ciTagDetailSchliessen()">✕</button>
       </div>
       ${ciTagLaedt ? `<p class="ci-empty"><span class="spinner"></span> Lade die Check-ins dieses Tages…</p>` : ""}
+      ${(!ciTagLaedt && !logs.length) ? `<p class="ci-empty" style="font-size:11.5px;">Zu diesem Tag liegen keine Check-ins vor (${(ciData.logs || []).length + (ciTagExtra.logs || []).length} geladen insgesamt).</p>` : ""}
       ${ciTagExtra.fehler === iso ? `<p class="ci-empty" style="color:var(--danger, #d13438);">Die Check-ins dieses Tages konnten nicht geladen werden.</p>` : ""}
       ${rgHtml || (ciTagLaedt ? "" : `<p class="ci-empty">An dem Tag war kein Rundgang für dich geplant.</p>`)}
       ${zeitHtml}
