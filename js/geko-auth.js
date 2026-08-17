@@ -183,7 +183,11 @@ function gekoZeigeLogin(opt) {
   const titel = (opt && opt.titel) || (typeof FIRMA_NAME !== "undefined" ? FIRMA_NAME : "GEKO");
   _gekoRahmen(
     '<h1 style="font-size:21px;margin:0 0 4px">' + titel + '</h1>'
-    + '<p style="color:#6b7785;font-size:14px;margin:0 0 6px">Bitte anmelden.</p>'
+    + ((opt && opt.hinweis)
+        ? '<p style="margin:0 0 10px;padding:11px;border-radius:9px;background:#eef3f8;'
+          + 'border-left:4px solid #1668c1;font-size:13.5px;line-height:1.5;color:#28394a">'
+          + opt.hinweis + '</p>'
+        : '<p style="color:#6b7785;font-size:14px;margin:0 0 6px">Bitte anmelden.</p>')
     + '<label style="' + _gekoLabel + '">Benutzername</label>'
     + '<input id="gekoUser" style="' + _gekoFeld + '" autocapitalize="none" autocorrect="off" '
     + 'spellcheck="false" autocomplete="username">'
@@ -251,9 +255,27 @@ function gekoWillkommen(opt, sitzung) {
 
 // Oeffentlicher Einstieg fuer die Mitarbeiter-Apps:
 //   gekoWillkommenAblauf({ maId, pushRolle: "geko_one", fertig: () => location.reload() })
-function gekoWillkommenAblauf(kontext) {
+async function gekoWillkommenAblauf(kontext) {
   const k = kontext || {};
   if (k.overlay === undefined) k.overlay = true;   // vor die App legen, nicht ersetzen
+
+  // Gilt die Anmeldung serverseitig ueberhaupt noch? Setzt das Buero ein
+  // Passwort zurueck, macht Supabase die laufende Sitzung des Betreffenden
+  // ungueltig. Das Handy merkt davon nichts, weil getSession() nur den
+  // oertlichen Speicher liest - erst der Server weiss Bescheid. Ohne diese
+  // Pruefung liefe man in den Passwort-Bildschirm und bekaeme beim Speichern
+  // "Auth session missing" um die Ohren.
+  const { data, error } = await sb.auth.getUser();
+  if (error || !data || !data.user) {
+    await gekoAbmelden();
+    gekoZeigeLogin({
+      overlay: k.overlay,
+      titel: k.titel,
+      hinweis: "Das Büro hat dir ein neues Passwort gegeben. Bitte melde dich damit an – "
+        + "danach kannst du dir dein eigenes setzen.",
+    });
+    return;
+  }
   _gekoSchrittPasswort(k);
 }
 
@@ -285,7 +307,22 @@ function _gekoSchrittPasswort(k) {
 
     knopf.disabled = true; knopf.textContent = "Moment …";
     const { error } = await sb.auth.updateUser({ password: a });
-    if (error) { meckern(error.message); knopf.disabled = false; knopf.textContent = "Weiter"; return; }
+    if (error) {
+      // Sitzung zwischenzeitlich ungueltig geworden (z.B. das Buero hat noch
+      // einmal zurueckgesetzt): sauber zurueck zur Anmeldung schicken, statt
+      // eine englische Rohmeldung stehen zu lassen.
+      if (/session|jwt|token|expired/i.test(error.message || "")) {
+        await gekoAbmelden();
+        gekoZeigeLogin({ overlay: k.overlay, titel: k.titel,
+          hinweis: "Deine Anmeldung ist abgelaufen. Bitte melde dich mit dem Passwort vom Büro an." });
+        return;
+      }
+      meckern(/weak|short|least|6 char/i.test(error.message || "")
+        ? "Das Passwort ist zu kurz oder zu einfach."
+        : error.message);
+      knopf.disabled = false; knopf.textContent = "Weiter";
+      return;
+    }
 
     if (k.maId) await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", k.maId);
     _gekoSitzung = null;
