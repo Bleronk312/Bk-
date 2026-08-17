@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
 
   const aktion = String(eingabe.aktion || "");
   const maId = String(eingabe.mitarbeiter_id || "");     // glas_mitarbeiter.id
+  const userId = String(eingabe.user_id || "");          // Konto OHNE Mitarbeiter (reine Admins)
   const benutzername = nameSaeubern(String(eingabe.benutzername || ""));
   const passwort = String(eingabe.passwort || "");
   const rolle = eingabe.rolle === "admin" ? "admin" : "mitarbeiter";
@@ -95,8 +96,42 @@ Deno.serve(async (req) => {
     return data as Record<string, any> | null;
   }
 
+  // Wen betrifft die Aktion? Entweder ein Mitarbeiter (mitarbeiter_id) oder
+  // ein freistehendes Admin-Konto (user_id).
+  async function ziel(): Promise<{ ma: Record<string, unknown> | null; uid: string | null }> {
+    if (maId) {
+      const ma = await kontoVon(maId);
+      return { ma, uid: (ma?.auth_user_id as string) || null };
+    }
+    if (userId) return { ma: null, uid: userId };
+    return { ma: null, uid: null };
+  }
+
   try {
     switch (aktion) {
+
+      // ---- Admin-Konto OHNE Mitarbeiter anlegen (z.B. Buerokraft) ---------
+      case "admin_anlegen": {
+        const roh = String(eingabe.benutzername || "").trim();
+        if (!roh || passwort.length < 8) {
+          return antwort({ error: "Benutzername (oder E-Mail) und ein Passwort mit mindestens 8 Zeichen sind Pflicht." }, 400);
+        }
+        // Echte E-Mail-Adressen sind fuer Admins erlaubt und praktisch
+        // (Anmeldung mit der Adresse); sonst Benutzername wie bei Mitarbeitern.
+        const mail = roh.includes("@") ? roh.toLowerCase() : mailFuer(nameSaeubern(roh));
+        const { data, error } = await admin.auth.admin.createUser({
+          email: mail,
+          password: passwort,
+          email_confirm: true,
+          app_metadata: { geko_rolle: "admin" },
+          user_metadata: { name: String(eingabe.name || roh) },
+        });
+        if (error) {
+          const doppelt = /already|registered|exists/i.test(error.message || "");
+          return antwort({ error: doppelt ? "Diesen Benutzernamen gibt es schon." : error.message }, doppelt ? 409 : 400);
+        }
+        return antwort({ ok: true, benutzername: roh, email: mail, user_id: data.user.id });
+      }
 
       // ---- Konto anlegen -------------------------------------------------
       case "anlegen": {
@@ -137,12 +172,12 @@ Deno.serve(async (req) => {
       // ---- Passwort neu setzen -------------------------------------------
       case "passwort_neu": {
         if (passwort.length < 8) return antwort({ error: "Das Passwort braucht mindestens 8 Zeichen." }, 400);
-        const ma = await kontoVon(maId);
-        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es noch kein Konto." }, 404);
-        const { error } = await admin.auth.admin.updateUserById(ma.auth_user_id, { password: passwort });
+        const z = await ziel();
+        if (!z.uid) return antwort({ error: "Für diesen Eintrag gibt es noch kein Konto." }, 404);
+        const { error } = await admin.auth.admin.updateUserById(z.uid, { password: passwort });
         if (error) return antwort({ error: error.message }, 400);
-        // Beim nächsten Anmelden muss er sich ein eigenes Passwort setzen.
-        await admin.from("glas_mitarbeiter").update({ pw_muss_wechsel: true }).eq("id", maId);
+        // Mitarbeiter muessen sich beim naechsten Anmelden ein eigenes setzen.
+        if (z.ma) await admin.from("glas_mitarbeiter").update({ pw_muss_wechsel: true }).eq("id", maId);
         return antwort({ ok: true });
       }
 
@@ -152,14 +187,15 @@ Deno.serve(async (req) => {
       // jemand die Firma verlässt — löschen würde die Historie mitreißen.
       case "sperren":
       case "entsperren": {
-        const ma = await kontoVon(maId);
-        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es noch kein Konto." }, 404);
+        const z = await ziel();
+        if (!z.uid) return antwort({ error: "Für diesen Eintrag gibt es noch kein Konto." }, 404);
         const sperren = aktion === "sperren";
-        const { error } = await admin.auth.admin.updateUserById(ma.auth_user_id, {
+        if (sperren && z.uid === aufrufer.id) return antwort({ error: "Du kannst dich nicht selbst sperren." }, 400);
+        const { error } = await admin.auth.admin.updateUserById(z.uid, {
           ban_duration: sperren ? "876000h" : "none",   // ~100 Jahre bzw. Sperre aufheben
         });
         if (error) return antwort({ error: error.message }, 400);
-        await admin.from("glas_mitarbeiter").update({ login_aktiv: !sperren }).eq("id", maId);
+        if (z.ma) await admin.from("glas_mitarbeiter").update({ login_aktiv: !sperren }).eq("id", maId);
         return antwort({ ok: true, login_aktiv: !sperren });
       }
 
@@ -181,12 +217,12 @@ Deno.serve(async (req) => {
 
       // ---- Konto löschen (Mitarbeiter-Datensatz bleibt!) -------------------
       case "konto_loeschen": {
-        const ma = await kontoVon(maId);
-        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es kein Konto." }, 404);
-        if (ma.auth_user_id === aufrufer.id) return antwort({ error: "Du kannst dein eigenes Konto nicht löschen." }, 400);
-        const { error } = await admin.auth.admin.deleteUser(ma.auth_user_id);
+        const z = await ziel();
+        if (!z.uid) return antwort({ error: "Für diesen Eintrag gibt es kein Konto." }, 404);
+        if (z.uid === aufrufer.id) return antwort({ error: "Du kannst dein eigenes Konto nicht löschen." }, 400);
+        const { error } = await admin.auth.admin.deleteUser(z.uid);
         if (error) return antwort({ error: error.message }, 400);
-        await admin.from("glas_mitarbeiter")
+        if (z.ma) await admin.from("glas_mitarbeiter")
           .update({ auth_user_id: null, login_aktiv: false }).eq("id", maId);
         return antwort({ ok: true });
       }
@@ -206,9 +242,23 @@ Deno.serve(async (req) => {
           (konten?.users || []).map((u) => [u.id, String((u.app_metadata as Record<string, unknown>)?.geko_rolle || "mitarbeiter")]),
         );
         const liste = (data || []) as Record<string, unknown>[];
+        // Konten, die zu KEINEM Mitarbeiter gehoeren (reine Verwaltungskonten,
+        // z.B. das erste Admin-Konto oder Buerokraefte).
+        const verknuepft = new Set(liste.map((m) => m.auth_user_id).filter(Boolean));
+        const freie = (konten?.users || [])
+          .filter((u) => !verknuepft.has(u.id))
+          .map((u) => ({
+            user_id: u.id,
+            email: u.email || "",
+            name: String((u.user_metadata as Record<string, unknown>)?.name || u.email || ""),
+            rolle: rollen.get(u.id) || "mitarbeiter",
+            gesperrt: !!(u as unknown as { banned_until?: string }).banned_until
+              && new Date((u as unknown as { banned_until: string }).banned_until) > new Date(),
+          }));
         return antwort({
           ok: true,
           gesamt: liste.length,
+          admins_ohne_mitarbeiter: freie,
           mitarbeiter: liste.map((m) => ({
             id: m.id,
             name: m.name ?? "",

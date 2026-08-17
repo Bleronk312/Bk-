@@ -1496,8 +1496,8 @@ function renderMehrTab() {
       ${item("📦", "Lager-Plan", "Wer muss morgens wann im Lager sein – mit Benachrichtigung", "glasOpenLager()")}
       ${item("📅", "Jahresvorschau", "Anstehende Reinigungen pro Monat – erledigt, geplant, offen", "glasOpenJahr()")}
       ${item("📊", "Statistiken", "Reinigungen, Jahres-QM und Kunden-Auswertung", "glasOpenStatistik()")}
-      ${item("👥", "Mitarbeiter & Zugänge", "Benutzer & Passwörter anlegen, App-Zugang sperren/entsperren", "goGlasMaVerwaltung()")}
-      ${item("⚙️", "Weitere Einstellungen", "Urlaub & Benachrichtigungen", "goGlasTab('einstellungen')")}
+      ${item("👥", "Mitarbeiter", "Arbeitswoche, Urlaub, Bausteine & Zugang", "goGlasMaVerwaltung()")}
+      ${item("📋", "Positionen & Archiv", "Preislisten-Positionen und archivierte Touren", "goGlasTab('einstellungen')")}
     </div>`;
 }
 
@@ -3117,24 +3117,21 @@ function renderEinstellungenKachel(key, titel, inhaltHtml) {
 function renderEinstellungenTab() {
   // Die reine Kalender-App zeigt nur die für sie relevanten Einstellungen
   // (Design + Benachrichtigungen) - Statistik/Positionen/Archiv sind Glas-Verwaltung.
-  if (glasCalApp) {
-    return `
-      ${renderEinstellungenKachel("darstellung", "🌙 Darstellung", renderDarstellungEinstellung())}
-      ${renderEinstellungenKachel("push", "🔔 Benachrichtigungen", renderPushEinstellungen())}
-    `;
-  }
-  return `
-    <div class="card" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="glasOpenStatistik()">
+  // Allgemeines (Zugaenge, Benachrichtigungen, Darstellung) lebt zentral im
+  // Hub unter Einstellungen - hier bleibt nur, was wirklich Glas ist.
+  const wegweiser = `
+    <a class="card" href="einstellungen.html" style="display:flex; justify-content:space-between; align-items:center; text-decoration:none; color:inherit;">
       <div>
-        <p style="margin:0; font-weight:600;">📊 Statistiken</p>
-        <p class="muted" style="margin:3px 0 0;">Gereinigte qm, Objekte, Kunden, beste Tage &amp; Monate</p>
+        <p style="margin:0; font-weight:600;">⚙️ Allgemeine Einstellungen</p>
+        <p class="muted" style="margin:3px 0 0;">Zugänge &amp; Passwörter, Benachrichtigungen, Darstellung – im Hub</p>
       </div>
       <span style="font-size:18px; color:var(--text-secondary);">›</span>
-    </div>
-    ${renderEinstellungenKachel("darstellung", "🌙 Darstellung", renderDarstellungEinstellung())}
-    ${renderEinstellungenKachel("push", "🔔 Benachrichtigungen", renderPushEinstellungen())}
+    </a>`;
+  if (glasCalApp) return wegweiser;
+  return `
     ${renderEinstellungenKachel("positionen", "📋 Positionen", renderPositionenTab())}
     ${renderEinstellungenKachel("archiv", "🗑️ Archiv", renderArchivTab())}
+    ${wegweiser}
   `;
 }
 

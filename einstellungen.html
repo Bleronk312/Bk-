@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="GEKO Einstellungen" />
+<meta name="theme-color" content="#1f5d92" />
+<title>GEKO · Einstellungen</title>
+<link rel="stylesheet" href="css/style.css?v=161" />
+<script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
+<script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
+<style>
+  /* Kleinkram, der nicht in style.css steht - bewusst auf den Tokens von
+     style.css aufgebaut, damit Hell/Dunkel automatisch stimmen. */
+  .est-wrap { max-width: 640px; margin: 0 auto; padding: 0 16px 40px; }
+  .est-sec-title { font-size: 13px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--text-secondary); margin: 22px 4px 8px; }
+  .est-zeile { display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .est-zeile:first-child { border-top: 0; }
+  .est-name { font-weight: 600; font-size: 15px; min-width: 0; }
+  .est-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .est-marke { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px;
+    border-radius: 20px; vertical-align: 1px; margin-left: 6px; }
+  .m-admin { background: rgba(31,93,146,.14); color: #1f5d92; }
+  .dark .m-admin { color: #7db4e0; }
+  .m-rot { background: rgba(209,52,56,.12); color: #c22e32; }
+  .m-gelb { background: rgba(224,179,87,.18); color: #8a5a00; }
+  .dark .m-gelb { color: #e0b357; }
+  .est-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .est-btns .btn { padding: 8px 11px; font-size: 13px; }
+  dialog.est-dlg { border: 0; border-radius: 15px; padding: 20px; max-width: 400px;
+    width: 92%; background: var(--card-bg, #fff); color: var(--text, #1c2530);
+    box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  dialog.est-dlg::backdrop { background: rgba(15,23,32,.55); }
+  .est-zettel { background: rgba(224,179,87,.12); border: 1px dashed #cfa14f;
+    border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 15px; line-height: 1.7; }
+  .est-zettel code { font-weight: 800; font-size: 15px; }
+</style>
+</head>
+<body class="glas-logo-left">
+
+  <div id="gekoAuthOverlay" style="position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">Anmeldung wird gepr&uuml;ft &hellip;</div>
+
+  <div class="app-header">
+    <div class="brand-row geko-navrow">
+      <a href="hub.html" class="geko-hubbtn" title="Zur Startseite"><span class="hb-ic">⌂</span>Hub</a>
+      <span class="geko-brand"><span class="dot"></span>Einstellungen</span>
+    </div>
+  </div>
+
+  <div class="est-wrap" id="inhalt"><p class="muted" style="padding:20px 4px;">Lade …</p></div>
+
+  <dialog class="est-dlg" id="dlg"><div id="dlgInhalt"></div></dialog>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js?v=161"></script>
+  <script src="js/supabase-client.js?v=161"></script>
+  <script src="js/geko-auth.js?v=161"></script>
+  <script src="js/push.js?v=161"></script>
+  <script>
+  // ==========================================================================
+  // GEKO · Zentrale Einstellungen (nur Verwaltung)
+  //  1. Mein Konto        - eigenes Passwort aendern
+  //  2. Zugaenge          - Mitarbeiter-Konten + reine Verwaltungskonten
+  //  3. Benachrichtigungen- dieses Geraet anmelden + Themen-Schalter
+  //  4. Darstellung       - Hell/Dunkel fuer dieses Geraet
+  // ==========================================================================
+  const FUNKTION = SUPABASE_URL + "/functions/v1/benutzer-verwalten";
+  let meineSitzung = null;
+  let zugangsdaten = null;      // Antwort der "liste"-Aktion
+  let pushEinstellungen = {};   // Zeile aus glas_einstellungen
+
+  function showToast(text) {
+    const t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = text; t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  const sicher = (t) => String(t == null ? "" : t).replace(/[<>&"]/g,
+    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+
+  async function ruf(nutzlast) {
+    let session = null;
+    try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+    if (!session) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
+    try {
+      const antwort = await fetch(FUNKTION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY,
+                   "Authorization": "Bearer " + session.access_token },
+        body: JSON.stringify(nutzlast),
+      });
+      return await antwort.json();
+    } catch (e) { return { error: "Keine Verbindung." }; }
+  }
+
+  function passwortVorschlag() {
+    // Ohne 0/O und 1/l/I - wird vom Zettel abgetippt.
+    const zeichen = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const zufall = crypto.getRandomValues(new Uint32Array(10));
+    let aus = "";
+    for (let i = 0; i < 10; i++) aus += zeichen[zufall[i] % zeichen.length];
+    return aus;
+  }
+
+  // ---- Laden -------------------------------------------------------------
+  async function allesLaden() {
+    const [liste, einst] = await Promise.all([
+      ruf({ aktion: "liste" }),
+      sb.from("glas_einstellungen").select("*").eq("id", "default").maybeSingle(),
+    ]);
+    zugangsdaten = liste;
+    pushEinstellungen = (einst && einst.data) || {};
+    render();
+  }
+
+  // ---- Zeichnen ----------------------------------------------------------
+  function render() {
+    const el = document.getElementById("inhalt");
+    el.innerHTML = renderMeinKonto() + renderZugaenge() + renderPush() + renderDarstellung();
+  }
+
+  function renderMeinKonto() {
+    const mail = meineSitzung?.user?.email || "?";
+    return `
+      <p class="est-sec-title">Mein Konto</p>
+      <div class="card">
+        <p style="margin:0; font-weight:600;">${sicher(mail)} <span class="est-marke m-admin">Verwaltung</span></p>
+        <p class="muted" style="margin:4px 0 12px; font-size:12.5px;">Auf diesem Gerät angemeldet. Abmelden gilt für alle GEKO-Seiten.</p>
+        <div class="est-btns">
+          <button class="btn btn-primary" onclick="dlgEigenesPasswort()">🔑 Passwort ändern</button>
+          <button class="btn" onclick="abmelden()">Abmelden</button>
+        </div>
+      </div>`;
+  }
+
+  function renderZugaenge() {
+    if (!zugangsdaten) return "";
+    if (zugangsdaten.error) {
+      return `<p class="est-sec-title">Zugänge</p>
+        <div class="card"><b>Fehler:</b> ${sicher(zugangsdaten.error)}</div>`;
+    }
+    const leute = zugangsdaten.mitarbeiter || [];
+    const freie = zugangsdaten.admins_ohne_mitarbeiter || [];
+
+    const maZeile = (m) => {
+      const marken =
+        (m.rolle === "admin" ? '<span class="est-marke m-admin">Verwaltung</span>' : "")
+        + (m.hat_konto && m.login_aktiv === false ? '<span class="est-marke m-rot">gesperrt</span>' : "")
+        + (m.hat_konto && m.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort</span>' : "");
+      const knoepfe = m.hat_konto
+        ? `<button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Passwort</button>
+           <button class="btn" onclick="aktionRolle('${m.id}', '${m.rolle}', '${sicher(m.name)}')">Rolle</button>
+           <button class="btn" onclick="aktionSperre('${m.id}', null, ${m.login_aktiv === false}, '${sicher(m.name)}')">${m.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>`
+        : `<button class="btn btn-primary" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`;
+      return `<div class="est-zeile"><div style="flex:1; min-width:150px;">
+          <div class="est-name">${sicher(m.name || m.id)}${marken}</div>
+          <div class="est-sub">${m.hat_konto ? "Benutzername: " + sicher(m.username || "—") : "Noch kein Zugang"}</div>
+        </div><div class="est-btns">${knoepfe}</div></div>`;
+    };
+
+    const freiZeile = (a) => `
+      <div class="est-zeile"><div style="flex:1; min-width:150px;">
+        <div class="est-name">${sicher(a.name || a.email)}
+          <span class="est-marke m-admin">Verwaltung</span>
+          ${a.gesperrt ? '<span class="est-marke m-rot">gesperrt</span>' : ""}</div>
+        <div class="est-sub">${sicher(a.email)}${a.user_id === meineSitzung?.user?.id ? " · das bist du" : ""}</div>
+      </div><div class="est-btns">${a.user_id === meineSitzung?.user?.id ? "" : `
+        <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
+        <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
+        <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${sicher(a.name || a.email)}')">Löschen</button>`}</div></div>`;
+
+    return `
+      <p class="est-sec-title">Zugänge · Mitarbeiter</p>
+      <div class="card">${leute.length ? leute.map(maZeile).join("") : '<p class="muted" style="margin:0;">Keine Mitarbeiter gefunden.</p>'}
+        <p class="muted" style="margin:10px 0 0; font-size:12px;">Arbeitswoche, Urlaub und Bausteine pflegst du weiter in der Glas-Verwaltung unter „Mitarbeiter".</p>
+      </div>
+      <p class="est-sec-title">Zugänge · Verwaltung (ohne Mitarbeiter-Eintrag)</p>
+      <div class="card">${freie.length ? freie.map(freiZeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine.</p>'}
+        <button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
+        <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind. Sieht alles und kann Zugänge vergeben.</p>
+      </div>`;
+  }
+
+  function renderPush() {
+    const e = pushEinstellungen || {};
+    const app = (rolle, icon, name) => `
+      <div class="est-zeile"><div class="est-name" style="font-weight:600;">${icon} ${name}</div>
+        <button class="btn" onclick="enablePushNotifications('${rolle}')">🔔 Auf diesem Gerät aktivieren</button></div>`;
+    const schalter = (key, an, icon, text, quelle) => `
+      <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" style="width:auto;" ${an ? "checked" : ""} onchange="pushSchalter('${key}', this.checked)" />
+        <span style="font-size:13.5px;">${icon} ${text} &middot; <span class="muted">${quelle}</span></span>
+      </label>`;
+    return `
+      <p class="est-sec-title">Benachrichtigungen</p>
+      <div class="card">
+        <p class="muted" style="margin:0 0 4px; font-size:12.5px;">Einmal pro Gerät und App aktivieren. iPhone: geht nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
+        ${app("glas", "🪟", "Glasreinigung")}
+        ${app("kalender", "📅", "Kalender")}
+        ${app("graffiti", "🎨", "Graffiti")}
+        ${app("checkin_admin", "📍", "Check-ins")}
+      </div>
+      <div class="card">
+        <p style="margin:0 0 4px; font-weight:600;">Wovon möchtest du benachrichtigt werden?</p>
+        ${schalter("push_touren", !!e.push_touren, "🚐", "Touren (neu/geändert/archiviert)", "Glasreinigung")}
+        ${schalter("push_unterschrift", !!e.push_unterschrift, "✍️", "Eingehende Unterschriften", "Glasreinigung")}
+        ${schalter("push_urlaub", e.push_urlaub !== false, "🏖️", "Neue Urlaubsanträge", "Glasreinigung")}
+        ${schalter("push_lager", e.push_lager !== false, "📦", "Lager-Plan an die Mitarbeiter", "GEKO One")}
+        ${schalter("push_kalender", !!e.push_kalender, "📅", "Kalender-Termine (neu/geändert/gelöscht)", "Kalender")}
+        <p class="muted" style="margin:10px 0 0; font-size:12px;">⏰ Termin-Erinnerungen stellst du direkt am jeweiligen Termin ein.</p>
+      </div>`;
+  }
+
+  function renderDarstellung() {
+    let t = "auto";
+    try { t = localStorage.getItem("geko_theme") || "auto"; } catch (e) {}
+    const knopf = (wert, label) => `<button class="glas-seg-btn ${t === wert ? "on" : ""}" onclick="themeSetzen('${wert}')">${label}</button>`;
+    return `
+      <p class="est-sec-title">Darstellung</p>
+      <div class="card">
+        <p class="muted" style="margin:0 0 10px;">„Automatisch" folgt dem Handy. Gilt für dieses Gerät auf allen GEKO-Seiten.</p>
+        <div class="glas-seg">${knopf("auto", "📱 Automatisch")}${knopf("light", "☀️ Hell")}${knopf("dark", "🌙 Dunkel")}</div>
+      </div>`;
+  }
+
+  // ---- Aktionen ----------------------------------------------------------
+  function themeSetzen(modus) {
+    try { localStorage.setItem("geko_theme", modus); } catch (e) {}
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    document.documentElement.classList.toggle("dark", modus === "dark" || (modus === "auto" && mq.matches));
+    render();
+  }
+
+  async function pushSchalter(key, wert) {
+    pushEinstellungen = { ...(pushEinstellungen || {}), id: "default", [key]: wert };
+    const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", [key]: wert });
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast(wert ? "Eingeschaltet" : "Ausgeschaltet");
+  }
+
+  async function abmelden() { await gekoAbmelden(); location.reload(); }
+
+  const dlg = document.getElementById("dlg");
+  function zeigeDialog(html) { document.getElementById("dlgInhalt").innerHTML = html; dlg.showModal(); }
+
+  // Zettel nach Anlegen/Zuruecksetzen: das Passwort ist genau HIER das letzte
+  // Mal sichtbar.
+  function zettel(name, benutzername, passwort) {
+    zeigeDialog(`
+      <h3 style="margin:0 0 4px;">Zugangsdaten für ${sicher(name)}</h3>
+      <p class="muted" style="margin:0; font-size:13px;"><b>Das Passwort siehst du nur jetzt.</b> Beim ersten Anmelden wird ein eigenes gesetzt.</p>
+      <div class="est-zettel">Benutzername: <code>${sicher(benutzername)}</code><br>Passwort: <code>${sicher(passwort)}</code></div>
+      <button class="btn" style="width:100%; margin-top:12px;" onclick="navigator.clipboard.writeText('Benutzername: ${sicher(benutzername)}\\nPasswort: ${sicher(passwort)}').then(()=>showToast('Kopiert ✓')).catch(()=>showToast('Bitte abschreiben'))">Zum Kopieren</button>
+      <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="dlg.close(); allesLaden();">Fertig</button>`);
+  }
+
+  function dlgAnlegen(maId) {
+    const m = (zugangsdaten.mitarbeiter || []).find((x) => x.id === maId);
+    if (!m) return;
+    const vorschlag = m.username || String(m.name || "").trim().toLowerCase()
+      .replace(/[ä]/g,"ae").replace(/[ö]/g,"oe").replace(/[ü]/g,"ue").replace(/ß/g,"ss")
+      .replace(/[^a-z0-9 ]/g,"").split(/\s+/).filter(Boolean).map((t,i)=>i===0?t:t.slice(0,1)).join("");
+    zeigeDialog(`
+      <h3 style="margin:0 0 10px;">Zugang für ${sicher(m.name)}</h3>
+      <div class="field"><label class="muted">Benutzername</label>
+        <input id="dU" value="${sicher(vorschlag)}" autocapitalize="none" spellcheck="false" /></div>
+      <label style="display:flex; align-items:center; gap:8px; margin:10px 0; cursor:pointer;">
+        <input type="checkbox" id="dAdmin" style="width:auto;" /> <span>Verwaltungs-Zugang <span class="muted">(sieht alles)</span></span></label>
+      <p class="muted" id="dFehler" style="color:var(--danger); margin:0 0 6px;"></p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" style="flex:1;" onclick="dlg.close()">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:2;" id="dOk">Anlegen</button></div>`);
+    document.getElementById("dOk").onclick = async () => {
+      const benutzername = document.getElementById("dU").value.trim();
+      const rolle = document.getElementById("dAdmin").checked ? "admin" : "mitarbeiter";
+      const passwort = passwortVorschlag();
+      const erg = await ruf({ aktion: "anlegen", mitarbeiter_id: maId, benutzername, passwort, rolle });
+      if (erg.error) { document.getElementById("dFehler").textContent = erg.error; return; }
+      zettel(m.name, erg.benutzername, passwort);
+    };
+  }
+
+  function dlgAdminAnlegen() {
+    zeigeDialog(`
+      <h3 style="margin:0 0 4px;">Verwaltungs-Zugang</h3>
+      <p class="muted" style="margin:0 0 10px; font-size:13px;">Für jemanden, der kein Mitarbeiter in den Apps ist. Benutzername oder echte E-Mail-Adresse.</p>
+      <div class="field"><label class="muted">Name (zur Anzeige)</label><input id="dName" /></div>
+      <div class="field"><label class="muted">Benutzername oder E-Mail</label>
+        <input id="dU" autocapitalize="none" spellcheck="false" /></div>
+      <p class="muted" id="dFehler" style="color:var(--danger); margin:0 0 6px;"></p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" style="flex:1;" onclick="dlg.close()">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:2;" id="dOk">Anlegen</button></div>`);
+    document.getElementById("dOk").onclick = async () => {
+      const benutzername = document.getElementById("dU").value.trim();
+      const name = document.getElementById("dName").value.trim();
+      const passwort = passwortVorschlag();
+      const erg = await ruf({ aktion: "admin_anlegen", benutzername, name, passwort });
+      if (erg.error) { document.getElementById("dFehler").textContent = erg.error; return; }
+      zettel(name || benutzername, erg.benutzername, passwort);
+    };
+  }
+
+  async function aktionPasswort(maId, userId, name) {
+    if (!confirm(`Neues Einmal-Passwort für ${name}?\n\nDas alte gilt danach nicht mehr.`)) return;
+    const passwort = passwortVorschlag();
+    const erg = await ruf({ aktion: "passwort_neu", mitarbeiter_id: maId || "", user_id: userId || "", passwort });
+    if (erg.error) { showToast("Fehler: " + erg.error); return; }
+    const m = maId ? (zugangsdaten.mitarbeiter || []).find((x) => x.id === maId) : null;
+    zettel(name, m ? m.username : name, passwort);
+  }
+
+  async function aktionSperre(maId, userId, istGesperrt, name) {
+    if (!istGesperrt && !confirm(`${name} sperren?\n\nAnmelden geht dann nicht mehr, alle Daten bleiben erhalten.`)) return;
+    const erg = await ruf({ aktion: istGesperrt ? "entsperren" : "sperren", mitarbeiter_id: maId || "", user_id: userId || "" });
+    if (erg.error) { showToast("Fehler: " + erg.error); return; }
+    showToast(istGesperrt ? "Entsperrt" : "Gesperrt");
+    allesLaden();
+  }
+
+  async function aktionRolle(maId, rolle, name) {
+    const neu = rolle === "admin" ? "mitarbeiter" : "admin";
+    const text = neu === "admin"
+      ? `${name} zur Verwaltung machen?\n\nSieht dann ALLES und kann Zugänge vergeben.`
+      : `${name} zum Mitarbeiter machen?\n\nSieht dann nur noch seine eigenen Daten.`;
+    if (!confirm(text)) return;
+    const erg = await ruf({ aktion: "rolle_setzen", mitarbeiter_id: maId, rolle: neu });
+    if (erg.error) { showToast("Fehler: " + erg.error); return; }
+    showToast("Rolle geändert");
+    allesLaden();
+  }
+
+  async function aktionLoeschen(userId, name) {
+    if (!confirm(`Das Konto von ${name} endgültig löschen?`)) return;
+    const erg = await ruf({ aktion: "konto_loeschen", user_id: userId });
+    if (erg.error) { showToast("Fehler: " + erg.error); return; }
+    showToast("Konto gelöscht");
+    allesLaden();
+  }
+
+  function dlgEigenesPasswort() {
+    zeigeDialog(`
+      <h3 style="margin:0 0 10px;">Eigenes Passwort ändern</h3>
+      <div class="field"><label class="muted">Aktuelles Passwort</label>
+        <input id="dAlt" type="password" autocomplete="current-password" /></div>
+      <div class="field"><label class="muted">Neues Passwort (mind. 8 Zeichen)</label>
+        <input id="dNeu" type="password" autocomplete="new-password" /></div>
+      <div class="field"><label class="muted">Nochmal zur Sicherheit</label>
+        <input id="dNeu2" type="password" autocomplete="new-password" /></div>
+      <p class="muted" id="dFehler" style="color:var(--danger); margin:0 0 6px;"></p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" style="flex:1;" onclick="dlg.close()">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:2;" id="dOk">Speichern</button></div>`);
+    document.getElementById("dOk").onclick = async () => {
+      const alt = document.getElementById("dAlt").value;
+      const neu = document.getElementById("dNeu").value;
+      const neu2 = document.getElementById("dNeu2").value;
+      const meckern = (t) => { document.getElementById("dFehler").textContent = t; };
+      if (neu.length < 8) return meckern("Mindestens 8 Zeichen.");
+      if (neu !== neu2) return meckern("Die beiden Eingaben sind nicht gleich.");
+      // Altes Passwort per Probe-Anmeldung pruefen - Supabase kennt beim
+      // Aendern selbst keine "altes Passwort"-Abfrage.
+      const { error: eAlt } = await sb.auth.signInWithPassword({ email: meineSitzung.user.email, password: alt });
+      if (eAlt) return meckern("Das aktuelle Passwort stimmt nicht.");
+      const { error } = await sb.auth.updateUser({ password: neu });
+      if (error) return meckern(error.message);
+      dlg.close();
+      showToast("Passwort geändert ✓");
+    };
+  }
+
+  // ---- Start -------------------------------------------------------------
+  window.addEventListener("load", function () {
+    gekoSchuetze({ nurAdmin: true, overlay: true, titel: "GEKO Einstellungen",
+      weiter: (sitzung) => { meineSitzung = sitzung; allesLaden(); } });
+  });
+  </script>
+</body>
+</html>
