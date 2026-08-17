@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v190";
+const GEKO_CACHE = "geko-cache-v191";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -64,9 +64,28 @@ self.addEventListener("fetch", (event) => {
   // zuerst = blitzschneller Start, kein Warten aufs Netz. Nach einem Deploy laden die
   // HTML-Dateien automatisch die neuen ?v-URLs, also gibt es nie eine alte Version.
   if (/[?&]v=\d+/.test(url.search)) { event.respondWith(gekoCacheFirst(req)); return; }
-  // HTML & unversionierte Anfragen: Netz zuerst (frische App-Hülle nach Deploy).
-  event.respondWith(gekoNetworkFirst(req));
+  // HTML & unversionierte Anfragen: Zwischenspeicher SOFORT, frisch nachladen
+  // im Hintergrund. Vorher war es andersherum (Netz zuerst) - dadurch stand
+  // bei JEDEM Wechsel Hub -> Abteilung erst ein weisser Bildschirm, bis das
+  // HTML uebers Netz da war; bei schlechtem Empfang bis zu 5 Sekunden. Jetzt
+  // erscheint die Seite augenblicklich aus dem Speicher, und der naechste
+  // Besuch hat automatisch den frischen Stand. Inhalte (Datenbank) waren nie
+  // betroffen - die laufen am Speicher vorbei.
+  event.respondWith(gekoShellSwr(req));
 });
+
+// Huelle sofort aus dem Speicher, Aktualisierung im Hintergrund. Gefahrlos,
+// weil der Server die ?v-Anfragen ohnehin immer mit dem neuesten Inhalt
+// beantwortet - die Stempel dienen nur dem Speicher-Umbruch.
+async function gekoShellSwr(req) {
+  const cache = await caches.open(GEKO_CACHE);
+  const cached = await cache.match(req);
+  if (cached) {
+    fetch(req).then((res) => { if (res && res.ok) cache.put(req, res.clone()); }).catch(() => {});
+    return cached;
+  }
+  return gekoNetworkFirst(req);
+}
 
 // Cache zuerst; nur bei Fehltreffer ins Netz (und dann in den Cache legen). Fuer
 // unveraenderliche ?v-URLs sicher und am schnellsten.
