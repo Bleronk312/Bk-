@@ -336,7 +336,7 @@ async function ciLoadData() {
       // BEWUSST ohne Mitarbeiter-Filter: Ein Rundgang ist eine GEMEINSAME Aufgabe.
       // Checkt ein Kollege einen Punkt ein, gilt der für alle Zugeteilten als erledigt –
       // niemand muss denselben Stopp ein zweites Mal abhaken.
-      sb.from("checkin_logs").select("*").gte("datum", vonIso),
+      sb.from("checkin_logs").select("id, rundgang_id, punkt_id, mitarbeiter_id, mitarbeiter_name, ts, datum, distanz_m").gte("datum", vonIso),
       sb.from("checkin_orte").select("*").eq("aktiv", true),
       sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).gte("datum", vonIso),
     ]);
@@ -673,7 +673,7 @@ async function ciTagOeffnen(iso) {
   renderCheckinsMa();
   try {
     const [logRes, schichtRes] = await Promise.all([
-      sb.from("checkin_logs").select("*").eq("datum", iso),
+      sb.from("checkin_logs").select("id, rundgang_id, punkt_id, mitarbeiter_id, mitarbeiter_name, ts, datum, distanz_m").eq("datum", iso),
       sb.from("checkin_schichten").select("*").eq("mitarbeiter_id", ciUser.id).eq("datum", iso),
     ]);
     const bekannt = new Set(ciTagExtra.logs.map((l) => l.id));

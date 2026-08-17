@@ -542,3 +542,18 @@ function _gekoSchrittBenachrichtigungen(k) {
   };
   document.getElementById("gekoSpaeter").onclick = weiter;
 }
+
+// ---------------------------------------------------------------------------
+// Selbststart
+// ---------------------------------------------------------------------------
+// Die geschuetzten Seiten hinterlegen ihre Anforderungen in window.__gekoGate
+// (ganz oben, bevor irgendetwas laedt). Die Pruefung startet HIER - also in
+// dem Moment, in dem dieser Baustein geparst ist. Vorher hing sie am
+// "load"-Ereignis der Seite und wartete damit auf saemtliche Bibliotheken
+// (PDF, Unterschrift, Karte ...). Das war der sekundenlange Pruef-Deckel bei
+// jedem Oeffnen.
+if (typeof window !== "undefined" && window.__gekoGate) {
+  const _gate = window.__gekoGate;
+  window.__gekoGate = null;
+  gekoSchuetze(_gate);
+}

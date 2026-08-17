@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Kalender</title>
 <link rel="manifest" href="manifest-kalender.json" />
-<link rel="stylesheet" href="css/style.css?v=187" />
+<link rel="stylesheet" href="css/style.css?v=188" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
@@ -26,9 +26,25 @@
   <div id="gekoAuthOverlay" style="position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">Anmeldung wird gepr&uuml;ft &hellip;</div>
   <!-- Zugangsschutz: echte Anmeldung, nur fuer die Verwaltung. -->
   <script>
-  window.addEventListener("load", function () {
-    gekoSchuetze({ nurAdmin: true, overlay: true, titel: "GEKO Kalender" });
-  });
+  (function () {
+    // Anforderungen fuer die echte Pruefung - gestartet wird sie von
+    // geko-auth.js, sobald es geladen ist (nicht mehr beim "load"-Ereignis).
+    window.__gekoGate = { nurAdmin: true, overlay: true, titel: "GEKO Kalender" };
+    // Schnellstart gegen das Aufblitzen: Passt die oertlich gespeicherte
+    // Anmeldung zum gemerkten Profil und erfuellt sie die Anforderung dieser
+    // Seite, verschwindet der Pruef-Deckel sofort - noch bevor irgendeine
+    // Bibliothek laedt. Faellt die echte Pruefung anders aus, kommt er zurueck
+    // (gekoZeigeLogin/gekoZeigeSperre bauen ihn neu auf).
+    try {
+      var s = JSON.parse(localStorage.getItem("geko_auth") || "null");
+      var p = JSON.parse(localStorage.getItem("geko_profil") || "null");
+      var u = s && s.user;
+      if (u && p && p.uid === u.id && (p.rolle === "admin")) {
+        var o = document.getElementById("gekoAuthOverlay");
+        if (o) o.style.display = "none";
+      }
+    } catch (e) {}
+  })();
   </script>
 
   <div class="app-header">
@@ -50,19 +66,19 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
-  <script src="js/config.js?v=187"></script>
-  <script src="js/fehler.js?v=187"></script>
-  <script src="js/logo-asset.js?v=187"></script>
-  <script src="js/pull-refresh.js?v=187"></script>
-  <script src="js/supabase-client.js?v=187"></script>
-  <script src="js/geko-auth.js?v=187"></script>
-  <script src="js/app-shared.js?v=187"></script>
-  <script src="js/glas-shared.js?v=187"></script>
-  <script defer src="js/pdf-fonts.js?v=187"></script>
-  <script defer src="js/pdf-template.js?v=187"></script>
-  <script defer src="js/glas-logo-sub.js?v=187"></script>
-  <script defer src="js/glas-pdf-template.js?v=187"></script>
-  <script src="js/push.js?v=187"></script>
-  <script src="js/glas-admin.js?v=187"></script>
+  <script src="js/config.js?v=188"></script>
+  <script src="js/fehler.js?v=188"></script>
+  <script src="js/logo-asset.js?v=188"></script>
+  <script src="js/pull-refresh.js?v=188"></script>
+  <script src="js/supabase-client.js?v=188"></script>
+  <script src="js/geko-auth.js?v=188"></script>
+  <script src="js/app-shared.js?v=188"></script>
+  <script src="js/glas-shared.js?v=188"></script>
+  <script defer src="js/pdf-fonts.js?v=188"></script>
+  <script defer src="js/pdf-template.js?v=188"></script>
+  <script defer src="js/glas-logo-sub.js?v=188"></script>
+  <script defer src="js/glas-pdf-template.js?v=188"></script>
+  <script src="js/push.js?v=188"></script>
+  <script src="js/glas-admin.js?v=188"></script>
 </body>
 </html>

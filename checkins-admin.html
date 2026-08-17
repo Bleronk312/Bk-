@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Check-ins – Admin</title>
 <link rel="manifest" href="manifest-checkins.json" />
-<link rel="stylesheet" href="css/checkins.css?v=187" />
+<link rel="stylesheet" href="css/checkins.css?v=188" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
@@ -25,10 +25,26 @@
        App, bis ein angemeldeter Admin bestaetigt ist. Laeuft nach "load", weil
        geko-auth.js und supabase-js erst am Seitenende geladen werden. -->
   <script>
-  window.addEventListener("load", function () {
-    try { localStorage.removeItem("geko_ci_pin_ok"); } catch (e) {}   // alte PIN-Freischaltung verfaellt
-    gekoSchuetze({ nurAdmin: true, overlay: true, titel: "Check-ins Verwaltung" });
-  });
+  (function () {
+    try { localStorage.removeItem("geko_ci_pin_ok"); } catch (e) {}
+    // Anforderungen fuer die echte Pruefung - gestartet wird sie von
+    // geko-auth.js, sobald es geladen ist (nicht mehr beim "load"-Ereignis).
+    window.__gekoGate = { nurAdmin: true, overlay: true, titel: "Check-ins Verwaltung" };
+    // Schnellstart gegen das Aufblitzen: Passt die oertlich gespeicherte
+    // Anmeldung zum gemerkten Profil und erfuellt sie die Anforderung dieser
+    // Seite, verschwindet der Pruef-Deckel sofort - noch bevor irgendeine
+    // Bibliothek laedt. Faellt die echte Pruefung anders aus, kommt er zurueck
+    // (gekoZeigeLogin/gekoZeigeSperre bauen ihn neu auf).
+    try {
+      var s = JSON.parse(localStorage.getItem("geko_auth") || "null");
+      var p = JSON.parse(localStorage.getItem("geko_profil") || "null");
+      var u = s && s.user;
+      if (u && p && p.uid === u.id && (p.rolle === "admin")) {
+        var o = document.getElementById("gekoAuthOverlay");
+        if (o) o.style.display = "none";
+      }
+    } catch (e) {}
+  })();
   </script>
 
   <div class="ci-head admin-head">
@@ -51,16 +67,16 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="js/config.js?v=187"></script>
-  <script src="js/fehler.js?v=187"></script>
-  <script src="js/logo-asset.js?v=187"></script>
-  <script defer src="js/pdf-fonts.js?v=187"></script>
-  <script src="js/supabase-client.js?v=187"></script>
-  <script src="js/geko-auth.js?v=187"></script>
-  <script src="js/app-shared.js?v=187"></script>
-  <script src="js/glas-shared.js?v=187"></script>
-  <script src="js/checkins-shared.js?v=187"></script>
-  <script src="js/push.js?v=187"></script>
-  <script src="js/checkins-admin.js?v=187"></script>
+  <script src="js/config.js?v=188"></script>
+  <script src="js/fehler.js?v=188"></script>
+  <script src="js/logo-asset.js?v=188"></script>
+  <script defer src="js/pdf-fonts.js?v=188"></script>
+  <script src="js/supabase-client.js?v=188"></script>
+  <script src="js/geko-auth.js?v=188"></script>
+  <script src="js/app-shared.js?v=188"></script>
+  <script src="js/glas-shared.js?v=188"></script>
+  <script src="js/checkins-shared.js?v=188"></script>
+  <script src="js/push.js?v=188"></script>
+  <script src="js/checkins-admin.js?v=188"></script>
 </body>
 </html>
