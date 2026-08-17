@@ -1209,50 +1209,82 @@ function renderLagerPlan() {
   // antippen, um nachträglich "war nicht da" zu vermerken. Standardmäßig wird
   // dabei NICHTS erwartet - der Vermerk ist die Ausnahme, nicht die Regel.
   const vergangenOderHeute = datum <= heute;
+
+  // Kleiner Ring statt einer weiteren Textzeile: wie viele haben gelesen.
+  const ring = (anteil, voll) => {
+    const r = 10, u = 2 * Math.PI * r;
+    const farbe = voll ? "#2e9e4f" : "#6b4ee6";
+    return `<svg class="lk-ring" viewBox="0 0 26 26" aria-hidden="true">
+      <circle cx="13" cy="13" r="${r}" fill="none" stroke="var(--border)" stroke-width="3"></circle>
+      <circle cx="13" cy="13" r="${r}" fill="none" stroke="${farbe}" stroke-width="3"
+        stroke-linecap="round" stroke-dasharray="${u}" stroke-dashoffset="${u * (1 - anteil)}"
+        transform="rotate(-90 13 13)"></circle></svg>`;
+  };
+
   const uebersicht = eintraege.length ? eintraege.map((p) => {
-    const ids = glasLagerIds(p);
+    const ids = glasLagerIds(p).filter((id) => glasMaName(id));
     const best = p.bestaetigt || {};
     const abw = p.abwesend || {};
-    const personen = ids.map((id) => {
-      const nm = glasMaName(id);
-      if (!nm) return "";
+    const gelesen = ids.filter((id) => best[id] && !abw[id]).length;
+    const gesamt = ids.length || 1;
+    const voll = ids.length > 0 && gelesen === ids.length;
+
+    const zeilen = ids.map((id) => {
       const istAbw = !!abw[id];
-      const status = istAbw
-        ? `<span class="p-status abw">✗ War nicht da</span>`
-        : best[id]
-          ? `<span class="p-status ok">✓ Gelesen</span>`
-          : `<span class="p-status">noch nicht gelesen</span>`;
+      const wann = best[id] ? glasUhrzeitVonTimestamp(best[id]) : "";
       const inhalt = `
-        <span class="glas-ma-dot" style="background:${glasMaFarbe(id)};"></span>
-        <span class="p-name${istAbw ? " abw" : ""}">${escapeHtml(nm)}</span>
-        ${status}`;
+        <span class="glas-lager-avatar" style="background:${glasMaFarbe(id)};">${glasLagerInitialen(glasMaName(id))}</span>
+        <span class="lk-name">${escapeHtml(glasMaName(id))}</span>
+        ${istAbw ? `<span class="lk-wann">war nicht da</span>`
+          : wann ? `<span class="lk-wann">${escapeHtml(wann)} gelesen</span>` : ""}
+        <span class="lk-haken ${istAbw ? "weg" : best[id] ? "ja" : ""}">${istAbw ? "✕" : "✓"}</span>`;
+      // Nachtraeglich "war nicht da" vermerken geht erst ab dem Tag selbst -
+      // vorher gibt es nichts zu vermerken.
       return vergangenOderHeute
-        ? `<button class="glas-lager-person tippbar" onclick="glasLagerAbwToggle('${p.id}', '${id}')">${inhalt}</button>`
-        : `<div class="glas-lager-person">${inhalt}</div>`;
+        ? `<button class="lk-zeile tippbar${istAbw ? " abw" : ""}" onclick="glasLagerAbwToggle('${p.id}', '${id}')">${inhalt}</button>`
+        : `<div class="lk-zeile${istAbw ? " abw" : ""}">${inhalt}</div>`;
     }).join("");
+
     return `
-      <div class="glas-lager-eintrag">
-        <div class="le-kopf">
-          <span class="le-zeit">${escapeHtml(p.uhrzeit)}</span>
-          <span class="le-info">
-            ${p.notiz ? `<span class="le-notiz">📝 ${escapeHtml(p.notiz)}</span>` : ""}
-            <span class="le-meta">${p.gesendet_am ? "✓ verschickt" : "noch nicht verschickt"}</span>
+      <div class="glas-lager-karte">
+        <div class="lk-kopf">
+          <span class="lk-zeit">${escapeHtml(p.uhrzeit || "")}</span>
+          <span class="lk-stand">
+            ${ids.length ? ring(gelesen / gesamt, voll) : ""}
+            <span class="lk-zahl${voll ? " voll" : ""}">${
+              !ids.length ? "niemand"
+                : voll ? "alle gelesen"
+                : gelesen + " von " + ids.length}</span>
           </span>
-          <button class="btn btn-sm" style="color:var(--danger); flex:none;" onclick="glasLagerLoeschen('${p.id}')">✕</button>
+          <button class="lk-weg" onclick="glasLagerLoeschen('${p.id}')" aria-label="Einteilung löschen">✕</button>
         </div>
-        <div class="le-personen">${personen || `<p class="muted" style="margin:8px 0 2px;">niemand</p>`}</div>
+        ${p.notiz ? `<p class="lk-notiz"><span>📝</span><span>${escapeHtml(p.notiz)}</span></p>` : ""}
+        ${p.gesendet_am ? "" : `<p class="lk-notiz" style="color:var(--warning-text);"><span>⏳</span><span>noch nicht verschickt</span></p>`}
+        <div class="lk-leute">${zeilen}</div>
       </div>`;
-  }).join("") + (vergangenOderHeute ? `<p class="muted" style="margin:2px 2px 0; font-size:12px;">Jemand nicht da gewesen? Einfach den Namen antippen.</p>` : "") : "";
+  }).join("") + (vergangenOderHeute
+      ? `<p class="muted" style="margin:2px 2px 0; font-size:12px;">Jemand nicht da gewesen? Einfach den Namen antippen.</p>` : "")
+    : `<div class="glas-lager-leer"><div class="lle-ic">📦</div>
+        <p>Für ${escapeHtml(glasLagerTagLabel(datum))} ist noch niemand eingeteilt.</p></div>`;
 
   // ---- Leute-Auswahl ----
-  const auswahlHtml = offen.length ? offen.map((m) => {
+  // Wer an dem Tag schon eingeteilt ist, verschwindet NICHT aus der Liste,
+  // sondern steht blass da. Sonst sieht es aus, als haette man ihn vergessen.
+  const auswahlHtml = leute.length ? leute.map((m) => {
+    if (schon.has(m.id)) {
+      return `
+        <button class="glas-lager-chip schon" onclick="showToast('${escapeHtml(m.name)} ist an diesem Tag schon eingeteilt')">
+          <span class="glas-lager-avatar" style="background:${glasMaFarbe(m.id)};">${glasLagerInitialen(m.name)}</span>
+          ${escapeHtml(m.name)}
+        </button>`;
+    }
     const an = glasLagerAuswahl.has(m.id);
     return `
       <button class="glas-lager-chip${an ? " an" : ""}" onclick="glasLagerToggle('${m.id}')">
         <span class="glas-lager-avatar" style="background:${glasMaFarbe(m.id)};">${an ? "✓" : glasLagerInitialen(m.name)}</span>
         ${escapeHtml(m.name)}
       </button>`;
-  }).join("") : `<p class="muted" style="margin:6px 2px;">Alle freigeschalteten Mitarbeiter sind für diesen Tag schon eingeteilt.</p>`;
+  }).join("") : "";
 
   // Ohne die SQL-Datei läuft nichts: Freischalten wird nicht gespeichert und der
   // Mitarbeiter sieht nie etwas. Das gehört deutlich sichtbar hierher, nicht in
@@ -1269,125 +1301,48 @@ function renderLagerPlan() {
   return `
     ${glasLagerApp ? "" : `<button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasLagerSchliessen()">&larr; Zurück</button>`}
     <h2 style="margin:${glasLagerApp ? "10px" : "0"} 0 4px;">📦 Lager-Plan</h2>
-    <p class="muted" style="margin:0 0 14px;">Uhrzeit antippen, Leute antippen, senden. Für die nächste Uhrzeit einfach nochmal.</p>
+    <p class="muted" style="margin:0 0 8px;">Tag, Uhrzeit, Leute — fertig.</p>
     ${fehltHtml}
 
+    <div class="glas-lager-schritt">
+      <span class="ls-nr">1</span><span class="ls-txt">Tag</span>
+      <span class="ls-wahl">${escapeHtml(glasLagerTagLabel(datum))}</span>
+    </div>
     <div class="glas-lager-tage">${tageHtml}</div>
 
-    ${uebersicht ? `<p class="glas-section-title" style="margin:18px 0 8px;">Eingeteilt · ${glasLagerTagLabel(datum)}</p>${uebersicht}` : ""}
-
-    <p class="glas-section-title" style="margin:18px 0 8px;">Uhrzeit</p>
+    <div class="glas-lager-schritt">
+      <span class="ls-nr">2</span><span class="ls-txt">Uhrzeit</span>
+      <span class="ls-wahl">${escapeHtml(glasLagerUhrzeit)} Uhr</span>
+    </div>
     <div class="glas-lager-zeiten">${zeitenHtml}</div>
 
-    <p class="glas-section-title" style="margin:18px 0 8px;">Wer soll um ${escapeHtml(glasLagerUhrzeit)} Uhr da sein?</p>
+    <div class="glas-lager-schritt">
+      <span class="ls-nr">3</span><span class="ls-txt">Wer soll da sein?</span>
+      <span class="ls-wahl">${n ? n + " gewählt" : ""}</span>
+    </div>
     ${leute.length ? `<div class="glas-lager-chips">${auswahlHtml}</div>` : `
       <p class="muted" style="margin:6px 2px;">${fehlt
         ? "Erst die SQL-Datei ausführen – danach lässt sich hier freischalten."
-        : "Noch niemand für den Lager-Plan freigeschaltet. Das stellst du beim Mitarbeiter (Kalender → Urlaub → Mitarbeiter bearbeiten) unter „📦 Lager-Plan“ ein."}</p>`}
+        : "Noch niemand für den Lager-Plan freigeschaltet. Das stellst du im Hub unter Einstellungen → Mitarbeiter bei „📦 Lager-Plan“ ein."}</p>`}
 
-    <div class="field" style="margin:16px 0 0;">
-      <label class="muted">Notiz (optional)</label>
+    <div class="glas-lager-schritt">
+      <span class="ls-nr">4</span><span class="ls-txt">Notiz &amp; senden</span>
+    </div>
+    <div class="field" style="margin:0;">
       <input type="text" id="lager_notiz" class="glas-lager-notiz" value="${escapeHtml(glasLagerNotiz)}" placeholder="z.B. Material für Kreishaus mitnehmen" oninput="glasLagerSyncForm()" />
     </div>
-
     <button class="glas-lager-senden" onclick="glasLagerSenden()" ${glasLagerBusy || !n ? "disabled" : ""}>
       ${glasLagerBusy ? `<span class="spinner"></span> Sende…` : n ? `📲 Senden an ${n} ${n === 1 ? "Person" : "Personen"} · ${escapeHtml(glasLagerUhrzeit)} Uhr` : `Erst Leute antippen`}
     </button>
 
-    ${renderLagerPdfBlock()}`;
+    <div class="glas-lager-trenner"><i></i><span>Eingeteilt · ${escapeHtml(glasLagerTagLabel(datum))}</span><i></i></div>
+    ${uebersicht}`;
 }
 
-/* ---- Einsatzplan als PDF ----
-   Ein Monat auf einen Blick: entweder ALLE Mitarbeiter (der komplette Monatsplan)
-   oder EIN Mitarbeiter (wann war er im Einsatz, wann nicht) - im GEKO-Briefkopf. */
-
-let glasLagerPdfMonat = null; // {year, month} - null = aktueller Monat
-// Der Monatsplan geht immer ueber alle; der persoenliche Einsatzplan eines
-// Mitarbeiters steht in den zentralen Einstellungen bei der Person.
-let glasLagerPdfWer = "alle";
-let glasLagerPdfOffen = false; // Block eingeklappt, bis man ihn braucht - weniger auf einmal
-
-function glasLagerPdfToggle() {
-  glasLagerPdfOffen = !glasLagerPdfOffen;
-  glasLagerSyncForm();
-  renderGlasAdmin();
-}
-
-function glasLagerPdfMonatJetzt() {
-  if (glasLagerPdfMonat) return glasLagerPdfMonat;
-  const d = new Date();
-  return { year: d.getFullYear(), month: d.getMonth() };
-}
-
-function glasLagerPdfBlaettern(schritt) {
-  const m = glasLagerPdfMonatJetzt();
-  const d = new Date(m.year, m.month + schritt, 1);
-  glasLagerPdfMonat = { year: d.getFullYear(), month: d.getMonth() };
-  glasLagerSyncForm();
-  renderGlasAdmin();
-}
-
-function glasLagerPdfWerSetzen(v) {
-  glasLagerPdfWer = v;
-  glasLagerSyncForm();
-  renderGlasAdmin();
-}
-
-function renderLagerPdfBlock() {
-  const m = glasLagerPdfMonatJetzt();
-  const label = `${["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"][m.month]} ${m.year}`;
-  // Zur Auswahl: alle Freigeschalteten PLUS alle, die im gewählten Monat im Plan
-  // stehen (auch wenn ihnen der Baustein inzwischen weggenommen wurde).
-  const von = `${m.year}-${String(m.month + 1).padStart(2, "0")}-01`;
-  const bis = `${m.year}-${String(m.month + 1).padStart(2, "0")}-31`;
-  const imMonat = new Set();
-  glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).forEach((p) => glasLagerIds(p).forEach((id) => imMonat.add(id)));
-  const wer = glasMitarbeiter.filter((x) => x.zugang_lager === true || imMonat.has(x.id));
-  if (glasLagerPdfWer !== "alle" && !wer.some((x) => x.id === glasLagerPdfWer)) glasLagerPdfWer = "alle";
-  const anzahl = glasLagerPlan.filter((p) => p.datum >= von && p.datum <= bis).length;
-
-  const kopf = `
-    <button class="glas-lager-pdfkopf${glasLagerPdfOffen ? " auf" : ""}" onclick="glasLagerPdfToggle()">
-      <span style="font-size:19px;">📄</span>
-      <span style="flex:1; text-align:left;">
-        <b style="display:block; font-size:14.5px;">Einsatzplan als PDF</b>
-        <span style="display:block; font-size:12px; color:var(--text-secondary); margin-top:1px;">Monatsplan für alle oder einen Mitarbeiter</span>
-      </span>
-      <span class="pk-pfeil">›</span>
-    </button>`;
-  if (!glasLagerPdfOffen) return `<div style="margin-top:26px;">${kopf}</div>`;
-
-  return `
-    <div style="margin-top:26px;">${kopf}</div>
-    <div class="card" style="padding:14px 15px; border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-top:0;">
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-        <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(-1)">‹</button>
-        <span style="flex:1; text-align:center; font-weight:700; font-size:14.5px;">${label}</span>
-        <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(1)">›</button>
-      </div>
-
-      <button class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="glasLagerPdf()">
-        📄 PDF erstellen${glasLagerPdfWer === "alle" ? ` (${anzahl} ${anzahl === 1 ? "Einteilung" : "Einteilungen"})` : ""}
-      </button>
-      <p class="muted" style="margin:8px 0 0; font-size:12px;">Der gesamte Monatsplan mit allen Einteilungen.
-        Den persönlichen Einsatzplan eines Mitarbeiters (Tag für Tag mit Urlaub und freien Tagen)
-        findest du im Hub unter <a href="einstellungen.html" style="color:var(--blue);">Einstellungen → Mitarbeiter</a>.</p>
-    </div>`;
-}
-
-function glasLagerPdf() {
-  if (typeof glasLagerPdfErstellen !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
-    showToast("PDF-Bibliothek lädt noch – kurz warten"); return;
-  }
-  const m = glasLagerPdfMonatJetzt();
-  const werId = glasLagerPdfWer === "alle" ? null : glasLagerPdfWer;
-  try {
-    glasLagerPdfErstellen(m, werId);
-    showToast("📄 Einsatzplan erstellt");
-  } catch (e) {
-    showToast("PDF-Fehler: " + (e && e.message || e));
-  }
-}
+/* Der Einsatzplan als PDF ist in die zentralen Einstellungen umgezogen
+   (Hub -> Einstellungen -> Mitarbeiter -> Einsatzplan). Er gehoert zur Person,
+   nicht zur Lagerplanung. Die Erzeugung selbst steht unveraendert in
+   js/glas-lager-pdf.js und wird von dort benutzt. */
 
 async function glasLagerSenden() {
   if (glasLagerBusy || !glasLagerAuswahl.size) return;
