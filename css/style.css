@@ -2325,6 +2325,48 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-lager-pdfkopf.auf { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .glas-lager-pdfkopf.auf .pk-pfeil { transform: rotate(90deg); }
 
+/* ---- Mitarbeiter-Liste: erst der Überblick, Details erst beim Antippen ---- */
+.glas-ma-karte { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  margin-bottom: 9px; overflow: hidden; transition: border-color .15s; }
+.glas-ma-karte.auf { border-color: var(--blue); }
+.glas-ma-zeile { display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 12px 14px; border: none; background: transparent; font-family: inherit;
+  text-align: left; cursor: pointer; color: var(--text); }
+.glas-ma-zeile:active { background: var(--bg); }
+.glas-ma-zeile .mz-txt { flex: 1; min-width: 0; }
+.glas-ma-zeile .mz-txt b { display: block; font-size: 14.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glas-ma-zeile .mz-txt span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.glas-ma-zeile .mz-pfeil { flex: none; color: var(--text-secondary); font-size: 17px; }
+.glas-ma-status { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 9px;
+  border-radius: 8px; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glas-ma-status.gruen { background: #e3f3ea; color: #1f7a4d; }
+.glas-ma-status.rot { background: #fbe0e0; color: #b5371f; }
+.glas-ma-status.grau { background: var(--bg); color: var(--text-secondary); }
+html.dark .glas-ma-status.gruen { background: rgba(31,122,77,.22); color: #48d58d; }
+html.dark .glas-ma-status.rot { background: rgba(181,55,31,.24); color: #ef8b73; }
+.glas-ma-detail { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+.glas-ma-fakten { display: flex; flex-direction: column; gap: 9px; margin-top: 12px; }
+.glas-ma-fakten > div { display: flex; flex-direction: column; gap: 2px; }
+/* Nur die Beschriftung ist Kapitälchen - verschachtelte Spans im Wert (z.B. die
+   eingefärbten Resttage) sollen normal bleiben, sonst steht da "30 ÜBRIG". */
+.glas-ma-fakten > div > span { font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-secondary); }
+.glas-ma-fakten b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.glas-ma-fakten b span { font-size: inherit; font-weight: inherit; letter-spacing: normal;
+  text-transform: none; }
+
+/* ---- Sammelunterschrift: Objekte antippen statt 13x einzeln unterschreiben ---- */
+.glas-sammel-box { margin-top: 12px; border-left: 4px solid var(--blue); }
+.glas-stop-row.waehlbar { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.glas-stop-row.waehlbar:active { transform: scale(.995); }
+.glas-stop-row.waehlbar .glas-stop-num {
+  border: 2px solid var(--border); background: transparent; color: transparent; }
+.glas-stop-row.gewaehlt { background: rgba(45, 125, 196, .07); border-color: var(--blue); }
+.glas-stop-row.gewaehlt .glas-stop-num {
+  border-color: var(--blue); background: var(--blue); color: #fff; }
+html.dark .glas-stop-row.gewaehlt { background: rgba(45, 125, 196, .16); }
+
 /* Eingeteilt-Karte: Kopf mit Uhrzeit, darunter EINE Zeile je Person mit klarem
    Status rechts. Antippbar (heute/vergangen) für den "war nicht da"-Vermerk. */
 .glas-lager-eintrag { background: var(--card); border: 1px solid var(--border);

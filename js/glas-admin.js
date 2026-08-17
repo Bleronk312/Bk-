@@ -957,6 +957,9 @@ function glasUpdateTabContent() {
 
 // Suchfeld-/Interaktions-Handler des frisch gerenderten Tab-Inhalts anhängen
 function glasAttachTabHandlers(tab) {
+  // Sammelunterschrift: das Zeichenfeld nach jedem Neuzeichnen wieder aufsetzen
+  // (innerHTML ersetzt das Canvas, das SignaturePad hinge sonst am toten Element)
+  if (glasSammelAn && document.getElementById("sam_sigCanvas")) setTimeout(setupGlasSammelSigPad, 30);
 
   // Widget-Karussell (Kunden-Tab): gemerkte Seite wiederherstellen + Wischerkennung
   const caro = document.querySelector(".glas-caro");
@@ -3456,6 +3459,8 @@ async function openGlasTourDetail(tourId) {
 }
 
 function closeGlasTourDetail() {
+  glasSammelAn = false; glasSammelIds = new Set(); glasSammelSigPad = null;
+  glasSammelForm = { name: "", zusatz: "", stunden: {}, sig: "" };
   glasTourDetailId = null;
   glasTourDetailStops = [];
   glasMergePickerFor = null;
@@ -3501,9 +3506,13 @@ function renderTourDetailView() {
               ? `<span class="badge" style="flex-shrink:0; background:var(--border); color:var(--text-secondary);">🚫 Nicht geschafft</span>`
               : `<span class="badge badge-open" style="flex-shrink:0;">Offen</span>`;
           const menuOpen = glasStopMenuOpenId === s.id;
+          // Sammelmodus: offene Stopps werden zur Auswahlfläche (ganze Zeile antippbar)
+          const waehlbar = glasSammelAn && s.status === "offen";
+          const gewaehlt = waehlbar && glasSammelIds.has(s.id);
           return `
-        <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}${isNext ? " next" : ""}">
-          <div class="glas-stop-num">${isDone ? "✓" : (idx + 1)}</div>
+        <div class="glas-stop-row${isDone ? " done" : ""}${isNg ? " ng" : ""}${isNext ? " next" : ""}${waehlbar ? " waehlbar" : ""}${gewaehlt ? " gewaehlt" : ""}"
+          ${waehlbar ? `onclick="glasSammelToggle('${s.id}')"` : ""}>
+          <div class="glas-stop-num">${waehlbar ? (gewaehlt ? "✓" : "") : isDone ? "✓" : (idx + 1)}</div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
               <div style="min-width:0;">
@@ -3513,10 +3522,10 @@ function renderTourDetailView() {
               </div>
               <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
                 ${badge}
-                <button class="glas-stopmenu-toggle${menuOpen ? " on" : ""}" title="Aktionen" onclick="toggleGlasStopMenu('${s.id}')">⋯</button>
+                ${glasSammelAn ? "" : `<button class="glas-stopmenu-toggle${menuOpen ? " on" : ""}" title="Aktionen" onclick="toggleGlasStopMenu('${s.id}')">⋯</button>`}
               </div>
             </div>
-            ${menuOpen ? renderGlasStopMenu(s) : ""}
+            ${menuOpen && !glasSammelAn ? renderGlasStopMenu(s) : ""}
             ${renderStopPositionenVorschau(s)}
             ${t.template === "sub" ? renderStopLfdZeile(s) : ""}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
@@ -3529,7 +3538,7 @@ function renderTourDetailView() {
               ${s.erfasst_von ? `<p style="margin:4px 0 0; font-size:12.5px; font-weight:600; color:var(--text);">👤 Vor Ort: ${escapeHtml(s.erfasst_von)}</p>` : ""}
             ` : isNg ? `
               <div class="glas-ng-box">🚫 <strong>Nicht geschafft:</strong> ${escapeHtml(s.ng_grund || "")}${s.ng_notiz ? ` – ${escapeHtml(s.ng_notiz)}` : ""}${s.ng_am ? ` <span class="muted">(${formatGlasDate(glasDatumVonTimestamp(s.ng_am))})</span>` : ""}<br><span class="muted">Das Objekt steht wieder unter „Fällige Objekte" und kann neu eingeplant werden.</span></div>
-            ` : `
+            ` : glasSammelAn ? "" : `
               ${isSigning ? renderAdminSignArea(s) : ""}
               ${isNgOpen ? renderGlasNgArea(s) : ""}
             `}
@@ -3572,6 +3581,9 @@ function renderTourDetailView() {
         <button class="btn btn-sm ${t.template === "sub" ? "btn-primary" : ""}" onclick="setGlasTourTemplate('${t.id}','sub')">Dietrich</button>
         <span class="muted" style="font-size:11.5px; flex-basis:100%;">Kann jederzeit geändert werden – auch nach dem Unterschreiben. Ändert nur die PDF-Optik, nicht die Unterschrift.</span>
       </div>` : ""}
+      ${!t.archiviert_am && glasSammelOffene().length > 1 ? (glasSammelAn
+        ? renderSammelBereich()
+        : `<button class="btn btn-sm" style="margin-top:12px;" onclick="glasSammelStart()">✍️ Mehrere unterschreiben lassen</button>`) : ""}
       <div class="glas-stop-list">${rows}</div>
       ${glasTourDetailStops.length ? `<button class="btn btn-sm" style="margin-top:12px;" onclick="downloadAlleGlasPdfs()">📄 Alle PDFs herunterladen (${glasTourDetailStops.length})</button>` : ""}
     </div>
@@ -3767,6 +3779,229 @@ async function mergeGlasTourInto(sourceId, targetId) {
     await loadGlasTouren();
     renderGlasAdmin();
   }
+}
+
+/* ---------------- Sammelunterschrift ----------------
+   Ein Kunde mit vielen Objekten in derselben Tour unterschreibt in der Praxis
+   EINMAL für alles. Statt 13x dasselbe zu tippen: Objekte antippen, einmal
+   unterschreiben - die Unterschrift und der Name landen auf JEDEM der gewählten
+   Scheine (jeder Stopp bleibt ein eigener Schein mit eigenem PDF). */
+
+let glasSammelAn = false;              // Auswahlmodus aktiv?
+let glasSammelIds = new Set();         // gewählte Stopps
+let glasSammelBusy = false;
+let glasSammelSigPad = null;
+
+function glasSammelStart() {
+  glasSammelAn = true;
+  glasSammelIds = new Set();
+  glasAdminSignOpenStopId = null;      // Einzel-Unterschrift zuklappen
+  glasStopMenuOpenId = null;
+  renderGlasAdmin();
+}
+
+function glasSammelAbbrechen() {
+  glasSammelAn = false;
+  glasSammelIds = new Set();
+  glasSammelSigPad = null;
+  renderGlasAdmin();
+}
+
+// Offene Stopps der Tour - nur die lassen sich unterschreiben
+function glasSammelOffene() {
+  return glasTourDetailStops.filter((s) => s.status === "offen");
+}
+
+function glasSammelToggle(id) {
+  glasSammelFormSichern();
+  if (glasSammelIds.has(id)) glasSammelIds.delete(id); else glasSammelIds.add(id);
+  renderGlasAdmin();
+}
+
+// "Alle" bzw. "Keine": praktisch bei dem Kunden mit 13 Objekten
+function glasSammelAlle(an) {
+  glasSammelFormSichern();
+  glasSammelIds = an ? new Set(glasSammelOffene().map((s) => s.id)) : new Set();
+  renderGlasAdmin();
+}
+
+// Alle offenen Stopps DESSELBEN Kunden auf einmal - der häufigste Fall
+function glasSammelKunde(kundeId) {
+  glasSammelFormSichern();
+  const passt = (s) => (s.kunde_id || s.kunde_kdnr || s.kunde_adresse || "") === kundeId;
+  glasSammelOffene().forEach((s) => { if (passt(s)) glasSammelIds.add(s.id); });
+  renderGlasAdmin();
+}
+
+// Name/Zusatz/Stunden vor dem Neuzeichnen aus dem DOM sichern
+let glasSammelForm = { name: "", zusatz: "", stunden: {} };
+function glasSammelFormSichern() {
+  const n = document.getElementById("sam_name");
+  const z = document.getElementById("sam_zusatz");
+  if (n) glasSammelForm.name = n.value;
+  if (z) glasSammelForm.zusatz = z.value;
+  document.querySelectorAll("[data-samstd]").forEach((el) => { glasSammelForm.stunden[el.dataset.samstd] = el.value; });
+  // Eine bereits geleistete Unterschrift beim Neuzeichnen NICHT verlieren
+  if (glasSammelSigPad && !glasSammelSigPad.isEmpty()) glasSammelForm.sig = glasSammelSigPad.toDataURL("image/png");
+}
+
+function setupGlasSammelSigPad() {
+  const canvas = document.getElementById("sam_sigCanvas");
+  if (!canvas) return;
+  const ratio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  canvas.getContext("2d").scale(ratio, ratio);
+  glasSammelSigPad = new SignaturePad(canvas, { minWidth: 0.8, maxWidth: 2.2 });
+  if (glasSammelForm.sig) { try { glasSammelSigPad.fromDataURL(glasSammelForm.sig); } catch (e) {} }
+}
+
+function glasSammelSigLeeren() {
+  glasSammelForm.sig = "";
+  if (glasSammelSigPad) glasSammelSigPad.clear();
+}
+
+// Stunden-Eingaben: nur für die GEWÄHLTEN Stopps, die welche brauchen. Ohne die
+// Zuordnung je Stopp landeten die Stunden sonst auf dem falschen Schein.
+function renderSammelStunden() {
+  const noetig = glasSammelOffene()
+    .filter((s) => glasSammelIds.has(s.id) && glasStopPositionen(s).filter(glasIstStundenPos).length);
+  if (!noetig.length) return "";
+  return `
+    <div class="field">
+      <label class="muted">⏱️ Gemachte Stunden (Pflicht)</label>
+      ${noetig.map((s) => `
+        <p style="margin:10px 0 2px; font-size:13px; font-weight:700;">${escapeHtml(s.objekt || s.adresse || "Objekt")}</p>
+        ${glasStopPositionen(s).filter(glasIstStundenPos).map((p, i) => `
+          <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+            <span style="flex:1; min-width:0; font-size:13px;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.art || "Stunden")}</span>
+            <input type="text" inputmode="decimal" data-samstd="${s.id}|${i}"
+              value="${escapeHtml(String(glasSammelForm.stunden[s.id + "|" + i] ?? p.qm ?? ""))}"
+              placeholder="Std." style="flex:0 0 90px; font-size:16px; text-align:center;" />
+          </div>`).join("")}`).join("")}
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Je Objekt eigene Stunden – landet auf dem jeweiligen Schein.</p>
+    </div>`;
+}
+
+function renderSammelBereich() {
+  const offene = glasSammelOffene();
+  const n = glasSammelIds.size;
+  // Kunden mit mehreren offenen Objekten: Ein-Klick-Auswahl
+  const proKunde = new Map();
+  offene.forEach((s) => {
+    const k = s.kunde_id || s.kunde_kdnr || s.kunde_adresse || "";
+    const label = (s.kunde_adresse || "").split("\n")[0] || s.kunde_kdnr || "";
+    if (!k || !label) return;
+    if (!proKunde.has(k)) proKunde.set(k, { label, anzahl: 0 });
+    proKunde.get(k).anzahl++;
+  });
+  const kundenChips = [...proKunde.entries()].filter(([, v]) => v.anzahl > 1)
+    .map(([k, v]) => `<button class="btn btn-sm" onclick="glasSammelKunde('${escapeHtml(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} (${v.anzahl})</button>`).join("");
+
+  return `
+    <div class="card glas-sammel-box">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <b style="flex:1; min-width:140px; font-size:15px;">✍️ Mehrere unterschreiben lassen</b>
+        <button class="btn btn-sm" onclick="glasSammelAbbrechen()">Abbrechen</button>
+      </div>
+      <p class="muted" style="margin:6px 0 10px; font-size:12.5px;">Objekte antippen, einmal unterschreiben – die Unterschrift kommt auf jeden gewählten Schein.</p>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:${kundenChips ? "8px" : "12px"};">
+        <button class="btn btn-sm" onclick="glasSammelAlle(true)">Alle offenen (${offene.length})</button>
+        ${n ? `<button class="btn btn-sm" onclick="glasSammelAlle(false)">Auswahl leeren</button>` : ""}
+      </div>
+      ${kundenChips ? `<p class="muted" style="margin:0 0 6px; font-size:12px;">Alle Objekte eines Kunden:</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">${kundenChips}</div>` : ""}
+
+      ${n ? `
+      <div class="field">
+        <label class="muted">Name der unterschreibenden Person</label>
+        <input type="text" id="sam_name" value="${escapeHtml(glasSammelForm.name || "")}" placeholder="Vor- und Nachname" style="font-size:16px;" oninput="glasSammelFormSichern()" />
+      </div>
+      ${renderSammelStunden()}
+      <div class="field">
+        <label class="muted">Unterschrift <span class="muted" style="font-weight:400;">(gilt für alle ${n} gewählten)</span></label>
+        <canvas id="sam_sigCanvas" style="width:100%; height:180px; border:1px solid var(--border); border-radius:10px; background:white; touch-action:none;"></canvas>
+        <button class="btn btn-sm" style="margin-top:8px;" onclick="glasSammelSigLeeren()">🗑️ Löschen &amp; neu</button>
+      </div>
+      <div class="field">
+        <label class="muted">➕ Extra was gemacht? (optional, steht auf allen gewählten Scheinen)</label>
+        <textarea id="sam_zusatz" rows="2" placeholder="z.B. 2 Stunden zusätzlich" oninput="glasSammelFormSichern()">${escapeHtml(glasSammelForm.zusatz || "")}</textarea>
+      </div>
+      <button class="btn btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:16px;"
+        onclick="glasSammelSpeichern()" ${glasSammelBusy ? "disabled" : ""}>
+        ${glasSammelBusy ? `<span class="spinner"></span> Speichere…` : `✓ ${n} ${n === 1 ? "Schein" : "Scheine"} unterschreiben`}
+      </button>` : `<p class="muted" style="margin:0;">Tippe unten die Objekte an, die mit unterschrieben werden sollen.</p>`}
+    </div>`;
+}
+
+async function glasSammelSpeichern() {
+  if (glasSammelBusy) return;
+  glasSammelFormSichern();
+  const ids = [...glasSammelIds];
+  const name = (glasSammelForm.name || "").trim();
+  if (!ids.length) { showToast("Bitte mindestens ein Objekt wählen"); return; }
+  if (!name) { showToast("Bitte Namen eintragen"); return; }
+  const unterschrift = (glasSammelSigPad && !glasSammelSigPad.isEmpty())
+    ? glasSammelSigPad.toDataURL("image/png") : (glasSammelForm.sig || "");
+  if (!unterschrift) { showToast("Bitte unterschreiben lassen"); return; }
+
+  // Stunden je Stopp einsammeln und prüfen, BEVOR irgendetwas gespeichert wird -
+  // sonst wäre die Hälfte unterschrieben und die andere nicht.
+  const datum = glasTodayIso();
+  const zusatz = (glasSammelForm.zusatz || "").trim();
+  const arbeit = [];
+  for (const id of ids) {
+    const stop = glasTourDetailStops.find((x) => x.id === id);
+    if (!stop || stop.status !== "offen") continue;
+    let posJson = stop.positionen || "[]";
+    const stdAnzahl = glasStopPositionen(stop).filter(glasIstStundenPos).length;
+    if (stdAnzahl) {
+      const werte = [];
+      for (let i = 0; i < stdAnzahl; i++) werte.push(glasSammelForm.stunden[id + "|" + i] || "");
+      const res = glasMitStundenAktualisiert(posJson, werte);
+      if (res.fehlt) { showToast(`Bitte die Stunden für „${stop.objekt || "Objekt"}" eintragen`); return; }
+      posJson = res.json;
+    }
+    arbeit.push({ stop, posJson });
+  }
+  if (!arbeit.length) { showToast("Keine offenen Objekte in der Auswahl"); return; }
+
+  glasSammelBusy = true; renderGlasAdmin();
+  const signedAt = new Date().toISOString(); // alle bekommen denselben Zeitstempel
+  let ok = 0;
+  const fehler = [];
+  try {
+    for (const a of arbeit) {
+      const { error, payload } = await glasSignStop(a.stop.id, a.posJson, name, datum, unterschrift, zusatz, signedAt);
+      if (error) { fehler.push(`${a.stop.objekt || "Objekt"}: ${error.message}`); continue; }
+      Object.assign(a.stop, payload);
+      ok++;
+    }
+  } finally {
+    glasSammelBusy = false;
+  }
+
+  if (ok) {
+    glasKundeTermineCache = {}; glasScheineDaten = null; glasStatistikDaten = null;
+    const tourName = glasTouren.find((x) => x.id === glasTourDetailId)?.name || "Tour";
+    glasPushSend("glas", "push_unterschrift", `✍️ ${ok} Unterschriften: ${tourName}`,
+      `${ok} ${ok === 1 ? "Schein" : "Scheine"} unterschrieben von ${name}`, "/glas-admin.html#/tab/touren");
+    await Promise.all([loadGlasTouren(), loadGlasObjektPositionen(), loadGlasEingeplantePositionen()]);
+  }
+  if (fehler.length) {
+    showToast(`${ok} gespeichert, ${fehler.length} fehlgeschlagen`);
+    alert("Nicht gespeichert:\n\n" + fehler.join("\n"));
+  } else {
+    showToast(`${ok} ${ok === 1 ? "Schein" : "Scheine"} unterschrieben ✓`);
+  }
+  // Nur die erfolgreich gespeicherten aus der Auswahl nehmen
+  glasSammelForm = { name: "", zusatz: "", stunden: {}, sig: "" };
+  glasSammelIds = new Set();
+  glasSammelSigPad = null;
+  if (!fehler.length) glasSammelAn = false;
+  renderGlasAdmin();
 }
 
 /* ---------------- Unterschreiben direkt in der Admin-Ansicht ---------------- */
@@ -5312,35 +5547,97 @@ async function deleteGlasUrlaub(id) {
 }
 
 // ---- Mitarbeiter-Verwaltung ----
-function renderMaVerwaltung() {
-  return `
-    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasUrlaubVerwaltung=false; renderGlasAdmin();">&larr; Zurück zum Urlaubskalender</button>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-      <h2 style="margin:0;">Mitarbeiter</h2>
-      <button class="btn btn-sm btn-primary" onclick="glasMaEditing={id:null,name:'',arbeitstage:'mo_fr',urlaubsanspruch:30}; renderGlasAdmin();">+ Neuer Mitarbeiter</button>
-    </div>
-    ${glasMitarbeiter.length ? glasMitarbeiter.map((m) => {
-      const b = glasUrlaubBilanz(m, new Date().getFullYear());
-      const uebrigFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
-      return `
-      <div class="card" style="display:flex; align-items:center; gap:10px;">
-        <span class="glas-ma-dot" style="background:${glasMaFarbe(m.id)}; width:14px; height:14px;"></span>
-        <div style="flex:1;">
-          <p style="margin:0; font-weight:600;">${escapeHtml(m.name)}
-            ${m.username
-              ? (m.login_aktiv === false
-                ? `<span class="badge" style="background:#fbe0e0; color:#b5371f;">🔒 gesperrt</span>`
-                : `<span class="badge" style="background:#e3f3ea; color:#1f7a4d;">🔑 ${escapeHtml(m.username)}</span>`)
-              : `<span class="badge" style="background:#eef2f7; color:#6b7683;">kein Login</span>`}
-          </p>
-          ${m.username && m.pass_klar ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🔑 <b>${escapeHtml(m.username)}</b> · Passwort: <b>${escapeHtml(m.pass_klar)}</b></p>` : ""}
-          ${m.username && !m.pass_klar ? `<p class="muted" style="margin:3px 0 0; font-size:12.5px;">🔒 Eigenes Passwort gesetzt – nicht einsehbar. Vergessen? Beim Bearbeiten zurücksetzen.</p>` : ""}
-          ${m.username ? `<p class="muted" style="margin:2px 0 0; font-size:12.5px;">${glasMaZugangBadges(m)}</p>` : ""}
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} von ${b.anspruch} Urlaubstagen übrig</b></p>
-        </div>
-        <button class="btn btn-sm" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
+let glasMaDetailId = null;   // aufgeklappter Mitarbeiter (null = nur die Liste)
+let glasMaSuche = "";
+
+function glasMaOeffnen(id) {
+  glasMaDetailId = glasMaDetailId === id ? null : id;
+  renderGlasAdmin();
+}
+
+function glasMaSucheSetzen(v) {
+  glasMaSuche = v;
+  const box = document.getElementById("maListe");
+  if (box) box.innerHTML = renderMaListe();
+}
+
+// Kurzstatus in einem Wort - mehr braucht die Liste nicht.
+function glasMaKurzstatus(m) {
+  if (!m.username) return { txt: "kein Login", klasse: "grau" };
+  if (m.login_aktiv === false) return { txt: "gesperrt", klasse: "rot" };
+  return { txt: escapeHtml(m.username), klasse: "gruen" };
+}
+
+function renderMaListe() {
+  const suche = glasMaSuche.trim().toLowerCase();
+  const liste = glasMitarbeiter
+    .filter((m) => !suche || (m.name || "").toLowerCase().includes(suche) || (m.username || "").toLowerCase().includes(suche))
+    // Aktive zuerst, dann alphabetisch - gesperrte/ohne Login rutschen nach unten
+    .sort((a, b) => {
+      const rang = (x) => (!x.username ? 2 : x.login_aktiv === false ? 1 : 0);
+      return rang(a) - rang(b) || (a.name || "").localeCompare(b.name || "", "de");
+    });
+  if (!liste.length) return `<p class="muted" style="margin:10px 2px;">${glasMitarbeiter.length ? "Kein Treffer." : "Noch keine Mitarbeiter angelegt."}</p>`;
+
+  return liste.map((m) => {
+    const auf = glasMaDetailId === m.id;
+    const st = glasMaKurzstatus(m);
+    const b = glasUrlaubBilanz(m, new Date().getFullYear());
+    const uebrigFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
+    return `
+      <div class="glas-ma-karte${auf ? " auf" : ""}">
+        <button class="glas-ma-zeile" onclick="glasMaOeffnen('${m.id}')">
+          <span class="glas-lager-avatar" style="background:${glasMaFarbe(m.id)};">${glasLagerInitialen(m.name)}</span>
+          <span class="mz-txt">
+            <b>${escapeHtml(m.name)}</b>
+            <span>${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"} · <b style="color:${uebrigFarbe};">${b.uebrig} Urlaubstage übrig</b></span>
+          </span>
+          <span class="glas-ma-status ${st.klasse}">${st.txt}</span>
+          <span class="mz-pfeil">${auf ? "⌄" : "›"}</span>
+        </button>
+        ${auf ? `
+        <div class="glas-ma-detail">
+          <div class="glas-ma-fakten">
+            <div><span>Bereiche</span><b>${glasMaZugangBadges(m)}</b></div>
+            <div><span>Urlaub ${new Date().getFullYear()}</span><b>${b.genommen} genommen · <span style="color:${uebrigFarbe};">${b.uebrig} übrig</span> (von ${b.anspruch})</b></div>
+            ${m.username ? `<div><span>Anmeldung</span><b>${escapeHtml(m.username)}${m.pass_klar ? ` · Passwort: ${escapeHtml(m.pass_klar)}` : " · eigenes Passwort (nicht einsehbar)"}</b></div>` : ""}
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+            <button class="btn btn-sm btn-primary" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
+            ${m.username ? `<button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Passwort zurücksetzen</button>` : ""}
+            <button class="btn btn-sm" onclick="glasMaEinsatzplanSchnell('${m.id}')">📄 Einsatzplan</button>
+          </div>
+        </div>` : ""}
       </div>`;
-    }).join("") : `<p class="muted">Noch keine Mitarbeiter angelegt.</p>`}
+  }).join("");
+}
+
+// Einsatzplan-PDF des laufenden Monats direkt aus der Liste
+async function glasMaEinsatzplanSchnell(maId) {
+  if (typeof glasLagerPdfErstellen !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
+    showToast("PDF-Bibliothek lädt noch – kurz warten"); return;
+  }
+  if (!glasLagerPlan.length) await loadGlasLagerPlan();
+  const d = new Date();
+  try { glasLagerPdfErstellen({ year: d.getFullYear(), month: d.getMonth() }, maId); showToast("📄 Einsatzplan erstellt"); }
+  catch (e) { showToast("PDF-Fehler: " + ((e && e.message) || e)); }
+}
+
+function renderMaVerwaltung() {
+  const gesperrt = glasMitarbeiter.filter((m) => m.username && m.login_aktiv === false).length;
+  const ohneLogin = glasMitarbeiter.filter((m) => !m.username).length;
+  return `
+    <button class="btn btn-sm" style="margin:4px 0 14px;" onclick="glasUrlaubVerwaltung=false; glasMaDetailId=null; renderGlasAdmin();">&larr; Zurück zum Urlaubskalender</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:4px;">
+      <h2 style="margin:0;">Mitarbeiter</h2>
+      <button class="btn btn-sm btn-primary" onclick="glasMaEditing={id:null,name:'',arbeitstage:'mo_fr',urlaubsanspruch:30}; renderGlasAdmin();">+ Neuer</button>
+    </div>
+    <p class="muted" style="margin:0 0 12px; font-size:12.5px;">${glasMitarbeiter.length} ${glasMitarbeiter.length === 1 ? "Mitarbeiter" : "Mitarbeiter"}${gesperrt ? ` · ${gesperrt} gesperrt` : ""}${ohneLogin ? ` · ${ohneLogin} ohne Login` : ""} · Antippen zeigt die Details.</p>
+    ${glasMitarbeiter.length > 6 ? `
+      <div class="field" style="margin-bottom:10px;">
+        <input type="text" id="ma_suche" value="${escapeHtml(glasMaSuche)}" placeholder="🔍 Name oder Benutzername" oninput="glasMaSucheSetzen(this.value)" style="font-size:16px;" />
+      </div>` : ""}
+    <div id="maListe">${renderMaListe()}</div>
   `;
 }
 
