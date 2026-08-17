@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=184" />
+<link rel="stylesheet" href="css/style.css?v=185" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -58,10 +58,13 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=184"></script>
-  <script src="js/supabase-client.js?v=184"></script>
-  <script src="js/geko-auth.js?v=184"></script>
-  <script src="js/push.js?v=184"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="js/config.js?v=185"></script>
+  <script src="js/supabase-client.js?v=185"></script>
+  <script src="js/geko-auth.js?v=185"></script>
+  <script src="js/push.js?v=185"></script>
+  <script defer src="js/pdf-fonts.js?v=185"></script>
+  <script defer src="js/glas-lager-pdf.js?v=185"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -78,6 +81,8 @@
   let urlaube = [];             // glas_urlaub (nur fuer die Resttage-Bilanz)
   let offenerMa = null;         // aufgeklappte Mitarbeiter-Karte
   let bearbeiten = null;        // Mitarbeiter im Formular (null = Liste)
+  let detailMa = null;          // geoeffnete Mitarbeiter-Seite (id) oder null
+  let pdfMonat = "";            // Monatsauswahl fuer den Einsatzplan
   let meinEndpoint = null;      // Push-Anmeldung dieses Geraets
   let meineAbos = [];           // welche Kanaele dieses Geraet empfaengt
   let binOberAdmin = false;     // nur der darf Zugaenge verwalten
@@ -125,17 +130,29 @@
 
   // ---- Laden -------------------------------------------------------------
   async function allesLaden() {
-    const [liste, einst, ma, url] = await Promise.all([
+    const [liste, einst, ma, url, lager] = await Promise.all([
       ruf({ aktion: "liste" }),
       sb.from("glas_einstellungen").select("*").eq("id", "default").maybeSingle(),
       sb.from("glas_mitarbeiter").select("*").order("name"),
       sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, notiz, status"),
+      // Fuer den Einsatzplan als PDF - dieselbe Quelle wie in der Glas-App
+      sb.from("glas_lager_plan").select("*").order("datum").catch(() => ({ data: [] })),
     ]);
     zugangsdaten = liste;
     binOberAdmin = !!(liste && liste.ich_bin_oberadmin);
     pushEinstellungen = (einst && einst.data) || {};
     mitarbeiter = (ma && ma.data) || [];
     urlaube = (url && url.data) || [];
+    // glas-lager-pdf.js liest diese drei Namen direkt aus dem globalen Bereich
+    // (es stammt aus der Glas-App). Statt die Datei umzubauen, stellen wir sie
+    // hier bereit - so bleibt das PDF an EINER Stelle gepflegt.
+    window.glasLagerPlan = (lager && lager.data) || [];
+    window.glasUrlaub = urlaube;
+    window.glasMitarbeiter = mitarbeiter;
+    window.glasMaName = (id) => {
+      const m = mitarbeiter.find((x) => x.id === id);
+      return m ? m.name : id;
+    };
     await meineAbosLaden();
     render();
   }
@@ -168,8 +185,8 @@
   // ---- Zeichnen ----------------------------------------------------------
   function render() {
     const el = document.getElementById("inhalt");
-    el.innerHTML = bearbeiten
-      ? renderMaFormular()
+    el.innerHTML = bearbeiten ? renderMaFormular()
+      : detailMa ? renderMaDetail()
       : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten()
         + renderPush() + renderErinnerungen() + renderDarstellung();
   }
@@ -200,7 +217,6 @@
 
     const karte = (m) => {
       const k = konten.get(m.id) || {};
-      const auf = offenerMa === m.id;
       const b = urlaubBilanz(m);
       const restFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
       const status = !k.hat_konto
@@ -208,37 +224,16 @@
         : (k.login_aktiv === false ? '<span class="est-marke m-rot">gesperrt</span>' : "")
           + (k.rolle === "admin" ? '<span class="est-marke m-admin">Verwaltung</span>' : "")
           + (k.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort</span>' : "");
-      const bereiche = [
-        m.zugang_glas !== false ? "🧽 Glas" : null,
-        m.zugang_graffiti === true ? "🎨 Graffiti" : null,
-        m.zugang_checkin === true ? "📍 Check-ins" : null,
-        m.zugang_lager === true ? "📦 Lager" : null,
-      ].filter(Boolean).join(" · ") || "<i>keine Bereiche</i>";
 
       return `
-        <div class="est-zeile" style="display:block;">
-          <div style="display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="maOeffnen('${m.id}')">
-            <div style="flex:1; min-width:0;">
-              <div class="est-name">${sicher(m.name || m.id)}${status}</div>
-              <div class="est-sub">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"}
-                · <b style="color:${restFarbe};">${b.uebrig} Urlaubstage übrig</b>
-                ${k.username ? " · " + sicher(k.username) : ""}</div>
-            </div>
-            <span style="color:var(--text-secondary); font-size:18px;">${auf ? "⌄" : "›"}</span>
+        <div class="est-zeile" style="cursor:pointer;" onclick="maDetailOeffnen('${m.id}')">
+          <div style="flex:1; min-width:0;">
+            <div class="est-name">${sicher(m.name || m.id)}${status}</div>
+            <div class="est-sub">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"}
+              · <b style="color:${restFarbe};">${b.uebrig} Urlaubstage übrig</b>
+              ${k.username ? " · " + sicher(k.username) : ""}</div>
           </div>
-          ${auf ? `
-          <div style="padding:10px 0 4px;">
-            <p class="est-sub" style="margin:0 0 10px;">Bereiche: ${bereiche}</p>
-            ${renderUrlaubUebersicht(m, b)}
-            <div class="est-btns">
-              <button class="btn btn-primary" onclick="maBearbeiten('${m.id}')">Bearbeiten</button>
-              ${!binOberAdmin ? "" : k.hat_konto ? `
-                <button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Passwort</button>
-                <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${sicher(m.name)}')">Rolle</button>
-                <button class="btn" onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${sicher(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>`
-                : `<button class="btn" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`}
-            </div>
-          </div>` : ""}
+          <span style="color:var(--text-secondary); font-size:18px;">›</span>
         </div>`;
     };
 
@@ -319,6 +314,97 @@
     return kopf + zeilen + '<div style="height:10px;"></div>';
   }
 
+  // ==== Mitarbeiter-Seite ==================================================
+  // Eine eigene Seite statt eines Aufklappers: Urlaub, Einsatzplan und Zugang
+  // gehoeren zusammen und brauchen Platz - im Aufklapper war das gequetscht.
+  function maDetailOeffnen(id) { detailMa = id; pdfMonat = ""; render(); window.scrollTo(0, 0); }
+  function maDetailSchliessen() { detailMa = null; render(); }
+
+  function renderMaDetail() {
+    const m = mitarbeiter.find((x) => x.id === detailMa);
+    if (!m) { detailMa = null; return renderMitarbeiter(); }
+    const k = ((zugangsdaten && zugangsdaten.mitarbeiter) || []).find((x) => x.id === m.id) || {};
+    const b = urlaubBilanz(m);
+
+    const bereiche = [
+      m.zugang_glas !== false ? "🧽 Glas" : null,
+      m.zugang_graffiti === true ? "🎨 Graffiti" : null,
+      m.zugang_checkin === true ? "📍 Check-ins" : null,
+      m.zugang_lager === true ? "📦 Lager" : null,
+    ].filter(Boolean).join(" · ") || "<i>keine Bereiche</i>";
+
+    // Letzte 12 Monate zur Auswahl - weiter zurueck braucht im Buero niemand.
+    const monate = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+      monate.push({ wert: `${d.getFullYear()}-${d.getMonth()}`,
+                    text: `${["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"][d.getMonth()]} ${d.getFullYear()}` });
+    }
+    if (!pdfMonat) pdfMonat = monate[0].wert;
+
+    const zugangKarte = k.hat_konto ? `
+      <p style="margin:0 0 2px;"><b>${sicher(k.username || "—")}</b>
+        ${k.rolle === "admin" ? '<span class="est-marke m-admin">Verwaltung</span>' : ""}
+        ${k.login_aktiv === false ? '<span class="est-marke m-rot">gesperrt</span>' : ""}
+        ${k.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort aktiv</span>' : ""}</p>
+      <p class="est-sub" style="margin:0 0 12px;">Das Passwort setzt sich ${sicher(m.name)} beim ersten Anmelden selbst – es ist für niemanden einsehbar.</p>
+      ${binOberAdmin ? `<div class="est-btns">
+        <button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Einmal-Passwort</button>
+        <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${sicher(m.name)}')">Rolle ändern</button>
+        <button class="btn" ${k.login_aktiv === false ? "" : 'style="color:var(--danger);"'} onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${sicher(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>
+      </div>` : '<p class="est-sub" style="margin:0;">Passwörter und Sperren verwaltet der Ober-Admin.</p>'}`
+      : `<p class="est-sub" style="margin:0 0 10px;">Noch kein Zugang – ohne Zugang kann sich ${sicher(m.name)} nirgends anmelden.</p>
+         ${binOberAdmin ? `<button class="btn btn-primary" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`
+           : '<p class="est-sub" style="margin:0;">Zugänge legt der Ober-Admin an.</p>'}`;
+
+    return `
+      <button class="btn" style="margin:16px 0 12px;" onclick="maDetailSchliessen()">← Alle Mitarbeiter</button>
+      <h2 style="margin:0 0 2px;">${sicher(m.name)}</h2>
+      <p class="est-sub" style="margin:0 0 16px;">${m.arbeitstage === "mo_sa" ? "Mo–Sa (6 Tage)" : "Mo–Fr (5 Tage)"} · ${bereiche}</p>
+
+      <p class="est-sec-title" style="margin-top:0;">Anmeldung</p>
+      <div class="card">${zugangKarte}</div>
+
+      <p class="est-sec-title">Urlaub</p>
+      <div class="card">${renderUrlaubUebersicht(m, b)}</div>
+
+      <p class="est-sec-title">Einsatzplan Lager</p>
+      <div class="card">
+        <p class="est-sub" style="margin:0 0 10px;">Tag für Tag: wann ${sicher(m.name)} im Lager-Einsatz war, wann Urlaub, wann frei – im GEKO-Briefkopf.</p>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select style="flex:1; min-width:150px;" onchange="pdfMonat = this.value;">
+            ${monate.map((x) => `<option value="${x.wert}" ${x.wert === pdfMonat ? "selected" : ""}>${x.text}</option>`).join("")}
+          </select>
+          <button class="btn btn-primary" onclick="einsatzplanPdf('${m.id}')">📄 PDF</button>
+        </div>
+      </div>
+
+      <p class="est-sec-title">Stammdaten</p>
+      <div class="card">
+        <p class="est-sub" style="margin:0 0 10px;">Name, Arbeitswoche, Urlaubsanspruch und Bausteine.</p>
+        <div class="est-btns">
+          <button class="btn btn-primary" onclick="maBearbeiten('${m.id}')">Bearbeiten</button>
+          ${binOberAdmin ? `<button class="btn" style="color:var(--danger);" onclick="maLoeschen('${m.id}')">Löschen</button>` : ""}
+        </div>
+      </div>`;
+  }
+
+  async function einsatzplanPdf(maId) {
+    if (typeof glasLagerPdfErstellen !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
+      showToast("PDF-Bibliothek lädt noch – kurz warten"); return;
+    }
+    const teile = String(pdfMonat || "").split("-");
+    const monat = teile.length === 2
+      ? { year: parseInt(teile[0], 10), month: parseInt(teile[1], 10) }
+      : { year: new Date().getFullYear(), month: new Date().getMonth() };
+    try {
+      glasLagerPdfErstellen(monat, maId);
+      showToast("📄 Einsatzplan erstellt");
+    } catch (e) {
+      showToast("PDF-Fehler: " + ((e && e.message) || e));
+    }
+  }
+
   function renderMaFormular() {
     const m = bearbeiten;
     const neu = !m.id;
@@ -330,7 +416,7 @@
         <input type="checkbox" id="${id}" style="width:auto;" ${an ? "checked" : ""} /> <span>${text}</span></label>`;
 
     return `
-      <button class="btn" style="margin:16px 0 12px;" onclick="bearbeiten=null; render();">← Zurück</button>
+      <button class="btn" style="margin:16px 0 12px;" onclick="bearbeiten=null; render();">← ${detailMa ? "Zurück zum Mitarbeiter" : "Zurück"}</button>
       <h2 style="margin:0 0 12px;">${neu ? "Neuer Mitarbeiter" : sicher(m.name)}</h2>
 
       <div class="card">
@@ -437,7 +523,7 @@
     const { error } = await sb.from("glas_mitarbeiter").delete().eq("id", id);
     if (error) { showToast("Fehler: " + error.message); return; }
     showToast("Gelöscht");
-    bearbeiten = null; offenerMa = null;
+    bearbeiten = null; offenerMa = null; detailMa = null;
     allesLaden();
   }
 

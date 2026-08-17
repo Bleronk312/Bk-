@@ -1302,7 +1302,9 @@ function renderLagerPlan() {
    oder EIN Mitarbeiter (wann war er im Einsatz, wann nicht) - im GEKO-Briefkopf. */
 
 let glasLagerPdfMonat = null; // {year, month} - null = aktueller Monat
-let glasLagerPdfWer = "alle"; // "alle" oder Mitarbeiter-ID
+// Der Monatsplan geht immer ueber alle; der persoenliche Einsatzplan eines
+// Mitarbeiters steht in den zentralen Einstellungen bei der Person.
+let glasLagerPdfWer = "alle";
 let glasLagerPdfOffen = false; // Block eingeklappt, bis man ihn braucht - weniger auf einmal
 
 function glasLagerPdfToggle() {
@@ -1363,15 +1365,13 @@ function renderLagerPdfBlock() {
         <span style="flex:1; text-align:center; font-weight:700; font-size:14.5px;">${label}</span>
         <button class="btn btn-sm" style="flex:none;" onclick="glasLagerPdfBlaettern(1)">›</button>
       </div>
-      <div class="glas-lager-chips glas-lager-pdfwer" style="margin-bottom:12px;">
-        <button class="glas-lager-chip${glasLagerPdfWer === "alle" ? " an" : ""}" style="padding-left:15px;" onclick="glasLagerPdfWerSetzen('alle')">👥 Alle Mitarbeiter</button>
-        ${wer.map((x) => `<button class="glas-lager-chip${glasLagerPdfWer === x.id ? " an" : ""}" onclick="glasLagerPdfWerSetzen('${x.id}')">
-          <span class="glas-lager-avatar" style="background:${glasMaFarbe(x.id)};">${glasLagerInitialen(x.name)}</span>${escapeHtml(x.name)}</button>`).join("")}
-      </div>
+
       <button class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="glasLagerPdf()">
         📄 PDF erstellen${glasLagerPdfWer === "alle" ? ` (${anzahl} ${anzahl === 1 ? "Einteilung" : "Einteilungen"})` : ""}
       </button>
-      <p class="muted" style="margin:8px 0 0; font-size:12px;">Ein Mitarbeiter = kompletter Monat Tag für Tag (Einsatz, Urlaub, frei). Alle = der gesamte Monatsplan.</p>
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Der gesamte Monatsplan mit allen Einteilungen.
+        Den persönlichen Einsatzplan eines Mitarbeiters (Tag für Tag mit Urlaub und freien Tagen)
+        findest du im Hub unter <a href="einstellungen.html" style="color:var(--blue);">Einstellungen → Mitarbeiter</a>.</p>
     </div>`;
 }
 
