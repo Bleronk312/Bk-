@@ -10,6 +10,7 @@
 -- Ansprechpartner/Telefon aus der Excel (nur wo angegeben).
 -- Koordinaten werden beim naechsten Oeffnen der Admin-Seite automatisch ergaenzt.
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
+-- qm-Werte 07/2026 auf die exakten Preisblatt-Zwischensummen korrigiert (siehe supabase_fix_fhsw_qm.sql).
 
 -- Nr. 3: Iserlohn – Baarstr. 5 (Postgebäude)
 insert into glas_objekte (id, kunde_id, kunde_name, kunde_adresse, name, adresse, kdnr, ansprechpartner, telefon, template, lat, lng)
@@ -18,7 +19,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw3')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw3-p1', 'fhsw3', '1', 'Glas- und Rahmenreinigung', '369', 'feste_monate', '2,8', 0
+select 'fhsw3-p1', 'fhsw3', '1', 'Glas- und Rahmenreinigung', '369,50', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw3')
 on conflict (id) do nothing;
 
@@ -29,18 +30,18 @@ where not exists (select 1 from glas_objekte where id = 'fhsw4')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw4-p1', 'fhsw4', '1', 'Glas- und Rahmenreinigung', '422', 'feste_monate', '2,8', 0
+select 'fhsw4-p1', 'fhsw4', '1', 'Glas- und Rahmenreinigung', '422,23', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw4')
 on conflict (id) do nothing;
 
 -- Nr. 5: Iserlohn – Frauenstuhlweg 31 (Geb. A, C, H, U, CFM, M, P, Z, Audimax)
 insert into glas_objekte (id, kunde_id, kunde_name, kunde_adresse, name, adresse, kdnr, ansprechpartner, telefon, template, lat, lng)
-select 'fhsw5', (select id from kunden where name ilike '%südwestfalen%' limit 1), (select name from kunden where name ilike '%südwestfalen%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%südwestfalen%' limit 1), 'Iserlohn – Frauenstuhlweg 31 (Geb. A, C, H, U, CFM, M, P, Z, Audimax)', E'Frauenstuhlweg 31\n58644 Iserlohn', '', '', '', 'geko', null, null
+select 'fhsw5', (select id from kunden where name ilike '%südwestfalen%' limit 1), (select name from kunden where name ilike '%südwestfalen%' limit 1), (select name || case when coalesce(adresse,'') <> '' then E'\n' || adresse else '' end from kunden where name ilike '%südwestfalen%' limit 1), 'Iserlohn – Frauenstuhlweg 31 (A-Halle, Audimax, C, H, K, LFM, M, P, Z)', E'Frauenstuhlweg 31\n58644 Iserlohn', '', '', '', 'geko', null, null
 where not exists (select 1 from glas_objekte where id = 'fhsw5')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw5-p1', 'fhsw5', '1', 'Glas- und Rahmenreinigung', '5599', 'feste_monate', '2,8', 0
+select 'fhsw5-p1', 'fhsw5', '1', 'Glas- und Rahmenreinigung', '5592,90', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw5')
 on conflict (id) do nothing;
 
@@ -62,7 +63,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw7')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw7-p1', 'fhsw7', '1', 'Glas- und Rahmenreinigung', '720', 'feste_monate', '2,8', 0
+select 'fhsw7-p1', 'fhsw7', '1', 'Glas- und Rahmenreinigung', '720,65', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw7')
 on conflict (id) do nothing;
 
@@ -73,7 +74,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw8')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw8-p1', 'fhsw8', '1', 'Glas- und Rahmenreinigung', '3114', 'feste_monate', '2,8', 0
+select 'fhsw8-p1', 'fhsw8', '1', 'Glas- und Rahmenreinigung', '3106,05', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw8')
 on conflict (id) do nothing;
 
@@ -84,7 +85,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw9')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw9-p1', 'fhsw9', '1', 'Glas- und Rahmenreinigung', '537', 'feste_monate', '2,8', 0
+select 'fhsw9-p1', 'fhsw9', '1', 'Glas- und Rahmenreinigung', '537,93', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw9')
 on conflict (id) do nothing;
 
@@ -95,7 +96,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw10')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw10-p1', 'fhsw10', '1', 'Glas- und Rahmenreinigung', '30', 'feste_monate', '2,8', 0
+select 'fhsw10-p1', 'fhsw10', '1', 'Glas- und Rahmenreinigung', '30,18', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw10')
 on conflict (id) do nothing;
 
@@ -106,7 +107,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw11')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw11-p1', 'fhsw11', '1', 'Glas- und Rahmenreinigung', '4704', 'feste_monate', '2,8', 0
+select 'fhsw11-p1', 'fhsw11', '1', 'Glas- und Rahmenreinigung', '4704,06', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw11')
 on conflict (id) do nothing;
 
@@ -117,7 +118,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw12')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw12-p1', 'fhsw12', '1', 'Glas- und Rahmenreinigung', '94', 'feste_monate', '2,8', 0
+select 'fhsw12-p1', 'fhsw12', '1', 'Glas- und Rahmenreinigung', '94,28', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw12')
 on conflict (id) do nothing;
 
@@ -128,7 +129,7 @@ where not exists (select 1 from glas_objekte where id = 'fhsw13')
   and exists (select 1 from kunden where name ilike '%südwestfalen%')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'fhsw13-p1', 'fhsw13', '1', 'Glas- und Rahmenreinigung', '410', 'feste_monate', '2,8', 0
+select 'fhsw13-p1', 'fhsw13', '1', 'Glas- und Rahmenreinigung', '410,23', 'feste_monate', '2,8', 0
 where exists (select 1 from glas_objekte where id = 'fhsw13')
 on conflict (id) do nothing;
 
