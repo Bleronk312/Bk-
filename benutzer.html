@@ -166,7 +166,9 @@ function zeigeDialog(html) {
 const schliessen = () => dlg.close();
 
 function dlgAnlegen(m) {
-  const vorschlag = nameZuBenutzer(m.name) || m.id;
+  // Hat er schon einen Benutzernamen aus der alten Anmeldung, bleibt der auch
+  // der neue - für ihn ändert sich dann nur das Passwort, nicht der Name.
+  const vorschlag = m.username || nameZuBenutzer(m.name) || m.id;
   const pw = passwortVorschlag();
   zeigeDialog(
     '<h2 style="margin:0 0 4px;font-size:18px">Zugang für ' + sicher(m.name) + '</h2>'
