@@ -336,7 +336,13 @@ label {
 .glas-cal-cell:hover { background: #f5f7fa; }
 .glas-cal-cell.is-selected { background: #eaf2fb; }
 .glas-cal-cell.out-month .glas-cal-daynum { color: #cdd2d9; }
-.glas-cal-cell.out-month .glas-cal-chip { opacity: 0.4; }
+/* Tage aus dem Nachbarmonat treten zurueck - ABER nur bei Einzelterminen.
+   Ein mehrtaegiger Balken, der die Monatsgrenze kreuzt, waere sonst zur Haelfte
+   kraeftig und zur Haelfte blass und saehe aus wie zwei kaputte Stuecke (und die
+   Beschriftung, die im ersten Chip sitzt, haette die falsche Deckkraft).
+   Ein Balken gehoert zu EINEM Termin und wird deshalb einheitlich gezeichnet;
+   dass der Tag zum Nachbarmonat gehoert, zeigt schon die graue Tageszahl. */
+.glas-cal-cell.out-month .glas-cal-chip:not(.continues-left):not(.continues-right) { opacity: 0.4; }
 .glas-cal-daynum {
   align-self: center;
   display: inline-flex;
@@ -2496,7 +2502,11 @@ body.glas-cal-pur .logo-badge { display: none; }
 body.glas-cal-pur .app-header .greeting,
 body.glas-cal-pur .app-header .stat { display: none; }
 body.glas-cal-pur .tabs { display: none; }
-body.glas-cal-pur .app-sheet { border-radius: 18px 18px 0 0; }
+/* Das Blatt schiebt sich normalerweise 28px ueber den Kopf (weicher Uebergang).
+   Im knappen Kalender-Kopf frisst das genau die untere Kante des Hub-Knopfes -
+   der sah dadurch abgeschnitten aus. Hier also buendig anschliessen. */
+body.glas-cal-pur .app-sheet { border-radius: 18px 18px 0 0; margin-top: 0; }
+body.glas-cal-pur .app-header { padding-bottom: 12px; }
 body.glas-cal-pur .app-sheet-content,
 html.app-mode body.glas-cal-pur .app-sheet-content {
   padding-top: 10px;
