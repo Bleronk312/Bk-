@@ -412,13 +412,17 @@ let glasKalGraffitiEinblenden = true;
 const GLAS_GRAFFITI_COL = "#b0308a";        // offen/geplant: Magenta
 const GLAS_GRAFFITI_DONE = "#7a2a6b";       // unterschrieben: dunkleres Magenta (klar anders als Glas-Grün)
 async function loadGlasGraffitiTermine() {
-  const spalten = "id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, termin, kdnr, monat, unterschrift_name, signed_at";
+  const spalten = "id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, termin, kdnr, monat, unterschrift_name, signed_at, archiviert";
   // Scheine mit geplantem Termin ODER mit Unterschrift laden (letztere auch OHNE Termin ->
   // erscheinen dann am Tag der Unterschrift im Kalender).
-  let { data, error } = await sb.from("scheine").select(spalten).or("termin.not.is.null,signed_at.not.is.null").eq("archiviert", false);
+  //
+  // Archivierte bewusst MIT: Archivieren räumt nur die Graffiti-Übersicht auf. Der
+  // Kalender ist die Chronik des Betriebs - dort muss auch Monate später stehen,
+  // wann welche Entfernung gelaufen ist.
+  let { data, error } = await sb.from("scheine").select(spalten).or("termin.not.is.null,signed_at.not.is.null");
   if (error) {
     // Fallback auf das alte Verhalten (nur terminierte), falls die or-Abfrage nicht klappt
-    ({ data, error } = await sb.from("scheine").select(spalten).not("termin", "is", null).eq("archiviert", false));
+    ({ data, error } = await sb.from("scheine").select(spalten).not("termin", "is", null));
   }
   glasGraffitiTermine = error ? [] : (data || []);
 }
@@ -752,8 +756,7 @@ function glasPortalModals() {
 function glasAttachSheetSwipe(sheet, overlay) {
   let startY = 0, startScroll = 0, dragging = false, dy = 0;
   const close = () => {
-    if (overlay && overlay.classList.contains("glas-graffiti-ov")) glasGraffitiInfoId = null;
-    else glasKalenderSelectedDay = null;
+    glasKalenderSelectedDay = null;
     renderGlasAdmin();
   };
   sheet.addEventListener("touchstart", (e) => {
@@ -6691,46 +6694,18 @@ function renderKalenderMonat() {
       <button class="btn btn-sm" style="margin:8px 6px 0;" onclick="glasKalenderMonth = { year: new Date().getFullYear(), month: new Date().getMonth() }; glasKalenderSelectedDay = glasTodayIso(); renderGlasAdmin();">Heute</button>
     </div>
     ${glasKalenderSelectedDay ? renderKalenderTagPanel(glasKalenderSelectedDay) : ""}
-    ${glasGraffitiInfoId ? renderGraffitiInfoModal() : ""}
   `;
   glasCalAnimDir = null;
   return html;
 }
 
-// Read-only Info zu einem Graffiti-Termin im Kalender + Sprung in die Graffiti-App.
-let glasGraffitiInfoId = null;
-function glasOpenGraffitiInfo(id) { glasGraffitiInfoId = id; renderGlasAdmin(); }
-function glasCloseGraffitiInfo() { glasGraffitiInfoId = null; renderGlasAdmin(); }
-function glasOpenGraffitiInApp(id) { window.location.href = "admin.html#/schein/" + id; }
-function renderGraffitiInfoModal() {
-  const g = glasGraffitiTermine.find((x) => x.id === glasGraffitiInfoId);
-  if (!g) return "";
-  const done = !!(g.unterschrift_name || g.signed_at);
-  const zeit = glasUhrzeitVonTimestamp(g.termin);
-  const datum = formatGlasDate(glasDatumVonTimestamp(g.termin));
-  const adresse = (g.adresse || "").trim();
-  const kundeLines = (g.kunde || "").split("\n").filter((l) => l.trim());
-  return `
-    <div class="modal-overlay glas-graffiti-ov" style="z-index:10000;" onclick="if(event.target===this)glasCloseGraffitiInfo()">
-      <div class="glas-day-sheet">
-        <div class="glas-sheet-grip"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <p style="margin:0; font-weight:800; font-size:17px;">🎨 Graffiti-Termin</p>
-          <button class="btn btn-sm" onclick="glasCloseGraffitiInfo()">✕</button>
-        </div>
-        ${done
-          ? `<div class="glas-notiz-box" style="background:var(--success-bg); color:var(--success-text); margin-bottom:10px;">✓ Bereits unterschrieben${g.unterschrift_name ? " von " + escapeHtml(g.unterschrift_name) : ""}</div>`
-          : `<div class="glas-notiz-box" style="margin-bottom:10px;">🕐 ${datum}${zeit ? " · " + zeit + " Uhr" : ""}</div>`}
-        <div class="glas-sheet-row"><span class="glas-sheet-ico">🏢</span><span style="white-space:pre-line;">${kundeLines.map(escapeHtml).join("\n") || "—"}</span></div>
-        ${adresse ? `<a class="glas-sheet-row" href="${wazeLink(adresse)}" target="_blank" rel="noopener" style="text-decoration:none; color:inherit;"><span class="glas-sheet-ico">📍</span><span style="flex:1; min-width:0; white-space:pre-line;">${escapeHtml(adresse)}</span><span style="color:var(--blue); font-size:12px; font-weight:600; white-space:nowrap;">Route ›</span></a>` : ""}
-        ${g.kategorie ? `<div class="glas-sheet-row"><span class="glas-sheet-ico">🏷️</span><span>${escapeHtml(g.kategorie)}</span></div>` : ""}
-        ${g.leistungen ? `<div class="glas-sheet-row" style="align-items:flex-start;"><span class="glas-sheet-ico">🧹</span><span style="white-space:pre-line;">${escapeHtml(g.leistungen)}</span></div>` : ""}
-        ${g.ansprechpartner ? `<div class="glas-sheet-row"><span class="glas-sheet-ico">👤</span><span>${escapeHtml(g.ansprechpartner)}</span></div>` : ""}
-        ${g.telefon ? `<a class="glas-sheet-row" href="tel:${escapeHtml(g.telefon)}" style="text-decoration:none; color:inherit;"><span class="glas-sheet-ico">📞</span><span style="flex:1;">${escapeHtml(g.telefon)}</span><span style="color:var(--blue); font-size:12px; font-weight:600;">Anrufen ›</span></a>` : ""}
-        <button class="btn btn-primary" style="width:100%; justify-content:center; margin-top:14px;" onclick="glasOpenGraffitiInApp('${g.id}')">🎨 In Graffiti-App öffnen</button>
-        <p class="muted" style="text-align:center; font-size:11.5px; margin:8px 0 0;">Bearbeiten &amp; Unterschreiben in der Graffiti-App.</p>
-      </div>
-    </div>`;
+// Antippen im Kalender öffnet direkt den Abnahmeschein in der Graffiti-App.
+// Vorher lag ein Info-Fenster dazwischen - überflüssig, denn der Schein selbst
+// zeigt dasselbe (Objekt, Route, Anrufen, Leistungen) und dazu Unterschrift,
+// Fotos und PDF. Das "/kal" am Ende sagt der Graffiti-App, dass sie mit
+// "‹ Kalender" zurückführen soll statt in die Scheine-Liste.
+function glasOpenGraffitiInApp(id) {
+  window.location.href = "admin.html#/schein/" + encodeURIComponent(id) + "/kal";
 }
 
 // Aufklappender "Tages-Reiter" unter dem Kalender: alle Touren + freien Termine des Tages,
@@ -6767,11 +6742,11 @@ function renderKalenderTagPanel(iso) {
     const zeit = glasUhrzeitVonTimestamp(g.termin || g.signed_at);
     const strasse = (g.adresse || "").split("\n")[0];
     return `
-      <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasOpenGraffitiInfo('${g.id}')">
+      <div style="display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer;" onclick="glasOpenGraffitiInApp('${g.id}')">
         <span style="width:4px; align-self:stretch; border-radius:2px; background:${done ? GLAS_GRAFFITI_DONE : GLAS_GRAFFITI_COL};"></span>
         <div style="flex:1; min-width:0;">
           <p style="margin:0; font-weight:600; ${done ? `text-decoration:line-through; color:${GLAS_GRAFFITI_DONE};` : ""}">🎨 ${escapeHtml((g.kunde || "").split("\n")[0] || "Graffiti")}${done ? " ✓" : ""}</p>
-          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${zeit ? zeit + " Uhr · " : ""}${escapeHtml(g.kategorie || "Graffiti")}${strasse ? " · " + escapeHtml(strasse) : ""}</p>
+          <p class="muted" style="margin:2px 0 0; font-size:12.5px;">${zeit ? zeit + " Uhr · " : ""}${escapeHtml(g.kategorie || "Graffiti")}${strasse ? " · " + escapeHtml(strasse) : ""}${g.archiviert ? " · 📥 archiviert" : ""}</p>
         </div>
         <span style="color:var(--text-secondary);">›</span>
       </div>`;

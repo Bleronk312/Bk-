@@ -62,7 +62,7 @@
     // Solange ein Sheet/Modal offen ist (Unterschreiben, Kalender-Tages-Sheet,
     // Info-Karten, Menü), NIE aktualisieren - ein Abwärts-Wisch dort ist zum
     // Schließen oder Scrollen gedacht, nicht fürs Neuladen.
-    if (document.querySelector(".glas-sign-sheet, .glas-day-sheet, .modal-overlay, .glas-graffiti-ov, .one-drop-ov, .okal-sheet-ov")) return false;
+    if (document.querySelector(".glas-sign-sheet, .glas-day-sheet, .modal-overlay, .one-drop-ov, .okal-sheet-ov")) return false;
     // Nie auf Zeichenflächen/Eingaben: ein Abwärts-Strich auf dem Unterschrift-Canvas
     // löste sonst das Neuladen aus - und die Unterschrift war weg.
     if (ziel && ziel.closest && ziel.closest("canvas, input, textarea, select, [contenteditable], .no-ptr")) return false;

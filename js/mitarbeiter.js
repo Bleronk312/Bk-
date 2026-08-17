@@ -157,7 +157,28 @@ window.addEventListener("popstate", () => {
   }
 });
 
-loadList();
+// Deep-Link aus dem GEKO-One-Kalender: mitarbeiter.html#/schein/<id> öffnet
+// direkt den Abnahmeschein - auch einen archivierten, der in der Arbeitsliste
+// gar nicht mehr auftaucht.
+function maScheinDeepLink() {
+  const m = (location.hash || "").match(/^#\/schein\/([^/]+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function maScheinDeepLinkOeffnen() {
+  const id = maScheinDeepLink();
+  if (!id) return;
+  // Adresse gleich säubern: der Zurück-Weg führt durch diesen Eintrag hindurch,
+  // und ohne das Säubern würde der Schein dabei sofort wieder aufspringen.
+  history.replaceState(null, "", location.pathname + location.search);
+  openScheine(id);
+}
+
+window.addEventListener("hashchange", maScheinDeepLinkOeffnen);
+
+// Erst die Liste laden (sie liegt in der Historie hinter dem Schein), dann den
+// Deep-Link öffnen.
+loadList().then(maScheinDeepLinkOeffnen);
 flushOfflineQueue();
 
 // ---------- Week grouping + Archivierung ----------
@@ -309,13 +330,29 @@ async function openScheine(id) {
   vorherFotos = [];
   nachherFotos = [];
   history.pushState({ schein: id }, "");
-  renderDetail();
+  // Aus der Liste heraus sind alle Textfelder schon da - sofort zeichnen. Beim
+  // Deep-Link aus dem Kalender ist noch nichts bekannt; dort wäre ein leerer
+  // Schein für einen Sekundenbruchteil nur verwirrend.
+  if (light) renderDetail();
+  else document.getElementById("view").innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
 
+  // Steht der Schein in der Arbeitsliste, fehlen nur noch die schweren Felder.
+  // Kommt er aus dem Kalender, kann er auch archiviert sein - dann steht er
+  // NICHT in der Liste und der ganze Datensatz muss geholt werden, sonst bliebe
+  // die Ansicht leer.
   const { data, error } = await sb.from("scheine")
-    .select("anhang, anhang_name, anhang_type, anhaenge, unterschrift, vorher_fotos, nachher_fotos")
+    .select(light ? "anhang, anhang_name, anhang_type, anhaenge, unterschrift, vorher_fotos, nachher_fotos" : "*")
     .eq("id", id)
     .maybeSingle();
 
+  if ((error || !data) && !light) {
+    // Beim Deep-Link gibt es nichts, worauf man zurückfallen könnte - also
+    // ehrlich sagen, dass der Schein nicht kommt, statt "Lade..." stehen zu lassen.
+    showToast(error ? "Fehler beim Laden: " + error.message : "Schein nicht gefunden");
+    currentScheine = null;
+    renderList();
+    return;
+  }
   if (!error && data && currentScheine && currentScheine.id === id) {
     currentScheine = { ...currentScheine, ...data };
     // Zwischengespeicherte Fotos wieder in die Bearbeitungs-Arrays laden, sonst wirken sie

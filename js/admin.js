@@ -137,16 +137,43 @@ function fromDatetimeLocalValue(value) {
 
 // ---------- Login ----------
 
+// Deep-Link aus dem Kalender: admin.html#/schein/<id> öffnet den Schein.
+// Angehängtes "/kal" heißt: der Aufruf kam aus dem Kalender - dann führt der
+// Zurück-Knopf auch dorthin zurück und nicht in die Scheine-Liste.
+// Gezeigt wird die ANSICHT, nicht das Bearbeiten-Formular: aus dem Kalender
+// will man sehen, was gemacht wurde (Unterschrift, Fotos, PDF). Bearbeiten
+// ist von dort aus einen Knopfdruck entfernt - und bei archivierten Scheinen
+// wäre das Formular ohnehin der falsche Einstieg.
+let scheinDeepLinkAusKalender = false;
+function scheinDeepLink() {
+  const m = (location.hash || "").match(/^#\/schein\/([^/]+)(\/kal)?$/);
+  return m ? { id: decodeURIComponent(m[1]), ausKalender: !!m[2] } : null;
+}
+
+function zurueckZumKalender() {
+  // Der Kalender liegt einen Schritt zurück in der Historie - so bleibt die
+  // Monatsansicht und die Scrollposition erhalten. Nur falls die App direkt
+  // über den Link geöffnet wurde, wird der Kalender neu geladen.
+  if (history.length > 1) history.back();
+  else window.location.href = "kalender.html";
+}
+
 async function showApp() {
   await Promise.all([loadKundenData(), loadKategorienData()]);
-  // Deep-Link aus dem Glas-Kalender: admin.html#/schein/<id> öffnet direkt den Schein.
-  const m = (location.hash || "").match(/#\/schein\/(.+)$/);
-  if (m) { openEdit(decodeURIComponent(m[1])); return; }
+  const ziel = scheinDeepLink();
+  if (ziel) {
+    // Adresse säubern (ohne hashchange auszulösen), damit ein späteres Neuladen
+    // nicht wieder auf diesem einen Schein landet. Der Zurück-Schritt in den
+    // Kalender bleibt davon unberührt - das war eine echte Navigation.
+    history.replaceState(null, "", location.pathname + location.search);
+    openView(ziel.id, ziel.ausKalender);
+    return;
+  }
   switchTab("scheine");
 }
 window.addEventListener("hashchange", () => {
-  const m = (location.hash || "").match(/#\/schein\/(.+)$/);
-  if (m) openEdit(decodeURIComponent(m[1]));
+  const ziel = scheinDeepLink();
+  if (ziel) openView(ziel.id, ziel.ausKalender);
 });
 
 showApp();
@@ -349,7 +376,11 @@ async function loadKategorienData() {
   if (!error) kategorien = data || [];
 }
 
-async function openView(id) {
+async function openView(id, ausKalender) {
+  // Nur der Aufruf AUS dem Kalender bekommt den Kalender-Zurück-Knopf. Öffnet man
+  // danach im selben Fenster einen Schein aus der Liste, ist der Kalender nicht
+  // mehr die Herkunft - die Fahne muss also bei jedem Öffnen neu gesetzt werden.
+  scheinDeepLinkAusKalender = !!ausKalender;
   signFormOpen = false;
   materialSurveyOpen = false;
   materialAnsichtOpen = false;
@@ -398,10 +429,13 @@ function renderViewScheine(s) {
   const anhangHtml = gekoRenderAnhaenge(s, "openAttachmentFileAdmin");
 
   document.getElementById("view").innerHTML = `
-    <button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>
+    ${scheinDeepLinkAusKalender
+      ? `<button class="btn btn-sm" onclick="zurueckZumKalender()" style="margin-bottom:14px;">&larr; Zurück zum Kalender</button>`
+      : `<button class="btn btn-sm" onclick="switchTab('scheine')" style="margin-bottom:14px;">&larr; Zurück</button>`}
 
     <div class="card">
       <div class="muted" style="font-size:12px; margin-bottom:10px;">${escapeHtml(firstLine(s.kunde))}</div>
+      ${s.archiviert ? `<div class="highlight-box" style="margin-bottom:10px;">📥 Archiviert – aus der Übersicht ausgeblendet, im Kalender weiterhin sichtbar.</div>` : ""}
 
       <div class="muted" style="margin-bottom:2px;">Objekt</div>
       <div class="highlight-box" style="white-space:pre-line;">${escapeHtml(s.adresse)}</div>

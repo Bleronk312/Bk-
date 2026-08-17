@@ -205,16 +205,25 @@ async function oneKalLaden() {
   // --- Graffiti-Termine --------------------------------------------------------
   if (oneUser.zugang_graffiti === true) {
     aufgaben.push((async () => {
-      const { data } = await oneKalMitTimeout(sb.from("scheine").select("id, kunde, adresse, termin, archiviert, datum").order("termin", { ascending: true }));
+      // Archivierte bewusst MIT: Archivieren räumt nur die Arbeitsliste der
+      // Graffiti-App auf. Im Kalender bleibt jede Entfernung stehen - er ist die
+      // Chronik, an der man auch später ablesen kann, wann was gemacht wurde.
+      // Ohne Termin, aber unterschrieben -> der Tag der Unterschrift ist der Tag
+      // der Arbeit; sonst würden gerade die erledigten Fälle fehlen.
+      const { data } = await oneKalMitTimeout(sb.from("scheine").select("id, kunde, adresse, termin, archiviert, datum, signed_at, unterschrift_name").order("termin", { ascending: true }));
       (data || []).forEach((s) => {
-        if (!s.termin || s.archiviert) return;
-        const iso = String(s.termin).slice(0, 10);
-        const zeit = glasUhrzeitVonTimestamp(s.termin);
+        const quelle = s.termin || s.signed_at;
+        if (!quelle) return;
+        const iso = String(quelle).slice(0, 10);
+        const zeit = glasUhrzeitVonTimestamp(quelle);
+        const fertig = !!(s.signed_at || s.unterschrift_name);
         eintraege.push({
           art: "graffiti", ico: "🎨", titel: s.kunde || "Graffiti-Termin",
           von: iso, bis: iso, zeit,
-          sub: (s.adresse || "").split("\n")[0] || "Graffiti",
-          ziel: "mitarbeiter.html",
+          sub: ((s.adresse || "").split("\n")[0] || "Graffiti") + (fertig ? " · erledigt" : ""),
+          // Direkt IN den Abnahmeschein springen, nicht nur in die Graffiti-App
+          ziel: "mitarbeiter.html#/schein/" + encodeURIComponent(s.id),
+          erledigt: fertig,
         });
       });
     })());
