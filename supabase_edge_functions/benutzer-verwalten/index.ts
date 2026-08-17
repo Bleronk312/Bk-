@@ -286,9 +286,6 @@ Deno.serve(async (req) => {
             login_aktiv: m.login_aktiv ?? true,
             pw_muss_wechsel: m.pw_muss_wechsel ?? false,
             hat_konto: !!m.auth_user_id,
-            // Wird gebraucht, um Meldungen gezielt an eine Person zu richten
-            // (z.B. die Lager-Erinnerung). Nur Admins sehen diese Liste.
-            auth_user_id: m.auth_user_id ?? null,
             rolle: m.auth_user_id ? rollen.get(m.auth_user_id as string) || "mitarbeiter" : null,
           })),
         });

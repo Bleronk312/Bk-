@@ -51,8 +51,7 @@ Deno.serve(async (req) => {
   try {
     // ---- 1) Ist die eingestellte Uhrzeit erreicht? -------------------------
     const { data: einst } = await db.from("glas_einstellungen")
-      .select("lager_erinnerung_zeit, lager_erinnerung_zuletzt, lager_erinnerung_an")
-      .eq("id", "default").maybeSingle();
+      .select("lager_erinnerung_zeit, lager_erinnerung_zuletzt").eq("id", "default").maybeSingle();
 
     const zeit = einst?.lager_erinnerung_zeit;
     if (!zeit) return new Response(JSON.stringify({ uebersprungen: "abgeschaltet" }), { headers: cors });
@@ -93,25 +92,8 @@ Deno.serve(async (req) => {
       ? "Für morgen ist eine Einteilung angelegt, aber noch nicht verschickt."
       : "Für morgen ist noch keine Lager-Einteilung verschickt.";
 
-    // An wen? Ist in den Einstellungen eine Auswahl hinterlegt, gilt die -
-    // sonst an alle, die Glasreinigungs-Meldungen empfangen (bisheriges
-    // Verhalten, damit nach einer Umstellung nichts stillschweigend ausfällt).
-    const empfaenger = Array.isArray(einst?.lager_erinnerung_an) ? einst.lager_erinnerung_an : [];
-    let abfrage = db.from("push_subscriptions").select("*").eq("role", "glas");
-    if (empfaenger.length) abfrage = abfrage.in("auth_user_id", empfaenger);
-    const { data: subs } = await abfrage;
-
-    // Ausgewählte Personen, aber kein einziges angemeldetes Gerät: dann würde
-    // die Erinnerung ins Leere laufen. Lieber melden als schweigen.
-    if (!subs || !subs.length) {
-      return new Response(JSON.stringify({
-        erinnert: false,
-        grund: empfaenger.length
-          ? "ausgewählte Empfänger haben kein angemeldetes Gerät"
-          : "kein Gerät empfängt Glasreinigungs-Meldungen",
-        datum: morgen,
-      }), { headers: cors });
-    }
+    // An die Glas-Verwaltung: dort liegt der Lager-Plan.
+    const { data: subs } = await db.from("push_subscriptions").select("*").eq("role", "glas");
     const payload = JSON.stringify({
       title: "📦 Lager-Plan für morgen",
       body: text,
