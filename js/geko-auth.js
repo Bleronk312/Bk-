@@ -85,9 +85,10 @@ async function gekoSitzung(neuLaden) {
 }
 
 // Darf der Angemeldete diesen Bereich sehen?
-// Admins dürfen überall hin. Bei Mitarbeitern zählt der Schalter, wobei
-// "nicht gesetzt" wie bisher als erlaubt gilt - nur zugang_checkin muss
-// ausdrücklich an sein, so war es auch vorher schon.
+// Admins dürfen überall hin. Bei Mitarbeitern zählt der Schalter: Glas ist
+// historisch "an, außer ausdrücklich aus", alle anderen Bereiche müssen
+// ausdrücklich freigeschaltet sein - exakt dieselbe Logik wie in den
+// Datenbank-Regeln (geko_darf in supabase_auth_4_rls.sql).
 function gekoDarf(sitzung, bereich) {
   if (!sitzung) return false;
   if (sitzung.istAdmin) return true;
