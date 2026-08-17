@@ -653,6 +653,21 @@ async function oneLagerBestaetigen(id, ev) {
     const { error } = await sb.from("glas_lager_plan").update({ bestaetigt: zusammen }).eq("id", id);
     if (error) throw error;
     showToast("Bestätigt ✓");
+
+    // Dem Büro Bescheid geben. Ob alle bestätigt haben oder erst ein Teil,
+    // steht gleich mit drin - sonst müsste man dafür extra nachsehen.
+    try {
+      const eingeteilt = Array.isArray(p.mitarbeiter_ids) ? p.mitarbeiter_ids.length : 0;
+      const bestaetigt = Object.keys(zusammen || {}).length;
+      const wann = p.datum ? formatGlasDate(p.datum) : "";
+      sb.functions.invoke("send-push", { body: {
+        role: "glas",
+        title: "📦 Lager bestätigt",
+        body: `${oneUser.name || oneUser.username} hat die Einteilung${wann ? " für " + wann : ""} bestätigt`
+          + (eingeteilt ? ` (${bestaetigt} von ${eingeteilt})` : ""),
+        url: "/glas-admin.html?app=lager",
+      } }).catch(() => {});
+    } catch (e) { /* Meldung ist Beiwerk - das Bestätigen selbst hat geklappt */ }
   } catch (e) {
     if (/bestaetigt/i.test((e && e.message) || "")) showToast("Bitte supabase_add_lager.sql erneut ausführen");
     else showToast("Keine Verbindung – bitte später erneut abhaken");

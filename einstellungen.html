@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=172" />
+<link rel="stylesheet" href="css/style.css?v=173" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -58,10 +58,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=172"></script>
-  <script src="js/supabase-client.js?v=172"></script>
-  <script src="js/geko-auth.js?v=172"></script>
-  <script src="js/push.js?v=172"></script>
+  <script src="js/config.js?v=173"></script>
+  <script src="js/supabase-client.js?v=173"></script>
+  <script src="js/geko-auth.js?v=173"></script>
+  <script src="js/push.js?v=173"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -163,7 +163,8 @@
     const el = document.getElementById("inhalt");
     el.innerHTML = bearbeiten
       ? renderMaFormular()
-      : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten() + renderPush() + renderDarstellung();
+      : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten()
+        + renderPush() + renderErinnerungen() + renderDarstellung();
   }
 
   function renderMeinKonto() {
@@ -508,6 +509,58 @@
       if (erg.error) { showToast("Fehler: " + erg.error); return; }
       showToast(erg.sent ? name + ": verschickt ✓" : name + ": nicht zugestellt (0 Geräte)");
     } catch (e) { showToast("Keine Verbindung zum Versand"); }
+  }
+
+  // ==== Erinnerungen =======================================================
+  // Bisher gab es nur Meldungen, wenn jemand etwas TUT. Das hier ist die
+  // Gegenrichtung: eine Meldung, wenn etwas NICHT passiert ist.
+  function renderErinnerungen() {
+    const zeit = (pushEinstellungen || {}).lager_erinnerung_zeit || "";
+    const an = !!zeit;
+    const zeiten = [];
+    for (let h = 12; h <= 22; h++) zeiten.push(String(h).padStart(2, "0") + ":00");
+
+    return `
+      <p class="est-sec-title">Erinnerungen</p>
+      <div class="card">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+          <input type="checkbox" style="width:auto;" ${an ? "checked" : ""} onchange="lagerErinnerungUmschalten(this.checked)" />
+          <span>
+            <span class="est-name">📦 Lager-Plan für morgen</span>
+            <span class="est-sub">Meldung, falls die Einteilung für den nächsten Tag noch nicht raus ist</span>
+          </span>
+        </label>
+        ${an ? `
+        <div style="display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+          <span style="font-size:14px;">Erinnern um</span>
+          <select style="flex:0 0 auto; width:auto;" onchange="lagerErinnerungZeit(this.value)">
+            ${zeiten.map((z) => `<option value="${z}" ${z === zeit ? "selected" : ""}>${z} Uhr</option>`).join("")}
+          </select>
+        </div>
+        <p class="muted" style="margin:10px 0 0; font-size:12px;">Kommt nur, wenn bis dahin nichts verschickt wurde – und nie sonntags, weil montags ohnehin neu eingeteilt wird. Ist der Plan raus, bleibt es still.</p>`
+        : ""}
+      </div>`;
+  }
+
+  async function lagerErinnerungUmschalten(an) {
+    const wert = an ? "18:00" : null;
+    pushEinstellungen = { ...(pushEinstellungen || {}), lager_erinnerung_zeit: wert };
+    const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", lager_erinnerung_zeit: wert });
+    if (error) {
+      showToast(/lager_erinnerung/i.test(error.message || "")
+        ? "Bitte supabase_add_lager_erinnerung.sql ausführen"
+        : "Fehler: " + error.message);
+      return;
+    }
+    showToast(an ? "Erinnerung an" : "Erinnerung aus");
+    render();
+  }
+
+  async function lagerErinnerungZeit(zeit) {
+    pushEinstellungen = { ...(pushEinstellungen || {}), lager_erinnerung_zeit: zeit };
+    const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", lager_erinnerung_zeit: zeit });
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast("Gespeichert – " + zeit + " Uhr");
   }
 
   function renderDarstellung() {
