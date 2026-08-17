@@ -33,6 +33,13 @@ let glasTourSearch = "";
 let glasShowNewTourForm = false;
 let glasTourDetailId = null;
 let glasManualOrder = []; // Array von Objekt-IDs in der vom Admin festgelegten Reihenfolge
+let glasCalChipText = new Map(); // "terminIndex|iso" -> Textstück des Chips
+
+// Wie viele Zeichen passen ungefähr in einen Tages-Chip? Auf dem Handy sind die
+// Spalten schmal (8px Schrift), am Rechner deutlich breiter (11.5px, breitere Zelle).
+function glasCalZeichenProChip() {
+  try { return window.innerWidth >= 760 ? 18 : 10; } catch (e) { return 12; }
+}
 let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), gesetzt bei "Jetzt planen"
 // Pro Objekt in der Tour: soll die Objekt-Notiz an den Stopp? (Text dort noch anpassbar)
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
@@ -5451,6 +5458,19 @@ function renderUrlaubMonat() {
   }));
 
   const maxChips = 6;
+  // Namen auf die Urlaubstage verteilen (wie im Terminkalender): bei längerem
+  // Urlaub stand der Name sonst nur am ersten Tag und weiter hinten wusste man
+  // nicht mehr, wer da eigentlich weg ist.
+  const urlaubText = new Map();
+  weeks.forEach((week) => {
+    events.forEach((t, ti) => {
+      const seg = week.filter((iso) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
+      if (!seg.length) return;
+      const teile = glasCalTextAufTage(t.label || "", seg.length, glasCalZeichenProChip());
+      seg.forEach((iso, i) => urlaubText.set(ti + "|" + iso, teile[i]));
+    });
+  });
+
   const cellsHtml = weeks.flat().map((iso) => {
     const d = parseInt(iso.slice(8, 10), 10);
     const isToday = iso === todayIso;
@@ -5458,7 +5478,8 @@ function renderUrlaubMonat() {
     const dayEvents = events.filter((t) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
     const chips = dayEvents.slice(0, maxChips).map((t) => {
       const contLeft = t.datum < iso, contRight = (t.datum_bis || t.datum) > iso;
-      return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}" style="background:${t.bg}; color:${t.fg};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+      const teil = urlaubText.get(events.indexOf(t) + "|" + iso);
+      return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${!contLeft && !contRight ? " chip-start" : ""}${teil ? "" : " chip-leer"}" style="background:${t.bg}; color:${t.fg};">${teil ? escapeHtml(teil) : "&nbsp;"}</div>`;
     }).join("");
     const more = dayEvents.length > maxChips ? `<div class="glas-cal-more">+${dayEvents.length - maxChips}</div>` : "";
     return `
@@ -6600,6 +6621,13 @@ function renderKalenderMonat() {
   // Mehrtägige Balken reservieren ihre Lane inkl. 1 Tag Rand links/rechts - sonst dockt
   // direkt daneben ein (womöglich gleichfarbiger) Einzeltermin in derselben Zeile an und
   // wirkt wie ein abgerissenes Stück des Balkens.
+  /* ---- Beschriftung mehrtägiger Balken ----
+     Bisher stand der Name NUR am ersten Tag: bei einem Balken über zwei Wochen
+     wusste man weiter hinten nicht mehr, worum es geht - und lange Namen waren
+     schon am ersten Tag abgeschnitten. Jetzt wird der Text je Kalenderwoche auf
+     die Tage des Balkens verteilt und dabei mittig gesetzt. */
+  glasCalChipText = new Map();
+
   const laneEnds = []; // laneEnds[l] = belegt-bis-Datum der Lane l
   events
     .map((e, i) => {
@@ -6617,6 +6645,16 @@ function renderKalenderMonat() {
       it.e._lane = lane;
       laneEnds[lane] = it.en;
     });
+
+  // Je Woche und Termin: das sichtbare Segment ermitteln und den Text darauf verteilen
+  weeks.forEach((week) => {
+    events.forEach((t, ti) => {
+      const seg = week.filter((iso) => iso >= t.datum && iso <= (t.datum_bis || t.datum));
+      if (!seg.length) return;
+      const teile = glasCalTextAufTage(t.label || "", seg.length, glasCalZeichenProChip());
+      seg.forEach((iso, i) => glasCalChipText.set(ti + "|" + iso, teile[i]));
+    });
+  });
 
   const cellsHtml = weeks
     .map((week) => `<div class="glas-cal-kw">${glasIsoWeek(week[0])}</div>` + week.map((iso) => {
@@ -6637,7 +6675,11 @@ function renderKalenderMonat() {
             if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
             const contLeft = t.datum < iso;
             const contRight = (t.datum_bis || t.datum) > iso;
-            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${contLeft ? "&nbsp;" : escapeHtml(t.label)}</div>`;
+            const teil = glasCalChipText.get(events.indexOf(t) + "|" + iso);
+            const txt = teil ? escapeHtml(teil) : "&nbsp;";
+            // Leere Chips dürfen KEINE Durchstreichung bekommen - bei erledigten
+            // Touren sah das Leerzeichen sonst aus wie ein kleiner Strich.
+            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${!contLeft && !contRight ? " chip-start" : ""}${teil ? "" : " chip-leer"}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${txt}</div>`;
           }).join("")
         : "";
       const more = overflow ? `<div class="glas-cal-more">+${overflow}</div>` : "";

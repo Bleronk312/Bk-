@@ -366,7 +366,11 @@ label {
   line-height: 1.2;
   border-radius: 3px;
   padding: 1px 3px;
-  margin: 0 1px;
+  /* Der seitliche Rand steckt in einer Variablen: die Desktop-Regel ändert nur
+     die Variable, damit die "läuft weiter"-Regeln darunter wirksam bleiben.
+     Sonst brechen mehrtägige Balken auf dem Desktop auseinander. */
+  --chip-rand: 1px;
+  margin: 0 var(--chip-rand);
   background: var(--c, var(--blue));
   color: #fff;
   white-space: nowrap;
@@ -377,8 +381,15 @@ label {
 .glas-cal-chip-spacer { visibility: hidden; }
 /* Erledigte Touren: klar als fertig erkennbar (grün + leicht durchgestrichen) */
 .glas-cal-chip.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
-.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; color: transparent; }
+.glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
 .glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+/* Fortsetzungstage tragen jetzt selbst Textstücke (siehe glasCalTextAufTage) und
+   werden mittig gesetzt - so liest sich der Name über den ganzen Balken. */
+.glas-cal-chip { text-align: center; }
+.glas-cal-chip.chip-start { text-align: left; }
+/* Chip ohne Textstück: nie durchstreichen - der Strich auf dem Leerzeichen sah
+   bei erledigten Touren aus wie ein kleiner Bindestrich mitten im Balken. */
+.glas-cal-chip.chip-leer { text-decoration: none !important; }
 /* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
 .glas-cal-chip.is-urlaub {
   background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
@@ -2480,7 +2491,7 @@ html.app-mode body.glas-cal-pur .app-sheet-content {
   .glas-fullwidth .glas-cal-daynum { width: 25px; height: 25px; font-size: 13.5px; }
   .glas-fullwidth .glas-cal-chip {
     font-size: 11.5px; letter-spacing: 0; line-height: 1.35;
-    border-radius: 5px; padding: 2px 6px; margin: 0 3px;
+    border-radius: 5px; padding: 2px 6px; --chip-rand: 3px;
   }
   .glas-fullwidth .glas-cal-dow > div { font-size: 13px; padding: 6px 0; }
   .glas-fullwidth .glas-cal-kw { font-size: 10.5px; }
