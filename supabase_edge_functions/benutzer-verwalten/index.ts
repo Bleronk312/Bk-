@@ -84,10 +84,15 @@ Deno.serve(async (req) => {
   const rolle = eingabe.rolle === "admin" ? "admin" : "mitarbeiter";
 
   // Zu welchem Konto gehört dieser Mitarbeiter?
+  // Bewusst "*" statt einer festen Spaltenliste: die Tabelle ist über viele
+  // Zusatz-Skripte gewachsen und sieht nicht in jeder Installation gleich aus.
+  // Eine einzige fehlende Spalte würde sonst die ganze Abfrage scheitern lassen.
   async function kontoVon(id: string) {
-    const { data } = await admin.from("glas_mitarbeiter")
-      .select("id, name, username, auth_user_id").eq("id", id).maybeSingle();
-    return data;
+    const { data, error } = await admin.from("glas_mitarbeiter")
+      .select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error("Mitarbeiter lesen: " + error.message);
+    // deno-lint-ignore no-explicit-any
+    return data as Record<string, any> | null;
   }
 
   try {
@@ -188,18 +193,30 @@ Deno.serve(async (req) => {
 
       // ---- Übersicht für die Admin-Oberfläche ------------------------------
       case "liste": {
-        const { data } = await admin.from("glas_mitarbeiter")
-          .select("id, name, username, auth_user_id, login_aktiv, pw_muss_wechsel").order("name");
-        const { data: konten } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        // "*" statt fester Spalten, siehe kontoVon(). Zurückgegeben wird
+        // trotzdem nur das Nötige — pass_klar und pass_hash haben im Browser
+        // nichts verloren, auch nicht beim Admin.
+        const { data, error } = await admin.from("glas_mitarbeiter").select("*").order("name");
+        if (error) return antwort({ error: "Mitarbeiterliste: " + error.message }, 500);
+
+        const { data: konten, error: kontenFehler } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        if (kontenFehler) return antwort({ error: "Konten lesen: " + kontenFehler.message }, 500);
+
         const rollen = new Map(
           (konten?.users || []).map((u) => [u.id, String((u.app_metadata as Record<string, unknown>)?.geko_rolle || "mitarbeiter")]),
         );
+        const liste = (data || []) as Record<string, unknown>[];
         return antwort({
           ok: true,
-          mitarbeiter: (data || []).map((m) => ({
-            ...m,
+          gesamt: liste.length,
+          mitarbeiter: liste.map((m) => ({
+            id: m.id,
+            name: m.name ?? "",
+            username: m.username ?? null,
+            login_aktiv: m.login_aktiv ?? true,
+            pw_muss_wechsel: m.pw_muss_wechsel ?? false,
             hat_konto: !!m.auth_user_id,
-            rolle: m.auth_user_id ? rollen.get(m.auth_user_id) || "mitarbeiter" : null,
+            rolle: m.auth_user_id ? rollen.get(m.auth_user_id as string) || "mitarbeiter" : null,
           })),
         });
       }
@@ -209,6 +226,6 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.error("benutzer-verwalten:", e);
-    return antwort({ error: "Unerwarteter Fehler." }, 500);
+    return antwort({ error: (e as Error)?.message || "Unerwarteter Fehler." }, 500);
   }
 });

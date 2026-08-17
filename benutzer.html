@@ -119,7 +119,12 @@ async function laden() {
     + (ohne ? '<div class="karte hinweis">' + ohne + ' Mitarbeiter haben noch keinen Zugang. '
         + 'Erst wenn du einen anlegst, kann sich der Betreffende anmelden.</div>' : '')
     + leute.map(karte).join("")
-    + (leute.length ? "" : '<div class="karte hinweis">Keine Mitarbeiter gefunden.</div>');
+    + (leute.length ? "" : '<div class="karte"><b>Die Tabelle glas_mitarbeiter ist leer.</b>'
+        + '<p class="hinweis">Die Verwaltung hat geantwortet, aber es steht kein einziger '
+        + 'Mitarbeiter darin. Prüf das im Supabase-SQL-Editor mit:</p>'
+        + '<div class="zettel"><code>select count(*) from glas_mitarbeiter;</code></div>'
+        + '<p class="hinweis">Kommt dort eine Zahl größer 0, sag mir Bescheid — dann liegt es '
+        + 'nicht an den Daten, sondern an der Abfrage.</p></div>');
 
   document.getElementById("raus").onclick = async () => { await gekoAbmelden(); location.reload(); };
   leute.forEach(m => {

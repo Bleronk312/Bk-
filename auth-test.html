@@ -175,6 +175,15 @@ document.getElementById("btn3").onclick = async () => {
   if (status === 200 && inhalt?.ok) {
     const liste = inhalt.mitarbeiter || [];
     const mitKonto = liste.filter(m => m.hat_konto).length;
+    // Eine leere Liste ist KEIN bestandener Test. Die Verwaltung antwortet zwar,
+    // aber ohne Mitarbeiter kann man keine Zugänge anlegen - das muss auffallen,
+    // statt als grüner Haken durchzugehen.
+    if (!liste.length) {
+      zeige("erg3", "schlecht", "<strong>Die Verwaltung antwortet, aber die Liste ist leer.</strong> "
+        + "Es steht kein Mitarbeiter in <code>glas_mitarbeiter</code>. Prüf im SQL-Editor:"
+        + "<pre>select count(*) from glas_mitarbeiter;</pre>");
+      return;
+    }
     zeige("erg3", "gut", "<strong>✓ Bestanden.</strong> Die Verwaltung antwortet dir. "
       + "Gefunden: <strong>" + liste.length + " Mitarbeiter</strong>, davon <strong>"
       + mitKonto + "</strong> mit Anmeldekonto."
