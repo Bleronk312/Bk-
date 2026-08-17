@@ -56,30 +56,5 @@ select cron.schedule(
 );
 
 
--- ---------------------------------------------------------------------------
--- Nebenbefund: der bestehende 8-Uhr-Zeitplan steht falsch
--- ---------------------------------------------------------------------------
--- In supabase_cron_setup.sql steht '6 * * *' - das sind nur VIER Felder.
--- Ein Zeitplan braucht fünf (Minute Stunde Tag Monat Wochentag). Gemeint war
--- 6:00 UTC, also '0 6 * * *'.
--- Prüf mit der Abfrage unten, was bei dir eingetragen ist. Steht dort etwas
--- anderes als '0 6 * * *', dann diesen Block ausführen:
-
--- select cron.unschedule('daily-termin-reminders');
--- select cron.schedule(
---   'daily-termin-reminders',
---   '0 6 * * *',
---   $$
---   select net.http_post(
---     url := 'https://DEIN-PROJEKT.supabase.co/functions/v1/daily-reminders',
---     headers := jsonb_build_object(
---       'Content-Type', 'application/json',
---       'Authorization', 'Bearer DEIN-ANON-KEY'
---     ),
---     body := '{}'::jsonb
---   );
---   $$
--- );
-
 -- Kontrolle: alle geplanten Aufgaben
 select jobname, schedule, active from cron.job order by jobname;
