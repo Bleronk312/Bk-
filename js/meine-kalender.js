@@ -28,6 +28,54 @@ let oneKalFehler = "";
 
 function oneKalHeute() { return glasIsoFromDate(new Date()); }
 
+/* ---- Feiertage (NRW) ----
+   Osterabhängige Feiertage über die Gaußsche Osterformel, der Rest steht fest.
+   Wird je Jahr einmal berechnet und gemerkt. */
+const oneFeiertageCache = {};
+
+function oneOstersonntag(jahr) {
+  const a = jahr % 19, b = Math.floor(jahr / 100), c = jahr % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const monat = Math.floor((h + l - 7 * m + 114) / 31);   // 3 = März, 4 = April
+  const tag = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(jahr, monat - 1, tag);
+}
+
+function oneFeiertage(jahr) {
+  if (oneFeiertageCache[jahr]) return oneFeiertageCache[jahr];
+  const o = oneOstersonntag(jahr);
+  const plus = (n) => glasIsoFromDate(new Date(o.getFullYear(), o.getMonth(), o.getDate() + n));
+  const fest = (mo, tg) => `${jahr}-${String(mo).padStart(2, "0")}-${String(tg).padStart(2, "0")}`;
+  const map = {
+    [fest(1, 1)]: "Neujahr",
+    [plus(-2)]: "Karfreitag",
+    [plus(0)]: "Ostersonntag",
+    [plus(1)]: "Ostermontag",
+    [fest(5, 1)]: "Tag der Arbeit",
+    [plus(39)]: "Christi Himmelfahrt",
+    [plus(49)]: "Pfingstsonntag",
+    [plus(50)]: "Pfingstmontag",
+    [plus(60)]: "Fronleichnam",
+    [fest(10, 3)]: "Tag der Deutschen Einheit",
+    [fest(11, 1)]: "Allerheiligen",
+    [fest(12, 25)]: "1. Weihnachtstag",
+    [fest(12, 26)]: "2. Weihnachtstag",
+  };
+  oneFeiertageCache[jahr] = map;
+  return map;
+}
+
+// Name des Feiertags oder "" - gilt für Nordrhein-Westfalen (Bochum).
+function oneFeiertagName(iso) {
+  const jahr = parseInt(String(iso).slice(0, 4), 10);
+  if (!jahr) return "";
+  return oneFeiertage(jahr)[iso] || "";
+}
+
 function oneKalMonatJetzt() {
   if (oneKalMonat) return oneKalMonat;
   const d = new Date();
@@ -39,6 +87,54 @@ function oneKalBlaettern(schritt) {
   const d = new Date(m.jahr, m.monat + schritt, 1);
   oneKalMonat = { jahr: d.getFullYear(), monat: d.getMonth() };
   renderOne();
+  // Rundgänge und Lager-Einteilungen werden für den ANGEZEIGTEN Monat aufgelöst -
+  // nach dem Blättern also still nachladen. Bewusst ohne oneKalTermine=null: die
+  // alten Einträge bleiben stehen, bis die neuen da sind (kein leeres Aufblitzen).
+  oneKalLeiseNachladen();
+}
+
+// Lädt neu, ohne die Ansicht zwischendurch zu leeren.
+function oneKalLeiseNachladen() {
+  if (oneKalLaeuft) return;
+  oneKalLaeuft = true;
+  oneKalLaden()
+    .catch(() => {})
+    .finally(() => { oneKalLaeuft = false; if (oneScreen === "kalender") renderOne(); });
+}
+
+// Seitwärts wischen blättert den Monat. Bewusst mit Richtungssperre: erst wenn
+// die Geste eindeutig waagerecht ist, wird sie als Blättern gewertet - sonst
+// bliebe das normale Hoch/Runter-Scrollen (und Pull-to-Refresh) hängen.
+function oneKalWischAktivieren() {
+  const el = document.getElementById("okalRaster");
+  if (!el || el.dataset.wisch) return;
+  el.dataset.wisch = "1";
+  let x0 = null, y0 = null, richtung = null;
+  el.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; richtung = null;
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    if (x0 === null) return;
+    const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+    if (!richtung && (Math.abs(dx) > 12 || Math.abs(dy) > 12)) {
+      // Deutlich waagerecht (mehr als das 1.4-fache) = blättern, sonst scrollen
+      richtung = Math.abs(dx) > Math.abs(dy) * 1.4 ? "x" : "y";
+    }
+    if (richtung === "x") {
+      el.style.transform = `translateX(${Math.max(-70, Math.min(70, dx * 0.35))}px)`;
+      el.style.opacity = String(1 - Math.min(Math.abs(dx) / 320, 0.4));
+    }
+  }, { passive: true });
+  el.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = (e.changedTouches[0] || {}).clientX - x0;
+    el.style.transition = "transform .18s ease, opacity .18s ease";
+    el.style.transform = ""; el.style.opacity = "";
+    setTimeout(() => { el.style.transition = ""; }, 200);
+    if (richtung === "x" && Math.abs(dx) > 55) oneKalBlaettern(dx < 0 ? 1 : -1);
+    x0 = null; richtung = null;
+  }, { passive: true });
 }
 
 // Verhindert, dass eine einzelne hängende Abfrage den ganzen Kalender blockiert:
@@ -295,8 +391,14 @@ function renderOneKalender() {
     // Erledigte Einträge bekommen im Raster den grauen Punkt - so sieht man auf einen
     // Blick, welche Tage schon abgehakt sind.
     const arten = [...new Set(eintraege.map((e) => (e.fertig ? "erledigt" : e.art)))];
+    // Sonntage und Feiertage heben sich ab - sonst zählt man im Raster mit dem
+    // Finger nach, ob der Termin auf einen freien Tag fällt.
+    const wt = new Date(m.jahr, m.monat, tag).getDay();
+    const feiertag = oneFeiertagName(iso);
+    const frei = wt === 0 || !!feiertag;
     zellen += `
-      <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}${iso === oneKalTagGewaehlt ? " gewaehlt" : ""}" onclick="oneKalTagWaehlen('${iso}')">
+      <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}${iso === oneKalTagGewaehlt ? " gewaehlt" : ""}${frei ? " frei" : ""}${feiertag ? " feiertag" : ""}"
+        onclick="oneKalTagWaehlen('${iso}')"${feiertag ? ` title="${escapeHtml(feiertag)}"` : ""}>
         <span class="okal-num">${tag}</span>
         <span class="okal-punkte">${arten.slice(0, 4).map((a) => `<i style="background:${ONE_KAL_FARBEN[a]}"></i>`).join("")}</span>
       </button>`;
@@ -306,6 +408,10 @@ function renderOneKalender() {
   // Sonst stünde derselbe Rundgang 20x untereinander und würde Touren, Graffiti-Termine
   // und Urlaub verdrängen. Im Monatsraster bleiben trotzdem ALLE Tage markiert, und beim
   // Antippen eines Tages sieht man weiterhin alles, was an dem Tag ansteht.
+  const gewaehlterFeiertag = oneKalTagGewaehlt ? oneFeiertagName(oneKalTagGewaehlt) : "";
+  const feiertagHinweis = gewaehlterFeiertag
+    ? `<p class="okal-feiertag-hinweis">🎉 ${escapeHtml(gewaehlterFeiertag)}</p>` : "";
+
   const gesehen = new Set();
   const kommend = (oneKalTermine || [])
     .filter((e) => (e.bis || e.von) >= heute)
@@ -325,8 +431,9 @@ function renderOneKalender() {
       <button class="btn btn-sm" onclick="oneKalBlaettern(1)" aria-label="Nächster Monat">›</button>
     </div>
     ${oneKalFehler ? `<p class="muted" style="margin:6px 2px; font-size:12.5px;">⚠️ ${escapeHtml(oneKalFehler)}</p>` : ""}
-    <div class="okal-wochentage">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => `<span>${w}</span>`).join("")}</div>
-    <div class="okal-raster">${zellen}</div>
+    <div class="okal-wochentage">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w, i) => `<span${i === 6 ? ` class="frei"` : ""}>${w}</span>`).join("")}</div>
+    <div class="okal-raster" id="okalRaster">${zellen}</div>
+    ${feiertagHinweis}
 
     ${renderOneKalLegende()}
 
@@ -334,7 +441,7 @@ function renderOneKalender() {
     ${renderOneUrlaubForm()}
     ${renderOneMeineAntraege()}
 
-    <p class="one-label">${oneKalTagGewaehlt ? "AM " + formatGlasDate(oneKalTagGewaehlt) : "KOMMENDE TERMINE"}</p>
+    <p class="one-label">${oneKalTagGewaehlt ? "AM " + oneLagerTagText(oneKalTagGewaehlt).toUpperCase() : "KOMMENDE TERMINE"}</p>
     ${oneKalListe(oneKalTagGewaehlt ? oneKalAmTag(oneKalTagGewaehlt) : kommend, !oneKalTagGewaehlt)}
     ${oneKalTagGewaehlt ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="oneKalTagGewaehlt=null; renderOne();">Alle kommenden zeigen</button>` : ""}`;
 }
@@ -415,12 +522,30 @@ function oneLagerNaechster() {
     .sort((a, b) => (a.datum === b.datum ? (a.uhrzeit || "").localeCompare(b.uhrzeit || "") : a.datum.localeCompare(b.datum)))[0] || null;
 }
 
-// "Heute" / "Morgen" statt eines nackten Datums - so liest es sich im Vorbeigehen.
+const ONE_WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+// Wie viele Tage liegt iso von heute entfernt? (negativ = Vergangenheit)
+function oneTageDifferenz(iso) {
+  const a = new Date(oneKalHeute() + "T12:00:00");
+  const b = new Date(iso + "T12:00:00");
+  return Math.round((b - a) / 86400000);
+}
+
+// So, wie man es auch sagen würde: "Heute", "Morgen", "am Dienstag" - und erst
+// wenn es weiter weg ist, ein Datum. Niemand rechnet gern ein Datum in einen
+// Wochentag um, wenn es um übermorgen geht.
 function oneLagerTagText(iso) {
-  const heute = oneKalHeute();
-  if (iso === heute) return "Heute";
-  if (iso === glasAddDaysIso(heute, 1)) return "Morgen";
-  return formatGlasDate(iso);
+  const d = oneTageDifferenz(iso);
+  if (d === 0) return "Heute";
+  if (d === 1) return "Morgen";
+  if (d === 2) return "Übermorgen";
+  const wt = ONE_WOCHENTAGE[new Date(iso + "T12:00:00").getDay()];
+  if (d > 2 && d <= 7) return wt;                       // diese Woche: nur der Tag
+  if (d > 7 && d <= 13) return "nächsten " + wt;        // nächste Woche
+  if (d === -1) return "Gestern";
+  if (d === -2) return "Vorgestern";
+  if (d < -2 && d >= -7) return "letzten " + wt;
+  return formatGlasDate(iso);                           // weiter weg: Datum
 }
 
 // Hat DIESER Mitarbeiter die Einteilung schon abgehakt?
@@ -503,12 +628,20 @@ function renderOneLager() {
 
   const zeile = (p, alt) => {
     const abw = oneLagerIstAbwesend(p);
+    const ok = oneLagerIstBestaetigt(p);
+    // Farbe = Status, nicht Dekoration: ROT solange nicht bestätigt (da muss noch
+    // was passieren), GRÜN sobald abgehakt, grau für Vergangenes.
+    const farbe = alt ? "" : abw ? " abw" : ok ? " gruen" : " rot";
     return `
-    <div class="one-lager-zeile${alt ? " alt" : ""}${abw ? " abw" : ""}">
+    <div class="one-lager-zeile${alt ? " alt" : ""}${farbe}">
       <span class="lz-zeit">${escapeHtml(p.uhrzeit || "?")}</span>
       <span class="lz-txt">
         <b>${escapeHtml(oneLagerTagText(p.datum))}</b>
-        <span>${abw ? `<b style="color:#b23a1e;">✗ Als „nicht da" vermerkt</b>` : p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
+        <span>${abw
+          ? `<b style="color:#b23a1e;">✗ Als „nicht da" vermerkt</b>`
+          : !alt && !ok
+            ? `<b style="color:#c2452a;">Noch nicht bestätigt</b>${p.notiz ? " · " + escapeHtml(p.notiz) : ""}`
+            : p.notiz ? escapeHtml(p.notiz) : "Im Lager sein"}</span>
       </span>
       ${alt || abw ? "" : oneLagerIstBestaetigt(p)
         ? `<span class="l-check ok" style="flex:none;">✓</span>`
@@ -788,9 +921,11 @@ function oneKalListe(eintraege, zusammengefasst) {
     const ziel = e.abgelaufen ? null : e.ziel;
     const mehrtaegig = e.bis && e.bis !== e.von;
     // Zusammengefasste Rundgänge zeigen den Rhythmus statt eines einzelnen Datums
+    // Nahe Termine als Wochentag ("Donnerstag"), erst weiter entfernte als Datum -
+    // niemand rechnet gern ein Datum in einen Wochentag um.
     const datum = (zusammengefasst && e.art === "checkin" && e.tage)
       ? `${oneKalTageText(e.tage)} · immer wieder`
-      : mehrtaegig ? `${formatGlasDate(e.von)} – ${formatGlasDate(e.bis)}` : formatGlasDate(e.von);
+      : mehrtaegig ? `${oneLagerTagText(e.von)} – ${oneLagerTagText(e.bis)}` : oneLagerTagText(e.von);
     const inner = `
       <span class="okal-strich" style="background:${e.fertig ? ONE_KAL_FARBEN.erledigt : ONE_KAL_FARBEN[e.art]}"></span>
       <span style="flex:1; min-width:0;">

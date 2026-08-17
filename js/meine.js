@@ -28,6 +28,25 @@ let oneScreen = "home"; // "home" | "kalender" | "urlaub" | "menu" | "pw" | "pwZ
 
 function oneGoHome() { if (oneUser) { oneScreen = oneUser.pw_muss_wechsel ? "pwZwang" : "home"; renderOne(); } }
 
+// Weiche Aktualisierung fürs Runterziehen: nur die Daten neu holen statt die
+// ganze Seite neu zu starten. Bildschirm und Scrollposition bleiben erhalten.
+window.gekoSoftRefresh = async function () {
+  if (!oneUser) return;
+  try { await oneEnsureLoggedIn(); } catch (e) {} // Freischaltungen mit auffrischen
+  const warten = [];
+  // Urlaubsanträge
+  oneMeineAntraege = null;
+  if (typeof oneLadeMeineAntraege === "function") warten.push(oneLadeMeineAntraege().catch(() => {}));
+  // Lager-Plan
+  if (typeof oneLagerLaden === "function") { oneLagerPlan = []; warten.push(oneLagerLaden().catch(() => {})); }
+  else oneLagerPlan = null;
+  // Kalender nur, wenn er gerade offen ist - sonst lädt er beim nächsten Öffnen
+  if (oneScreen === "kalender" && typeof oneKalLeiseNachladen === "function") oneKalLeiseNachladen();
+  else oneKalTermine = null;
+  await Promise.all(warten);
+  renderOne();
+};
+
 async function oneInit() {
   const ok = await oneEnsureLoggedIn();
   if (!ok) return; // Login-Screen läuft
@@ -176,7 +195,7 @@ function oneRenderTopbar() {
   let links = "";
   if (oneUser) {
     if (oneScreen === "home") {
-      links = `<button class="geko-navbtn" onclick="oneScreen='menu'; renderOne();">☰ Menü</button>`;
+      links = `<button class="geko-navbtn" onclick="oneMenuDropdown()">☰ Menü</button>`;
     } else if (oneScreen !== "pwZwang") {
       links = `<button class="geko-navbtn" onclick="oneGoHome()">‹ Zurück</button>
                <button class="geko-navbtn" onclick="oneGoHome()">🏠 Start</button>`;
@@ -228,7 +247,12 @@ function renderOne() {
   if (!view) return;
   oneRenderTopbar();
 
-  if (oneScreen === "kalender") { oneSetGreeting("Mein Kalender"); view.innerHTML = renderOneKalender(); return; }
+  if (oneScreen === "kalender") {
+    oneSetGreeting("Mein Kalender");
+    view.innerHTML = renderOneKalender();
+    if (typeof oneKalWischAktivieren === "function") oneKalWischAktivieren();
+    return;
+  }
   if (oneScreen === "urlaub") { oneSetGreeting("Meine Urlaubsanträge"); view.innerHTML = renderOneUrlaubHistorie(); return; }
   if (oneScreen === "lager") { oneSetGreeting("Lager-Plan"); view.innerHTML = renderOneLager(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
@@ -280,7 +304,67 @@ function renderOne() {
     </div>`;
 }
 
-/* ---------------- Menü (Einstellungen) ---------------- */
+/* ---------------- Menü ----------------
+   Zwei Stufen: ein kleines Dropdown mit dem, was man täglich braucht - und
+   dahinter "Mehr Einstellungen" mit allem übrigen. So steht man nicht bei
+   jedem Antippen vor einer vollen Seite. */
+
+function oneMenuDropdown() {
+  if (document.getElementById("oneDrop")) { oneMenuSchliessen(); return; }
+  const el = document.createElement("div");
+  el.id = "oneDrop";
+  el.className = "one-drop-ov";
+  el.onclick = (e) => { if (e.target === el) oneMenuSchliessen(); };
+  el.innerHTML = `
+    <div class="one-drop">
+      <div class="one-drop-kopf">
+        <b>${escapeHtml(oneUser.name || oneUser.username || "")}</b>
+        <span>${escapeHtml(oneUser.username || "")}</span>
+      </div>
+      <button class="one-drop-row" onclick="oneMenuGeh('urlaub')">
+        <span class="d-ico">🏖️</span><span class="d-txt">Meine Urlaubsanträge</span><span class="d-pfeil">›</span>
+      </button>
+      <button class="one-drop-row" onclick="oneMenuGeh('kalender')">
+        <span class="d-ico">📅</span><span class="d-txt">Mein Kalender</span><span class="d-pfeil">›</span>
+      </button>
+      <button class="one-drop-row" onclick="oneMenuGeh('pw')">
+        <span class="d-ico">🔑</span><span class="d-txt">Passwort ändern</span><span class="d-pfeil">›</span>
+      </button>
+      <div class="one-drop-trenner"></div>
+      <button class="one-drop-row" onclick="oneMenuGeh('menu')">
+        <span class="d-ico">⚙️</span><span class="d-txt">Mehr Einstellungen</span><span class="d-pfeil">›</span>
+      </button>
+      <button class="one-drop-row abmelden" onclick="oneMenuSchliessen(); oneLogout();">
+        <span class="d-ico">🚪</span><span class="d-txt">Abmelden</span>
+      </button>
+    </div>`;
+  document.body.appendChild(el);
+  if (typeof window.gekoI18nApply === "function") window.gekoI18nApply(); // ggf. albanisch
+  requestAnimationFrame(() => el.classList.add("auf"));
+  // Zurück-Taste des Handys schließt erst das Menü, statt die Seite zu verlassen
+  try { history.pushState({ oneDrop: 1 }, ""); } catch (e) {}
+  window.addEventListener("popstate", oneMenuPop);
+}
+
+function oneMenuPop() { oneMenuSchliessen(true); }
+
+function oneMenuSchliessen(vonPopstate) {
+  const el = document.getElementById("oneDrop");
+  window.removeEventListener("popstate", oneMenuPop);
+  if (!el) return;
+  el.classList.remove("auf");
+  setTimeout(() => el.remove(), 180);
+  // Den eigenen History-Eintrag wieder abräumen (außer wir kamen GERADE von dort)
+  if (!vonPopstate) { try { if (history.state && history.state.oneDrop) history.back(); } catch (e) {} }
+}
+
+function oneMenuGeh(ziel) {
+  oneMenuSchliessen();
+  oneScreen = ziel;
+  renderOne();
+}
+
+/* ---------------- Mehr Einstellungen (ganze Seite) ---------------- */
 
 function renderOneMenu() {
   setTimeout(oneUpdatePushStatus, 60);
@@ -292,18 +376,6 @@ function renderOneMenu() {
     </div>
 
     <p class="one-label">EINSTELLUNGEN</p>
-
-    <button class="one-menu-row" onclick="oneScreen='urlaub'; renderOne();">
-      <span class="m-ico">🏖️</span>
-      <span style="flex:1;"><b>Meine Urlaubsanträge</b><span>Alle Anträge – auch vergangene</span></span>
-      <span class="m-pfeil">›</span>
-    </button>
-
-    <button class="one-menu-row" onclick="oneScreen='pw'; renderOne();">
-      <span class="m-ico">🔑</span>
-      <span style="flex:1;"><b>Passwort ändern</b><span>Nur du kennst es danach</span></span>
-      <span class="m-pfeil">›</span>
-    </button>
 
     <div class="one-menu-row" style="cursor:default; align-items:flex-start;">
       <span class="m-ico">🔔</span>
@@ -346,7 +418,13 @@ function renderOneMenu() {
       <span class="m-pfeil">›</span>
     </button>
 
-    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One · v142</p>`;
+    <button class="one-menu-row" onclick="oneScreen='pw'; renderOne();">
+      <span class="m-ico">🔑</span>
+      <span style="flex:1;"><b>Passwort ändern</b><span>Nur du kennst es danach</span></span>
+      <span class="m-pfeil">›</span>
+    </button>
+
+    <p class="muted" style="text-align:center; margin:18px 0 0; font-size:11.5px;">GEKO One</p>`;
 }
 
 /* ---------------- Sprache (gilt für alle MA-Apps) ---------------- */

@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO One" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO One - Meine Übersicht</title>
-<link rel="stylesheet" href="css/style.css?v=148" />
+<link rel="stylesheet" href="css/style.css?v=149" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
@@ -80,8 +80,18 @@ html.dark .l-check.ok { border-color: #16b25c; background: #16b25c; color: #fff;
 .one-lager-zeile .lz-txt span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .one-lager-zeile.alt { border-left-color: var(--border); opacity: .68; }
 .one-lager-zeile.alt .lz-zeit { color: var(--text-secondary); }
-.one-lager-zeile.abw { border-left-color: #b23a1e; }
+/* Farbe = Status: rot = noch nicht bestätigt, grün = bestätigt, rot+durchgestrichen
+   = vom Büro als "nicht da" vermerkt. Der Balken links ist breiter, damit der
+   Unterschied auch im Vorbeischauen auffällt. */
+.one-lager-zeile.rot { border-left: 5px solid #d0654a; background: rgba(208, 101, 74, .05); }
+.one-lager-zeile.rot .lz-zeit { color: #c2452a; }
+.one-lager-zeile.gruen { border-left: 5px solid #12a150; }
+.one-lager-zeile.gruen .lz-zeit { color: #0e8443; }
+.one-lager-zeile.abw { border-left: 5px solid #b23a1e; }
 .one-lager-zeile.abw .lz-zeit { color: var(--text-secondary); text-decoration: line-through; }
+html.dark .one-lager-zeile.rot { background: rgba(208, 101, 74, .1); }
+html.dark .one-lager-zeile.rot .lz-zeit { color: #e0795e; }
+html.dark .one-lager-zeile.gruen .lz-zeit { color: #35c97e; }
 
 @keyframes oneRein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes oneReinHalb { from { opacity: 0; transform: translateY(10px); } to { opacity: .62; transform: none; } }
@@ -133,6 +143,32 @@ html.dark .one-info.schlecht { background: #341c16; border-color: #a24b33; }
   border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
 .one-seg button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
 
+/* Menü-Dropdown: klein, oben links unter dem Menü-Knopf. Was man täglich braucht -
+   alles andere liegt dahinter unter "Mehr Einstellungen". */
+.one-drop-ov { position: fixed; inset: 0; z-index: 900; background: rgba(12, 22, 36, 0);
+  transition: background .18s ease; }
+.one-drop-ov.auf { background: rgba(12, 22, 36, .32); }
+.one-drop { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 12px;
+  width: min(268px, calc(100vw - 24px)); background: var(--card);
+  border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 14px 40px rgba(10, 24, 42, .28);
+  transform: translateY(-8px) scale(.97); opacity: 0;
+  transition: transform .18s cubic-bezier(.2,.9,.3,1), opacity .18s ease;
+  transform-origin: top left; }
+.one-drop-ov.auf .one-drop { transform: none; opacity: 1; }
+.one-drop-kopf { padding: 13px 15px 11px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.one-drop-kopf b { display: block; font-size: 14px; color: var(--text); }
+.one-drop-kopf span { display: block; font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+.one-drop-row { display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 13px 15px; border: none; background: transparent; font-family: inherit;
+  font-size: 14.5px; color: var(--text); text-align: left; cursor: pointer; }
+.one-drop-row:active { background: var(--bg); }
+.one-drop-row .d-ico { flex: none; font-size: 17px; width: 22px; text-align: center; }
+.one-drop-row .d-txt { flex: 1; min-width: 0; font-weight: 600; }
+.one-drop-row .d-pfeil { flex: none; color: var(--text-secondary); font-size: 17px; }
+.one-drop-row.abmelden .d-txt { color: var(--danger); }
+.one-drop-trenner { height: 1px; background: var(--border); margin: 4px 0; }
+
 /* Kalender */
 .okal-kopf { display: flex; align-items: center; gap: 8px; margin: 8px 0 12px; }
 .okal-wochentage { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 5px; }
@@ -156,6 +192,19 @@ html.dark .one-info.schlecht { background: #341c16; border-color: #a24b33; }
 /* Tage mit Terminen bekommen zusätzlich einen leichten Farbton */
 .okal-tag.hat { background: var(--blue-050, rgba(22,104,184,.06)); border-color: rgba(22,104,184,.22); }
 html.dark .okal-tag.hat { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.14); }
+/* Sonntage und Feiertage: getönt und rot beschriftet - man erkennt sofort,
+   ob ein Termin auf einen freien Tag fällt. */
+.okal-tag.frei { background: rgba(200, 60, 40, .05); border-color: rgba(200, 60, 40, .2); }
+.okal-tag.frei .okal-num { color: #c2452a; }
+.okal-tag.feiertag { background: rgba(200, 60, 40, .1); }
+.okal-tag.feiertag .okal-num { font-weight: 800; }
+.okal-tag.heute.frei, .okal-tag.gewaehlt.frei { background: var(--card); }
+.okal-wochentage span.frei { color: #c2452a; }
+html.dark .okal-tag.frei { background: rgba(224, 121, 94, .09); border-color: rgba(224, 121, 94, .22); }
+html.dark .okal-tag.frei .okal-num, html.dark .okal-wochentage span.frei { color: #e0795e; }
+.okal-feiertag-hinweis { margin: 10px 2px 0; font-size: 12.5px; font-weight: 700; color: #c2452a; }
+html.dark .okal-feiertag-hinweis { color: #e0795e; }
+
 .okal-legende { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
 .okal-legende span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); font-weight: 500; }
 .okal-legende i { width: 10px; height: 10px; border-radius: 50%; display: block; }
@@ -187,16 +236,17 @@ html.dark .okal-tag.hat { background: rgba(255,255,255,.05); border-color: rgba(
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=148"></script>
-  <script src="js/fehler.js?v=148"></script>
-  <script src="js/logo-asset.js?v=148"></script>
-  <script src="js/supabase-client.js?v=148"></script>
-  <script src="js/app-shared.js?v=148"></script>
-  <script src="js/glas-shared.js?v=148"></script>
-  <script src="js/push.js?v=148"></script>
+  <script src="js/config.js?v=149"></script>
+  <script src="js/fehler.js?v=149"></script>
+  <script src="js/logo-asset.js?v=149"></script>
+  <script src="js/pull-refresh.js?v=149"></script>
+  <script src="js/supabase-client.js?v=149"></script>
+  <script src="js/app-shared.js?v=149"></script>
+  <script src="js/glas-shared.js?v=149"></script>
+  <script src="js/push.js?v=149"></script>
   <script src="js/meine-kalender.js?v=8"></script>
   <!-- Übersetzung (Albanisch) - legt sich über das gerenderte Deutsch, siehe ma-i18n.js -->
-  <script src="js/ma-i18n.js?v=148"></script>
+  <script src="js/ma-i18n.js?v=149"></script>
   <script src="js/meine.js?v=5"></script>
 </body>
 </html>

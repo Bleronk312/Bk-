@@ -158,6 +158,23 @@
     "Keine Verbindung – bitte später erneut abhaken": "S'ka lidhje – provo ta konfirmosh më vonë",
     "✗ Als „nicht da\" vermerkt": "✗ Shënuar si „nuk ishte aty\"",
     "Nicht da gewesen (Vermerk vom Büro)": "Nuk ishe aty (shënim i zyrës)",
+    "Noch nicht bestätigt": "Ende e pakonfirmuar",
+    "Übermorgen": "Pasnesër",
+    "Gestern": "Dje",
+    "Vorgestern": "Pardje",
+    "Montag": "E hënë", "Dienstag": "E martë", "Mittwoch": "E mërkurë",
+    "Donnerstag": "E enjte", "Freitag": "E premte", "Samstag": "E shtunë", "Sonntag": "E diel",
+    "Mehr Einstellungen": "Më shumë cilësime",
+    "Meine Urlaubsanträge": "Kërkesat e mia për pushim",
+    "Alle Anträge – auch vergangene": "Të gjitha kërkesat – edhe të kaluarat",
+    "Neujahr": "Viti i Ri", "Karfreitag": "E Premtja e Madhe",
+    "Ostersonntag": "E Diela e Pashkëve", "Ostermontag": "E Hëna e Pashkëve",
+    "Tag der Arbeit": "Dita e Punës", "Christi Himmelfahrt": "Ngjitja e Krishtit",
+    "Pfingstsonntag": "Rrëshajët", "Pfingstmontag": "E Hëna e Rrëshajëve",
+    "Fronleichmam": "Corpus Christi", "Fronleichnam": "Corpus Christi",
+    "Tag der Deutschen Einheit": "Dita e Bashkimit Gjerman",
+    "Allerheiligen": "Të gjithë Shenjtorët",
+    "1. Weihnachtstag": "Krishtlindje (dita 1)", "2. Weihnachtstag": "Krishtlindje (dita 2)",
     "Wann du im Lager sein sollst": "Kur duhet të jesh në depo",
     "Nichts eingeteilt": "Asgjë e caktuar",
     "DEMNÄCHST": "SË SHPEJTI",
@@ -218,6 +235,8 @@
     [/^(\d{2}\.\d{2}\.\d{4}) um (\d{1,2}:\d{2}) Uhr im Lager$/, (m, d, z) => `${d} në orën ${z} në depo`],
     [/^Im Lager sein · (.+)$/, (m, a) => "Të jesh në depo · " + a],
     [/^✓ Bestätigt · (.+)$/, (m, a) => "✓ Konfirmuar · " + a],
+    [/^nächsten (Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)$/, (m, t) => "të " + t],
+    [/^letzten (Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)$/, (m, t) => "të kaluarën " + t],
     [/^Heute um (\d{1,2}:\d{2}) Uhr$/, (m, z) => `Sot në orën ${z}`],
     [/^Morgen um (\d{1,2}:\d{2}) Uhr$/, (m, z) => `Nesër në orën ${z}`],
     [/^(\d{2}\.\d{2}\.\d{4}) um (\d{1,2}:\d{2}) Uhr$/, (m, d, z) => `${d} në orën ${z}`],
@@ -281,6 +300,10 @@
     applying = true;
     try {
       const targets = [document.querySelector(".app-header"), document.getElementById("view"), document.getElementById("toast")];
+      // Overlays (Menü-Dropdown, Sheets, Modale) hängen direkt am body und lägen
+      // sonst außerhalb der festen Ziele - sie blieben deutsch.
+      document.body.querySelectorAll(":scope > .one-drop-ov, :scope > .modal-overlay, :scope > #glasModalHost")
+        .forEach((el) => targets.push(el));
       targets.forEach((t) => { if (t) { walkText(t); walkAttrs(t); } });
     } catch (e) { /* nie die App wegen Übersetzung crashen lassen */ }
     applying = false;
@@ -302,8 +325,14 @@
       [document.querySelector(".app-header"), document.getElementById("view"), document.getElementById("toast")]
         .filter(Boolean)
         .forEach((t) => obs.observe(t, { childList: true, subtree: true, characterData: true }));
+      // Overlays (Menü-Dropdown, Sheets) hängen direkt am body und lägen sonst
+      // außerhalb der beobachteten Bereiche - sie blieben deutsch.
+      obs.observe(document.body, { childList: true });
     } catch (e) {}
   }
+
+  // Damit Seiten nach dem Einhängen eines Overlays sofort übersetzen können
+  window.gekoI18nApply = () => { if (!applying) apply(); };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
   else setup();
