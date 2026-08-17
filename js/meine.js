@@ -371,13 +371,7 @@ function renderOne() {
       <b>Lager</b><span>${escapeHtml(typeof oneLagerKachelSub === "function" ? oneLagerKachelSub() : "Wann du im Lager sein sollst")}</span>
     </button>`);
   }
-  // Lohnabrechnungen: fuer jeden da. Die Zugriffsregeln des Datei-Speichers
-  // geben ohnehin nur die eigenen Dateien her - die Kachel zeigt also
-  // hoechstens eine leere Liste, nie fremde Abrechnungen.
-  kacheln.push(`<button class="one-kachel" style="animation-delay:${(d += 0.07)}s;" onclick="oneScreen='lohn'; renderOne();">
-    <span class="k-ico" style="background:#0f8a6d;">💶</span>
-    <b>Lohn</b><span>Deine Abrechnungen als PDF</span>
-  </button>`);
+
 
   view.innerHTML = `
     <div class="one-welcome">
@@ -396,7 +390,10 @@ function renderOne() {
         <span class="k-ico" style="background:#0f7d74;">📅</span>
         <b>Mein Kalender</b><span>Touren, Termine & dein Urlaub</span>
       </button>
-      ${oneKachelBald("📄", "Meine Dokumente", "Lohnabrechnungen & Infos", d + 0.21)}
+      <button class="one-kachel" style="animation-delay:${d + 0.21}s;" onclick="oneScreen='lohn'; renderOne();">
+        <span class="k-ico" style="background:#0f8a6d;">💶</span>
+        <b>Lohnabrechnungen</b><span>Deine PDFs vom Büro</span>
+      </button>
     </div>`;
 }
 
@@ -516,7 +513,10 @@ async function oneLohnOeffnen(name) {
     const { data, error } = await sb.storage.from("lohn")
       .createSignedUrl(`${oneUser.id}/${name}`, 300);
     if (error || !data) throw error;
-    window.open(data.signedUrl, "_blank");
+    // Hausinterner Viewer: bleibt in der App. window.open fuehrt in der
+    // installierten App je nach iOS-Laune ins Leere oder aus der App raus.
+    if (typeof gekoPdfZeigen === "function") gekoPdfZeigen(data.signedUrl, oneLohnLabel(name));
+    else window.open(data.signedUrl, "_blank");
   } catch (e) {
     showToast("Konnte die Abrechnung nicht öffnen – bitte erneut versuchen.");
   }
