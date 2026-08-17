@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=180" />
+<link rel="stylesheet" href="css/style.css?v=181" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -58,10 +58,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=180"></script>
-  <script src="js/supabase-client.js?v=180"></script>
-  <script src="js/geko-auth.js?v=180"></script>
-  <script src="js/push.js?v=180"></script>
+  <script src="js/config.js?v=181"></script>
+  <script src="js/supabase-client.js?v=181"></script>
+  <script src="js/geko-auth.js?v=181"></script>
+  <script src="js/push.js?v=181"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -122,7 +122,7 @@
       ruf({ aktion: "liste" }),
       sb.from("glas_einstellungen").select("*").eq("id", "default").maybeSingle(),
       sb.from("glas_mitarbeiter").select("*").order("name"),
-      sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, status"),
+      sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, notiz, status"),
     ]);
     zugangsdaten = liste;
     binOberAdmin = !!(liste && liste.ich_bin_oberadmin);
@@ -221,8 +221,8 @@
           </div>
           ${auf ? `
           <div style="padding:10px 0 4px;">
-            <p class="est-sub" style="margin:0 0 4px;">Bereiche: ${bereiche}</p>
-            <p class="est-sub" style="margin:0 0 10px;">Urlaub ${new Date().getFullYear()}: ${b.genommen} genommen von ${b.anspruch}</p>
+            <p class="est-sub" style="margin:0 0 10px;">Bereiche: ${bereiche}</p>
+            ${renderUrlaubUebersicht(m, b)}
             <div class="est-btns">
               <button class="btn btn-primary" onclick="maBearbeiten('${m.id}')">Bearbeiten</button>
               ${!binOberAdmin ? "" : k.hat_konto ? `
@@ -247,6 +247,69 @@
         ${binOberAdmin ? "" : '<p class="muted" style="margin:8px 0 0; font-size:12px;">Stammdaten und Bausteine kannst du pflegen. Zugänge und Passwörter verwaltet der Ober-Admin.</p>'}
         <p class="muted" style="margin:8px 0 0; font-size:12px;">Urlaub eintragen und Anträge genehmigen läuft weiter im Kalender der Glas-Verwaltung – dort steht der Monatsüberblick, wer wann weg ist.</p>
       </div>`;
+  }
+
+  // Arbeitstage eines Eintrags zaehlen - je nach 5- oder 6-Tage-Woche, genau
+  // wie die Jahresbilanz. Sonntage zaehlen nie.
+  function urlaubTage(m, u) {
+    const sa = m.arbeitstage === "mo_sa";
+    let tage = 0;
+    let d = new Date(u.von + "T00:00:00");
+    const bis = new Date((u.bis || u.von) + "T00:00:00");
+    let schutz = 0;
+    while (d <= bis && schutz++ < 800) {
+      const wt = d.getDay();                 // 0 = Sonntag
+      if (wt !== 0 && (sa || wt !== 6)) tage++;
+      d.setDate(d.getDate() + 1);
+    }
+    return tage;
+  }
+
+  function datumKurz(iso) {
+    if (!iso) return "";
+    const d = new Date(iso + "T00:00:00");
+    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.`;
+  }
+
+  // Wann wurde wie viel genommen? Die reine Restzahl beantwortet die Frage
+  // nicht, die im Buero tatsaechlich gestellt wird ("wann war der weg?").
+  function renderUrlaubUebersicht(m, b) {
+    const jahr = new Date().getFullYear();
+    const meine = urlaube
+      .filter((u) => u.mitarbeiter_id === m.id && u.von && u.von.slice(0, 4) === String(jahr))
+      .sort((a, b2) => a.von.localeCompare(b2.von));
+
+    const farbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
+    const kopf = `
+      <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:0 0 8px;">
+        <span style="font-weight:700; font-size:14px;">Urlaub ${jahr}</span>
+        <span class="est-sub" style="margin:0;">${b.genommen} von ${b.anspruch} genommen ·
+          <b style="color:${farbe};">${b.uebrig} übrig</b></span>
+      </div>`;
+
+    if (!meine.length) {
+      return kopf + `<p class="est-sub" style="margin:0 0 10px;">Noch kein Urlaub in ${jahr}.</p>`;
+    }
+
+    const zeilen = meine.map((u) => {
+      const tage = urlaubTage(m, u);
+      const st = u.status || "genehmigt";
+      const marke = st === "offen"
+        ? '<span class="est-marke m-gelb">beantragt</span>'
+        : st === "abgelehnt" ? '<span class="est-marke m-rot">abgelehnt</span>' : "";
+      // Abgelehnte Antraege zaehlen nicht gegen den Anspruch - dann darf ihre
+      // Tageszahl hier auch nicht so aussehen, als waere sie verbraucht.
+      const zaehlt = st !== "abgelehnt" && st !== "offen";
+      const spanne = (u.bis && u.bis !== u.von)
+        ? `${datumKurz(u.von)} – ${datumKurz(u.bis)}` : datumKurz(u.von);
+      return `<div style="display:flex; align-items:baseline; gap:8px; padding:5px 0; border-top:1px solid var(--border); font-size:13.5px;">
+        <span style="flex:1; min-width:0;">${spanne}${marke}
+          ${u.notiz ? `<span class="est-sub" style="display:block;">${sicher(u.notiz)}</span>` : ""}</span>
+        <span style="font-weight:700; ${zaehlt ? "" : "opacity:.5;"}">${tage} Tag${tage === 1 ? "" : "e"}</span>
+      </div>`;
+    }).join("");
+
+    return kopf + zeilen + '<div style="height:10px;"></div>';
   }
 
   function renderMaFormular() {
