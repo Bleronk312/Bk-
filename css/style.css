@@ -429,11 +429,24 @@ label {
 }
 .chip-mittext .ccal-txt { justify-content: center; }
 
-/* Urlaub bewusst transparent/kursiv zum Unterscheiden von Touren & Terminen */
+/* Urlaub bewusst hell/kursiv zum Unterscheiden von Touren & Terminen.
+   WICHTIG - gegen den Kartenhintergrund gemischt statt halbdurchsichtig:
+   die Balkenstuecke ueberlappen sich um 1px (siehe continues-right). Bei einer
+   halbdurchsichtigen Fuellung addiert sich in dieser Ueberlappung die Deckkraft
+   und an jeder Tagesgrenze stand ein DUNKLER Strich - der Urlaubsbalken sah aus
+   wie mehrere Einzeltage. Deckend gemischt sieht es identisch aus, die
+   Ueberlappung ist aber unsichtbar. */
 .glas-cal-chip.is-urlaub {
-  background: color-mix(in srgb, var(--c, var(--blue)) 22%, transparent);
+  background: color-mix(in srgb, var(--c, var(--blue)) 22%, var(--card));
   color: color-mix(in srgb, var(--c, var(--blue)) 80%, var(--text));
   font-style: italic;
+}
+/* Im Dunkelmodus verschluckt der dunkle Kartengrund die 22% fast komplett -
+   der Urlaubsbalken war kaum vom leeren Tag zu unterscheiden. Etwas kräftiger
+   gemischt bleibt er dezent, ist aber sicher zu sehen. */
+html.dark .glas-cal-chip.is-urlaub {
+  background: color-mix(in srgb, var(--c, var(--blue)) 38%, var(--card));
+  color: color-mix(in srgb, var(--c, var(--blue)) 45%, #fff);
 }
 .glas-cal-more { font-size: 8.5px; font-weight: 700; color: var(--text-secondary); padding: 0 4px; }
 
@@ -561,37 +574,81 @@ body.glas-modal-open #glasScroller { overflow: hidden; touch-action: none; }
   animation: glasHeartbeat 1.6s ease-in-out 1s infinite;
 }
 
-/* ---------------- GEKO Hub Startseite (Abteilungs-Auswahl) ---------------- */
-.hub-hero { text-align: center; margin: 26px 0 22px; }
+/* ---------------- GEKO Hub Startseite (Abteilungs-Auswahl) ----------------
+   Große Kacheln statt schmaler Listenzeilen: die Abteilung ist die wichtigste
+   Entscheidung auf dieser Seite, also darf sie auch Platz bekommen. Zwei
+   Spalten, damit alles ohne Scrollen ins Bild passt; die Hauptabteilung liegt
+   als breite Kachel oben. Groß genug, um sie mit dem Daumen sicher zu treffen. */
+.hub-hero { text-align: center; margin: 22px 0 20px; }
 .hub-title { margin: 0 0 4px; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; animation: glasFadeUp 0.5s ease 0.05s both; }
 .hub-sub { margin: 0; color: var(--text-secondary); animation: glasFadeUp 0.5s ease 0.15s both; }
-.hub-card {
+
+.hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.hub-tile {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--card);
+  flex-direction: column;
+  min-height: 146px;
+  padding: 15px 14px 14px;
+  border-radius: 20px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-  margin-bottom: 14px;
-  text-decoration: none;
+  /* Zarter Farbschimmer der Abteilung (--tint) über der Kartenfläche: die
+     Kacheln sind dadurch schon an der Farbe auseinanderzuhalten, ohne dass es
+     bunt wird. */
+  background:
+    linear-gradient(160deg, var(--tint, transparent) 0%, transparent 62%),
+    var(--card);
   color: var(--text);
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(20, 40, 70, 0.05);
   animation: fadeInUp 0.4s ease both;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.hub-card:active { transform: scale(0.98); }
-.hub-card:hover { box-shadow: 0 6px 18px rgba(20, 40, 70, 0.08); }
-.hub-card-icon {
+.hub-tile:active { transform: scale(0.97); }
+.hub-tile:hover { box-shadow: 0 8px 22px rgba(20, 40, 70, 0.1); }
+.hub-tile .ht-ic {
   width: 52px; height: 52px;
-  border-radius: 14px;
+  border-radius: 17px;
   display: flex; align-items: center; justify-content: center;
   font-size: 26px;
-  flex-shrink: 0;
+  flex: none;
+  background: var(--ic, rgba(31, 93, 146, 0.1));
 }
-.hub-card-body { flex: 1; min-width: 0; }
-.hub-card-title { margin: 0 0 2px; font-weight: 700; font-size: 15px; }
-.hub-card-sub { margin: 0; color: var(--text-secondary); font-size: 12.5px; }
-.hub-card-arrow { font-size: 22px; color: var(--text-secondary); }
+/* Text unten: die Kacheln sind unterschiedlich lang beschriftet, so stehen die
+   Titel trotzdem alle auf einer Linie. */
+.hub-tile .ht-body { margin-top: auto; padding-top: 12px; min-width: 0; }
+.hub-tile .ht-title { margin: 0; font-size: 15.5px; font-weight: 700; line-height: 1.25; letter-spacing: -0.2px; }
+.hub-tile .ht-sub { margin: 3px 0 0; font-size: 12px; line-height: 1.35; color: var(--text-secondary); }
+/* Kleiner Pfeil oben rechts - zeigt, dass die Kachel irgendwo hinführt */
+.hub-tile .ht-pfeil {
+  position: absolute; top: 15px; right: 14px;
+  font-size: 20px; line-height: 1; color: var(--text-secondary); opacity: 0.55;
+}
+/* Breite Kachel (Hauptabteilung): quer über beide Spalten, Icon neben dem Text */
+.hub-tile.breit {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 15px;
+  min-height: 0;
+  padding: 17px 16px;
+}
+.hub-tile.breit .ht-ic { width: 60px; height: 60px; border-radius: 19px; font-size: 30px; }
+.hub-tile.breit .ht-body { margin-top: 0; padding-top: 0; flex: 1; }
+.hub-tile.breit .ht-title { font-size: 18px; }
+.hub-tile.breit .ht-sub { font-size: 12.5px; }
+.hub-tile.breit .ht-pfeil { top: 50%; transform: translateY(-50%); font-size: 24px; }
+
+html.dark .hub-tile { box-shadow: none; }
+
+/* Ab Tablet drei Spalten - sonst werden die Kacheln auf dem Desktop albern breit */
+@media (min-width: 720px) {
+  .hub-grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .hub-tile { min-height: 168px; padding: 18px 17px 17px; }
+  .hub-tile .ht-ic { width: 58px; height: 58px; font-size: 29px; }
+  .hub-tile .ht-title { font-size: 16.5px; }
+  .hub-tile .ht-sub { font-size: 12.5px; }
+}
 
 /* ---------------- Pull-to-Refresh ---------------- */
 .ptr-indicator {
@@ -1151,7 +1208,7 @@ body.glas-logo-left #view .scheine-item { animation: none; }
 button, .btn, .tab-btn, .card, .chip, .badge, .glas-home-tile, .glas-tour-card,
 .glas-schein-card, .glas-cal-cell, .glas-cal-kw, .glas-seg-btn, .glas-menu-item,
 .glas-bottomnav, .glas-stat-tile, .glas-kpi, .glas-vbar, .glas-rankrow,
-.glas-home-sec-head, .glas-stop-row, .glas-pick, .hub-card, .glas-fab,
+.glas-home-sec-head, .glas-stop-row, .glas-pick, .hub-tile, .glas-fab,
 .glas-caro-dots, .glas-sheet-grip {
   -webkit-user-select: none;
   user-select: none;

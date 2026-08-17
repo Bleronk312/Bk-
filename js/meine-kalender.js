@@ -369,6 +369,114 @@ function oneKalMonatName(m) {
   return ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"][m];
 }
 
+/* ---------------- Monatsraster mit durchgehenden Balken ----------------
+   Dieselbe Optik wie der Kalender im Büro: ein mehrtägiger Termin ist EIN Balken
+   mit EINER Beschriftung quer über seine Tage - statt an jedem Tag nur ein Punkt.
+   Man sieht dadurch sofort, ob etwas ein zusammenhängender Zeitraum ist (Tour über
+   drei Tage, Urlaubswoche) oder mehrere einzelne Termine.
+
+   Die DATEN bleiben davon unberührt: hier stehen weiterhin ausschließlich die
+   eigenen Termine (siehe oneKalLaden) - vom Kalender der Kollegen ist nichts zu
+   sehen. Kopiert wurde nur das Aussehen, nicht der Inhalt. */
+
+const ONE_KAL_MAX_BALKEN = 4; // mehr passt auf dem Handy nicht in eine Tageszelle
+
+// Die geladenen Termine als Balken: Zeitraum, Farbe, Beschriftung.
+function oneKalBalken() {
+  return (oneKalTermine || []).map((e, i) => ({
+    _i: i,
+    datum: e.von,
+    datum_bis: e.bis || e.von,
+    // Erledigtes/Abgelaufenes tritt grau zurück, alles andere in der Bereichsfarbe
+    col: (e.fertig || e.abgelaufen) ? ONE_KAL_FARBEN.erledigt : (ONE_KAL_FARBEN[e.art] || ONE_KAL_FARBEN.glas),
+    done: !!(e.fertig || e.abgelaufen),
+    // Urlaub (auch beantragter) bewusst dezent/kursiv - klar anders als Arbeit
+    urlaub: e.art === "urlaub",
+    label: e.titel || "",
+  }));
+}
+
+// Baut die Tageszellen. Kernstück ist die feste "Lane" (Zeile) je Termin über den
+// gesamten Zeitraum: nur so liegt ein mehrtägiger Balken an jedem Tag auf derselben
+// Höhe und läuft lückenlos durch. Mehrtägige Balken halten sich links und rechts
+// einen Tag Abstand frei, damit direkt daneben kein Einzeltermin andockt und wie ein
+// abgerissenes Stück des Balkens wirkt.
+function oneKalRasterZellen(weeks, heute) {
+  const m = oneKalMonatJetzt();
+  const events = oneKalBalken();
+
+  const laneEnds = []; // laneEnds[l] = belegt-bis-Datum der Zeile l
+  events
+    .map((e) => {
+      const mehrtaegig = e.datum_bis !== e.datum;
+      return {
+        e,
+        s: mehrtaegig ? glasAddDaysIso(e.datum, -1) : e.datum,
+        en: mehrtaegig ? glasAddDaysIso(e.datum_bis, 1) : e.datum_bis,
+      };
+    })
+    .sort((a, b) => a.s.localeCompare(b.s) || b.en.localeCompare(a.en) || a.e._i - b.e._i)
+    .forEach((it) => {
+      let lane = 0;
+      while (lane < laneEnds.length && laneEnds[lane] >= it.s) lane++;
+      it.e._lane = lane;
+      laneEnds[lane] = it.en;
+    });
+
+  // Je Woche und Termin: den vollen Namen auf das sichtbare Segment legen
+  const texte = new Map();
+  weeks.forEach((week) => {
+    events.forEach((t) => {
+      const seg = week.filter((iso) => iso >= t.datum && iso <= t.datum_bis);
+      if (!seg.length) return;
+      const teile = glasCalBalkenText(t.label, seg.length);
+      seg.forEach((iso, i) => texte.set(t._i + "|" + iso, teile[i]));
+    });
+  });
+
+  return weeks
+    .map((week) => week.map((iso) => {
+      const tag = parseInt(iso.slice(8, 10), 10);
+      const inMonth = parseInt(iso.slice(0, 4), 10) === m.jahr && parseInt(iso.slice(5, 7), 10) - 1 === m.monat;
+      // Sonntage und Feiertage heben sich ab - sonst zählt man mit dem Finger nach,
+      // ob ein Termin auf einen freien Tag fällt.
+      const wt = new Date(iso + "T12:00:00").getDay();
+      const feiertag = oneFeiertagName(iso);
+      const frei = wt === 0 || !!feiertag;
+
+      const dayEvents = events.filter((t) => iso >= t.datum && iso <= t.datum_bis);
+      const byLane = [];
+      let overflow = 0;
+      dayEvents.forEach((t) => { if (t._lane < ONE_KAL_MAX_BALKEN) byLane[t._lane] = t; else overflow++; });
+
+      const chips = byLane.length
+        ? Array.from({ length: byLane.length }, (_, l) => {
+            const t = byLane[l];
+            // Leere Zeile dazwischen: unsichtbarer Platzhalter gleicher Höhe, damit
+            // die Balken darunter Tag für Tag auf einer Linie bleiben.
+            if (!t) return `<div class="glas-cal-chip glas-cal-chip-spacer">&nbsp;</div>`;
+            const contLeft = t.datum < iso;
+            const contRight = t.datum_bis > iso;
+            const teil = texte.get(t._i + "|" + iso) || { text: "", span: 0 };
+            // Der unsichtbare Platzhalter hält die Zeilenhöhe (der Balkentext liegt
+            // absolut darüber und trägt selbst keine Höhe bei).
+            const txt = `<span class="ccal-h">&nbsp;</span>` + (teil.text
+              ? `<span class="ccal-txt" style="--span:${teil.span};">${escapeHtml(teil.text)}</span>`
+              : "");
+            return `<div class="glas-cal-chip${contLeft ? " continues-left" : ""}${contRight ? " continues-right" : ""}${teil.span > 1 ? " chip-mittext" : ""}${t.urlaub ? " is-urlaub" : ""}${t.done ? " is-done" : ""}" style="--c:${t.col};">${txt}</div>`;
+          }).join("")
+        : "";
+
+      return `
+        <div class="glas-cal-cell${iso === oneKalTagGewaehlt ? " is-selected" : ""}${inMonth ? "" : " out-month"}${frei ? " okal-frei" : ""}${feiertag ? " okal-feiertag" : ""}"
+          onclick="oneKalTagWaehlen('${iso}')"${feiertag ? ` title="${escapeHtml(feiertag)}"` : ""}>
+          <span class="glas-cal-daynum${iso === heute ? " is-today" : ""}">${tag}</span>
+          ${chips}${overflow ? `<div class="glas-cal-more">+${overflow}</div>` : ""}
+        </div>`;
+    }).join(""))
+    .join("");
+}
+
 function renderOneKalender() {
   if (oneKalTermine === null) {
     oneKalStarteLaden();
@@ -378,31 +486,8 @@ function renderOneKalender() {
 
   const m = oneKalMonatJetzt();
   const heute = oneKalHeute();
-  const ersterTag = new Date(m.jahr, m.monat, 1);
-  const letzterTag = new Date(m.jahr, m.monat + 1, 0).getDate();
-  const startLuecke = (ersterTag.getDay() + 6) % 7; // Montag = 0
-
-  // Monatsraster
-  let zellen = "";
-  for (let i = 0; i < startLuecke; i++) zellen += `<div class="okal-tag leer"></div>`;
-  for (let tag = 1; tag <= letzterTag; tag++) {
-    const iso = glasIsoFromDate(new Date(m.jahr, m.monat, tag));
-    const eintraege = oneKalAmTag(iso);
-    // Erledigte Einträge bekommen im Raster den grauen Punkt - so sieht man auf einen
-    // Blick, welche Tage schon abgehakt sind.
-    const arten = [...new Set(eintraege.map((e) => (e.fertig ? "erledigt" : e.art)))];
-    // Sonntage und Feiertage heben sich ab - sonst zählt man im Raster mit dem
-    // Finger nach, ob der Termin auf einen freien Tag fällt.
-    const wt = new Date(m.jahr, m.monat, tag).getDay();
-    const feiertag = oneFeiertagName(iso);
-    const frei = wt === 0 || !!feiertag;
-    zellen += `
-      <button class="okal-tag${iso === heute ? " heute" : ""}${eintraege.length ? " hat" : ""}${iso === oneKalTagGewaehlt ? " gewaehlt" : ""}${frei ? " frei" : ""}${feiertag ? " feiertag" : ""}"
-        onclick="oneKalTagWaehlen('${iso}')"${feiertag ? ` title="${escapeHtml(feiertag)}"` : ""}>
-        <span class="okal-num">${tag}</span>
-        <span class="okal-punkte">${arten.slice(0, 4).map((a) => `<i style="background:${ONE_KAL_FARBEN[a]}"></i>`).join("")}</span>
-      </button>`;
-  }
+  const weeks = glasWeeksInRange({ year: m.jahr, month: m.monat }, { year: m.jahr, month: m.monat });
+  const zellen = oneKalRasterZellen(weeks, heute);
 
   // Kommende Termine (ab heute). Wiederkehrende Rundgänge werden dabei zusammengefasst:
   // Sonst stünde derselbe Rundgang 20x untereinander und würde Touren, Graffiti-Termine
@@ -431,8 +516,10 @@ function renderOneKalender() {
       <button class="btn btn-sm" onclick="oneKalBlaettern(1)" aria-label="Nächster Monat">›</button>
     </div>
     ${oneKalFehler ? `<p class="muted" style="margin:6px 2px; font-size:12.5px;">⚠️ ${escapeHtml(oneKalFehler)}</p>` : ""}
-    <div class="okal-wochentage">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w, i) => `<span${i === 6 ? ` class="frei"` : ""}>${w}</span>`).join("")}</div>
-    <div class="okal-raster" id="okalRaster">${zellen}</div>
+    <div class="okal-cal-card">
+      <div class="glas-cal-grid okal-dow">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w, i) => `<div${i === 6 ? ` class="frei"` : ""}>${w}</div>`).join("")}</div>
+      <div class="glas-cal-grid" id="okalRaster">${zellen}</div>
+    </div>
     ${feiertagHinweis}
 
     ${renderOneKalLegende()}

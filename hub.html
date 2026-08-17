@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Hub" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Hub</title>
-<link rel="stylesheet" href="css/style.css?v=156" />
+<link rel="stylesheet" href="css/style.css?v=157" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
@@ -34,59 +34,63 @@
           <p class="hub-sub">In welche Abteilung m&ouml;chtest du?</p>
         </div>
 
-        <a class="hub-card" href="glas-admin.html" style="animation-delay:0.1s;">
-          <div class="hub-card-icon" style="background:#eaf2fb;">&#129695;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Glasreinigung</p>
-            <p class="hub-card-sub">Touren, Intervalle, Objekte</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+        <div class="hub-grid">
 
-        <a class="hub-card" href="kalender.html" style="animation-delay:0.16s;">
-          <div class="hub-card-icon" style="background:#eaf5f4;">&#128197;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Kalender</p>
-            <p class="hub-card-sub">Touren, Termine &amp; Urlaub &ndash; alles auf einen Blick</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+          <a class="hub-tile breit" href="glas-admin.html" style="animation-delay:0.06s; --tint:rgba(31,93,146,.10); --ic:rgba(31,93,146,.12);">
+            <div class="ht-ic">&#129695;</div>
+            <div class="ht-body">
+              <p class="ht-title">Glasreinigung</p>
+              <p class="ht-sub">Touren, Intervalle, Objekte &amp; Kunden</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
 
-        <a class="hub-card" href="glas-admin.html?app=lager" style="animation-delay:0.22s;">
-          <div class="hub-card-icon" style="background:#f0edfc;">&#128230;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Lager &amp; Einsatzplan</p>
-            <p class="hub-card-sub">Wer wann im Lager ist &middot; Monats-PDF</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+          <a class="hub-tile" href="kalender.html" style="animation-delay:0.12s; --tint:rgba(17,150,140,.10); --ic:rgba(17,150,140,.13);">
+            <div class="ht-ic">&#128197;</div>
+            <div class="ht-body">
+              <p class="ht-title">Kalender</p>
+              <p class="ht-sub">Touren, Termine &amp; Urlaub</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
 
-        <a class="hub-card" href="admin.html" style="animation-delay:0.31s;">
-          <div class="hub-card-icon" style="background:#fdf0ec;">&#127912;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Graffitientfernung &amp; Sonderreinigung</p>
-            <p class="hub-card-sub">Abnahmescheine, Kunden, Statistik</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+          <a class="hub-tile" href="glas-admin.html?app=lager" style="animation-delay:0.18s; --tint:rgba(107,78,230,.10); --ic:rgba(107,78,230,.13);">
+            <div class="ht-ic">&#128230;</div>
+            <div class="ht-body">
+              <p class="ht-title">Lager</p>
+              <p class="ht-sub">Einsatzplan &ndash; wer wann da ist</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
 
-        <a class="hub-card" href="checkins-admin.html" style="animation-delay:0.4s;">
-          <div class="hub-card-icon" style="background:#eaf5ee;">&#128205;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Check-ins</p>
-            <p class="hub-card-sub">GPS-Rundg&auml;nge, Punkte &amp; Nachweise</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+          <a class="hub-tile" href="admin.html" style="animation-delay:0.24s; --tint:rgba(194,24,156,.09); --ic:rgba(194,24,156,.12);">
+            <div class="ht-ic">&#127912;</div>
+            <div class="ht-body">
+              <p class="ht-title">Graffiti</p>
+              <p class="ht-sub">Sonderreinigung, Scheine &amp; Statistik</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
 
-        <a class="hub-card" href="https://lively-smakager-c9ba91.netlify.app" target="_blank" rel="noopener" style="animation-delay:0.49s;">
-          <div class="hub-card-icon" style="background:#eef1f6;">&#128667;</div>
-          <div class="hub-card-body">
-            <p class="hub-card-title">Fahrzeug-Management</p>
-            <p class="hub-card-sub">Fuhrpark, Fahrzeuge &amp; Termine</p>
-          </div>
-          <span class="hub-card-arrow">&#8250;</span>
-        </a>
+          <a class="hub-tile" href="checkins-admin.html" style="animation-delay:0.3s; --tint:rgba(18,161,80,.10); --ic:rgba(18,161,80,.13);">
+            <div class="ht-ic">&#128205;</div>
+            <div class="ht-body">
+              <p class="ht-title">Check-ins</p>
+              <p class="ht-sub">GPS-Rundg&auml;nge &amp; Nachweise</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
+
+          <a class="hub-tile" href="https://lively-smakager-c9ba91.netlify.app" target="_blank" rel="noopener" style="animation-delay:0.36s; --tint:rgba(239,125,0,.10); --ic:rgba(239,125,0,.13);">
+            <div class="ht-ic">&#128667;</div>
+            <div class="ht-body">
+              <p class="ht-title">Fahrzeuge</p>
+              <p class="ht-sub">Fuhrpark &amp; Termine &#8599;</p>
+            </div>
+            <span class="ht-pfeil">&#8250;</span>
+          </a>
+
+        </div>
 
         <p style="text-align:center; margin:22px 0 0;">
           <a href="diagnose.html" style="color:var(--text-secondary); font-size:12px; text-decoration:none;">🩺 Diagnose</a>
@@ -96,10 +100,10 @@
     </div>
   </div>
 
-  <script src="js/config.js?v=156"></script>
-  <script src="js/fehler.js?v=156"></script>
-  <script src="js/logo-asset.js?v=156"></script>
-  <script src="js/pull-refresh.js?v=156"></script>
+  <script src="js/config.js?v=157"></script>
+  <script src="js/fehler.js?v=157"></script>
+  <script src="js/logo-asset.js?v=157"></script>
+  <script src="js/pull-refresh.js?v=157"></script>
   <script>
     const wm = document.getElementById("watermarkImg");
     const badge = document.getElementById("badgeLogoImg");
