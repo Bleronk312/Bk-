@@ -5475,8 +5475,8 @@ function renderUrlaubMonat() {
         <p style="margin:0; font-weight:700; font-size:17px;">${monatsNamen[month]} ${year}</p>
         <button class="btn btn-sm" onclick="glasKalenderShiftMonth(1)">›</button>
       </div>
-      <div class="glas-cal-grid" style="margin-bottom:4px;">
-        ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted" style="text-align:center; font-size:11px; font-weight:600;">${d}</div>`).join("")}
+      <div class="glas-cal-grid glas-cal-dow" style="margin-bottom:4px;">
+        ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<div class="muted">${d}</div>`).join("")}
       </div>
       <div class="glas-cal-grid">${cellsHtml}</div>
       <p class="muted" style="margin:10px 6px 0; font-size:12px;">Auf einen Tag tippen, um Urlaub ab diesem Tag einzutragen.</p>

@@ -538,6 +538,8 @@ function renderGlasTourList() {
 }
 
 function openGlasTour(id) {
+  glasSammelAn = false; glasSammelIds = new Set();
+  document.body.classList.remove("glas-sammel-offen");
   glasOpenTourId = id;
   glasSignStopId = null;
   // Der erste noch offene Stopp klappt gleich auf - das ist fast immer der, der dran
@@ -549,6 +551,8 @@ function openGlasTour(id) {
 }
 
 function closeGlasTour() {
+  glasSammelAn = false; glasSammelIds = new Set();
+  document.body.classList.remove("glas-sammel-offen");
   glasOpenTourId = null;
   glasOpenStopId = null;
   glasSignStopId = null;
@@ -602,12 +606,110 @@ function glasStopSchritt(richtung) {
 }
 
 function renderGlasTourScreen(t) {
+  const offene = (t.stopps || []).filter((s) => s.status === "offen");
   return `
     <button class="btn btn-sm" style="margin-bottom:12px;" onclick="closeGlasTour()">&larr; Alle Touren</button>
     ${renderGlasTourBar(t)}
     ${t.notiz ? `<div class="glas-hinweis-box" style="margin-top:12px;"><span class="glas-hinweis-icon">📌</span><div><p class="glas-hinweis-title">Notiz zur Tour</p><p class="glas-hinweis-text" style="white-space:pre-line;">${escapeHtml(t.notiz)}</p></div></div>` : ""}
+    ${offene.length > 1 && !glasSammelAn
+      ? `<button class="btn gsm-sammel-start" onclick="glasSammelStart()">✍️ Mehrere auf einmal unterschreiben lassen</button>`
+      : ""}
+    ${glasSammelAn ? renderGlasSammelKopf(t) : ""}
     ${renderGlasStopsList(t)}
+    ${glasSammelAn ? renderGlasSammelLeiste() : ""}
   `;
+}
+
+/* ---------------- Mehrere auf einmal unterschreiben lassen ----------------
+   Der Normalfall vor Ort: ein Hausmeister hat 13 Objekte desselben Kunden in
+   derselben Tour und unterschreibt EINMAL für alles. Statt 13x dasselbe Sheet:
+   Objekte antippen, einmal unterschreiben - die Unterschrift landet auf jedem
+   gewählten Schein (jeder bleibt ein eigenes PDF).
+   Funktioniert auch ohne Empfang: was nicht durchgeht, wandert einzeln in die
+   bestehende Warteschlange und wird später nachgesendet. */
+
+let glasSammelAn = false;
+let glasSammelIds = new Set();
+
+function glasSammelStart() {
+  glasSammelAn = true;
+  glasSammelIds = new Set();
+  document.body.classList.add("glas-sammel-offen");
+  glasOpenStopId = null;      // Akkordeon zu - im Auswahlmodus wird nur getippt
+  glasTippAnimation = false;
+  renderGlasMa();
+}
+
+function glasSammelAus() {
+  glasSammelAn = false;
+  glasSammelIds = new Set();
+  document.body.classList.remove("glas-sammel-offen");
+  renderGlasMa();
+}
+
+function glasSammelToggle(id) {
+  if (glasSammelIds.has(id)) glasSammelIds.delete(id); else glasSammelIds.add(id);
+  renderGlasMa();
+}
+
+function glasSammelOffene(t) {
+  return (t && t.stopps ? t.stopps : []).filter((s) => s.status === "offen");
+}
+
+function glasSammelAlle(t) {
+  const offene = glasSammelOffene(t);
+  const alleDrin = offene.every((s) => glasSammelIds.has(s.id));
+  glasSammelIds = alleDrin ? new Set() : new Set(offene.map((s) => s.id));
+  renderGlasMa();
+}
+
+// Alle offenen Objekte DESSELBEN Kunden - der häufigste Griff
+function glasSammelKunde(kunde) {
+  const t = glasTouren.find((x) => x.id === glasOpenTourId);
+  glasSammelOffene(t).forEach((s) => { if (glasSammelKundeSchluessel(s) === kunde) glasSammelIds.add(s.id); });
+  renderGlasMa();
+}
+
+function glasSammelKundeSchluessel(s) {
+  return String(s.kunde_id || s.kunde_kdnr || (s.kunde_adresse || "").split("\n")[0] || "");
+}
+
+function renderGlasSammelKopf(t) {
+  const offene = glasSammelOffene(t);
+  const alleDrin = offene.length && offene.every((s) => glasSammelIds.has(s.id));
+  // Kunden mit mehreren offenen Objekten anbieten
+  const proKunde = new Map();
+  offene.forEach((s) => {
+    const k = glasSammelKundeSchluessel(s);
+    const label = (s.kunde_adresse || "").split("\n")[0] || s.kunde_kdnr || "";
+    if (!k || !label) return;
+    if (!proKunde.has(k)) proKunde.set(k, { label, n: 0 });
+    proKunde.get(k).n++;
+  });
+  const chips = [...proKunde.entries()].filter(([, v]) => v.n > 1)
+    .map(([k, v]) => `<button class="gsm-sammel-chip" onclick="glasSammelKunde('${escapeHtml(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} · ${v.n}</button>`).join("");
+  return `
+    <div class="gsm-sammel-kopf">
+      <div class="gsk-z1">
+        <b>Objekte antippen</b>
+        <button class="btn btn-sm" onclick="glasSammelAus()">Abbrechen</button>
+      </div>
+      <p class="gsk-hint">Die Unterschrift gilt für alle gewählten Objekte.</p>
+      <div class="gsk-chips">
+        <button class="gsm-sammel-chip" onclick="glasSammelAlle(glasTouren.find(function(x){return x.id===glasOpenTourId;}))">${alleDrin ? "Auswahl leeren" : `Alle offenen · ${offene.length}`}</button>
+        ${chips}
+      </div>
+    </div>`;
+}
+
+// Feste Leiste unten: zeigt immer, wie viele gewählt sind, und führt weiter.
+function renderGlasSammelLeiste() {
+  const n = glasSammelIds.size;
+  return `
+    <div class="gsm-sammel-leiste">
+      <span>${n} ${n === 1 ? "Objekt" : "Objekte"} gewählt</span>
+      <button class="btn btn-primary" ${n ? "" : "disabled"} onclick="openGlasSammelSheet()">Weiter zur Unterschrift</button>
+    </div>`;
 }
 
 // Gesamt-qm aus dem Positions-Schnappschuss des Stopps (deutsche Schreibweise)
@@ -626,20 +728,27 @@ function renderGlasStopsList(t) {
       // Stopp bleibt die Verzoegerung stehen - sonst wartet man bei langen Touren zu lang.
       const verzug = Math.min(idx, 8) * 0.045;
       const frisch = glasGeradeErledigt === s.id ? " frisch-fertig" : "";
+      // Auswahlmodus: offene Stopps werden zu Auswahlflächen, alles andere ruht
+      const waehlbar = glasSammelAn && s.status === "offen";
+      const gewaehlt = waehlbar && glasSammelIds.has(s.id);
+      const auf = isOpen && !glasSammelAn;
+      const klick = glasSammelAn
+        ? (waehlbar ? `glasSammelToggle('${s.id}')` : "")
+        : `toggleGlasStop('${s.id}')`;
       return `
-        <div class="gsm-stopp${isOpen ? " offen" : ""}${isDone ? " fertig" : ""}${isNg ? " ng" : ""}${frisch}" id="gstop-${s.id}" style="animation-delay:${verzug}s;" onclick="toggleGlasStop('${s.id}')">
+        <div class="gsm-stopp${auf ? " offen" : ""}${isDone ? " fertig" : ""}${isNg ? " ng" : ""}${frisch}${waehlbar ? " waehlbar" : ""}${gewaehlt ? " gewaehlt" : ""}${glasSammelAn && !waehlbar ? " ruht" : ""}" id="gstop-${s.id}" style="animation-delay:${verzug}s;"${klick ? ` onclick="${klick}"` : ""}>
           <div class="gsm-z1">
-            <div class="gsm-kugel">${isDone ? "✓" : isNg ? "–" : idx + 1}</div>
+            <div class="gsm-kugel">${waehlbar ? (gewaehlt ? "✓" : "") : isDone ? "✓" : isNg ? "–" : idx + 1}</div>
             <div style="flex:1; min-width:0;">
               <p class="gsm-nam">${s.objekt ? escapeHtml(s.objekt) : `Stopp ${idx + 1}`}</p>
-              ${isOpen ? "" : `<p class="gsm-ort">${escapeHtml((s.adresse || "").split("\n")[0])}</p>`}
+              ${auf ? "" : `<p class="gsm-ort">${escapeHtml((s.adresse || "").split("\n")[0])}</p>`}
             </div>
             <div class="gsm-rechts">
-              ${isOpen ? "" : `${qm ? `<b>${qm} qm</b>` : ""}<span class="gsm-merk">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}</span>`}
-              <span class="gsm-pfeil">${isOpen ? "▲" : "▼"}</span>
+              ${auf ? "" : `${qm ? `<b>${qm} qm</b>` : ""}<span class="gsm-merk">${s.hinweise ? "⚠️" : ""}${s.notiz ? "📝" : ""}</span>`}
+              ${glasSammelAn ? "" : `<span class="gsm-pfeil">${isOpen ? "▲" : "▼"}</span>`}
             </div>
           </div>
-          ${isOpen ? renderGlasStopDetails(t, s, isDone, isNg) : ""}
+          ${auf ? renderGlasStopDetails(t, s, isDone, isNg) : ""}
         </div>`;
     })
     .join("");
@@ -790,6 +899,153 @@ function openGlasSignSheet(stopId) {
   document.body.classList.add("glas-sheet-open");
   // Canvas braucht seine endgültige Breite, bevor SignaturePad initialisiert wird
   setTimeout(() => setupGlasSigPad(), 40);
+}
+
+// Dasselbe Vollbild-Sheet wie beim einzelnen Stopp - nur mit einer Liste der
+// gewählten Objekte oben und Stunden-Feldern je Objekt, das welche braucht.
+function openGlasSammelSheet() {
+  const t = glasTouren.find((x) => x.id === glasOpenTourId);
+  if (!t) return;
+  const gewaehlt = glasSammelOffene(t).filter((s) => glasSammelIds.has(s.id));
+  if (!gewaehlt.length) { showToast("Bitte mindestens ein Objekt antippen"); return; }
+  closeGlasSignSheet();
+  glasSignStopId = "__sammel";
+  const el = document.createElement("div");
+  el.className = "glas-sign-sheet";
+  el.id = "glasSignSheet";
+  el.innerHTML = `
+    <div class="gss-head">
+      <button class="gss-close" onclick="closeGlasSignSheet()" aria-label="Schließen">✕</button>
+      <div class="gss-title">
+        <p class="gss-t">${gewaehlt.length} Scheine unterschreiben</p>
+        <p class="gss-s">Eine Unterschrift für alle</p>
+      </div>
+    </div>
+    <div class="gss-body">
+      <div class="gsm-sammel-liste">
+        ${gewaehlt.map((s) => `<div class="gsl-zeile"><span class="gsl-hak">✓</span><span>${escapeHtml(s.objekt || s.adresse || "Objekt")}</span></div>`).join("")}
+      </div>
+      ${renderGlasSammelStunden(gewaehlt)}
+      <div class="field">
+        <label class="muted">Name der unterschreibenden Person</label>
+        <input type="text" id="gs_name" placeholder="Vor- und Nachname" style="font-size:16px;" />
+      </div>
+      <div class="field">
+        <label class="muted">Unterschrift <span class="muted" style="font-weight:400;">(gilt für alle ${gewaehlt.length})</span></label>
+        <canvas id="gs_sigCanvas" style="width:100%; height:190px; border:1px solid var(--border); border-radius:10px; background:white; touch-action:none;"></canvas>
+        <p class="muted" style="margin:8px 2px 0; font-size:12px;">Zum Weiterscrollen einfach neben dem Unterschriftfeld wischen.</p>
+      </div>
+      <div class="field">
+        <label class="muted">➕ Extra was gemacht? (optional, steht auf allen)</label>
+        <div id="gs_zusatz_list">
+          <textarea class="gs-zusatz" rows="2" style="font-size:16px;" placeholder="z.B. 2 Stunden zusätzlich"></textarea>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px;" onclick="glasZusatzAddField()">+ Noch etwas hinzufügen</button>
+      </div>
+      <input type="hidden" id="gs_datum" value="${todayIso()}" />
+    </div>
+    <div class="gss-foot">
+      <button class="btn gss-clear" onclick="clearGlasSig()">🗑️ Neu</button>
+      <button class="btn btn-primary" id="gs_sammel_btn" onclick="saveGlasSammelSignature()">✓ ${gewaehlt.length} unterschreiben</button>
+    </div>`;
+  document.body.appendChild(el);
+  document.body.classList.add("glas-sheet-open");
+  setTimeout(() => setupGlasSigPad(), 40);
+}
+
+// Stunden je Objekt - ohne die Zuordnung landeten sie sonst auf dem falschen Schein
+function renderGlasSammelStunden(gewaehlt) {
+  const noetig = gewaehlt.filter((s) => glasStopPositionen(s).filter(glasIstStundenPos).length);
+  if (!noetig.length) return "";
+  return `
+    <div class="field">
+      <label class="muted">⏱️ Gemachte Stunden (Pflicht)</label>
+      ${noetig.map((s) => `
+        <p style="margin:10px 0 2px; font-size:13px; font-weight:700;">${escapeHtml(s.objekt || "Objekt")}</p>
+        ${glasStopPositionen(s).filter(glasIstStundenPos).map((p, i) => `
+          <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+            <span style="flex:1; min-width:0; font-size:13px;">${p.nr ? `Pos. ${escapeHtml(p.nr)} – ` : ""}${escapeHtml(p.art || "Stunden")}</span>
+            <input type="text" inputmode="decimal" data-gsstd="${s.id}|${i}" value="${escapeHtml(String(p.qm || ""))}"
+              placeholder="Std." style="flex:0 0 90px; font-size:16px; text-align:center;" />
+          </div>`).join("")}`).join("")}
+      <p class="muted" style="margin:8px 0 0; font-size:12px;">Je Objekt eigene Stunden – landet auf dem jeweiligen Schein.</p>
+    </div>`;
+}
+
+async function saveGlasSammelSignature() {
+  const btn = document.getElementById("gs_sammel_btn");
+  if (btn && btn.disabled) return;
+  const t = glasTouren.find((x) => x.id === glasOpenTourId);
+  if (!t) return;
+  const name = (document.getElementById("gs_name")?.value || "").trim();
+  const datum = document.getElementById("gs_datum")?.value || todayIso();
+  if (!name) { showToast("Bitte Namen eintragen"); return; }
+  if (!glasSigPad || glasSigPad.isEmpty()) { showToast("Bitte unterschreiben lassen"); return; }
+
+  const gewaehlt = glasSammelOffene(t).filter((s) => glasSammelIds.has(s.id));
+  if (!gewaehlt.length) { showToast("Keine offenen Objekte gewählt"); return; }
+
+  // Stunden je Objekt einsammeln und KOMPLETT prüfen, bevor irgendetwas gespeichert
+  // wird - sonst wäre die Hälfte unterschrieben und die andere nicht.
+  const werte = {};
+  document.querySelectorAll("[data-gsstd]").forEach((el) => { werte[el.dataset.gsstd] = el.value; });
+  const arbeit = [];
+  for (const s of gewaehlt) {
+    let posJson = s.positionen || "[]";
+    const anzahl = glasStopPositionen(s).filter(glasIstStundenPos).length;
+    if (anzahl) {
+      const w = [];
+      for (let i = 0; i < anzahl; i++) w.push(werte[s.id + "|" + i] || "");
+      const res = glasMitStundenAktualisiert(posJson, w);
+      if (res.fehlt) { showToast(`Bitte die Stunden für „${s.objekt || "Objekt"}" eintragen`); return; }
+      posJson = res.json;
+    }
+    arbeit.push({ stop: s, posJson });
+  }
+
+  const unterschrift = glasSigPad.toDataURL("image/png");
+  const zusatz = [...document.querySelectorAll(".gs-zusatz")].map((x) => x.value.trim()).filter(Boolean).join("\n");
+  const signedAt = new Date().toISOString();   // alle bekommen denselben Zeitstempel
+  const erfasstVon = (glasCurrentUser && glasCurrentUser.name) || "";
+
+  if (btn) { btn.disabled = true; btn.textContent = "Speichere…"; }
+  let online = 0, wartend = 0, serverFehler = null;
+  for (const a of arbeit) {
+    let ok = false;
+    if (navigator.onLine && !serverFehler) {
+      try {
+        const { error, payload } = await glasSignStop(a.stop.id, a.posJson, name, datum, unterschrift, zusatz, signedAt, erfasstVon);
+        if (!error) { Object.assign(a.stop, payload, { __pendingSync: false }); ok = true; online++; }
+        else if (!glasIstNetzFehler(error)) serverFehler = error;
+      } catch (e) { if (!glasIstNetzFehler(e)) serverFehler = e; }
+    }
+    if (!ok && !serverFehler) {
+      // Kein Empfang: in die bestehende Warteschlange, damit vor Ort nichts verloren geht
+      glasQueueSign({ stopId: a.stop.id, objekt: a.stop.objekt || "", tour: t.name || "", positionen: a.posJson, name, datum, unterschrift, zusatz, signedAt, erfasstVon });
+      Object.assign(a.stop, { name, datum, unterschrift, zusatz, positionen: a.posJson, status: "erledigt", signed_at: signedAt, erfasst_von: erfasstVon, __pendingSync: true });
+      wartend++;
+    }
+  }
+
+  if (serverFehler && !online && !wartend) {
+    if (btn) { btn.disabled = false; btn.textContent = `✓ ${gewaehlt.length} unterschreiben`; }
+    showToast("Fehler beim Speichern: " + (serverFehler.message || serverFehler));
+    return; // Sheet bleibt offen, nichts geht verloren
+  }
+
+  const gesamt = online + wartend;
+  if (online) glasPushUnterschriftAnAdmin(arbeit[0].stop, name, zusatz, t.name || "");
+  closeGlasSignSheet();
+  glasSammelAn = false;
+  glasSammelIds = new Set();
+  document.body.classList.remove("glas-sammel-offen");
+  glasOpenStopId = null;
+  glasTippAnimation = true;
+  renderGlasMa();
+  showToast(wartend
+    ? `${gesamt} unterschrieben – ${wartend} wird gesendet, sobald wieder Empfang da ist`
+    : `${gesamt} ${gesamt === 1 ? "Schein" : "Scheine"} unterschrieben ✓`);
+  if (serverFehler) showToast("Achtung: nicht alle konnten gespeichert werden");
 }
 
 function closeGlasSignSheet() {

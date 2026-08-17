@@ -2325,6 +2325,49 @@ html.app-mode .wrap { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 56
 .glas-lager-pdfkopf.auf { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .glas-lager-pdfkopf.auf .pk-pfeil { transform: rotate(90deg); }
 
+/* ---- MA-App: mehrere auf einmal unterschreiben lassen ---- */
+.gsm-sammel-start { width: 100%; justify-content: center; margin: 12px 0 4px;
+  padding: 13px; border-radius: 13px; font-size: 14.5px; font-weight: 700;
+  background: var(--card); border: 1.5px dashed var(--blue); color: var(--blue); }
+.gsm-sammel-kopf { background: var(--card); border: 1px solid var(--blue); border-radius: 14px;
+  padding: 12px 14px; margin: 12px 0 6px; }
+.gsm-sammel-kopf .gsk-z1 { display: flex; align-items: center; gap: 10px; }
+.gsm-sammel-kopf .gsk-z1 b { flex: 1; font-size: 15px; }
+.gsm-sammel-kopf .gsk-hint { margin: 4px 0 10px; font-size: 12.5px; color: var(--text-secondary); }
+.gsm-sammel-kopf .gsk-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.gsm-sammel-chip { padding: 9px 14px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: var(--bg); font-size: 13.5px; font-weight: 600; font-family: inherit;
+  color: var(--text); cursor: pointer; }
+.gsm-sammel-chip:active { transform: scale(.95); }
+
+/* Karten im Auswahlmodus: die Kugel wird zum Haken-Kästchen */
+.gsm-stopp.waehlbar { cursor: pointer; }
+.gsm-stopp.waehlbar .gsm-kugel { border: 2px solid var(--border); background: transparent; color: transparent; }
+.gsm-stopp.gewaehlt { border-color: var(--blue); background: rgba(45,125,196,.07); }
+.gsm-stopp.gewaehlt .gsm-kugel { border-color: var(--blue); background: var(--blue); color: #fff; }
+.gsm-stopp.ruht { opacity: .45; }
+html.dark .gsm-stopp.gewaehlt { background: rgba(45,125,196,.16); }
+
+/* Feste Leiste unten: zeigt die Auswahl und führt weiter - immer erreichbar */
+.gsm-sammel-leiste { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--card); border-top: 1px solid var(--border);
+  box-shadow: 0 -6px 20px rgba(10, 24, 42, .12); }
+.gsm-sammel-leiste span { flex: 1; font-size: 14px; font-weight: 700; color: var(--text); }
+.gsm-sammel-leiste .btn { flex: none; padding: 12px 18px; font-size: 14.5px; border-radius: 12px; }
+/* Platz schaffen, damit die Leiste nichts verdeckt. Bewusst über eine Klasse am
+   body statt :has() - das gibt es erst ab iOS 15.4, und hier sind ältere iPhones
+   im Einsatz. */
+body.glas-sammel-offen .wrap { padding-bottom: 100px; }
+
+/* Liste der gewählten Objekte im Unterschrift-Blatt */
+.gsm-sammel-liste { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
+.gsm-sammel-liste .gsl-zeile { display: flex; align-items: center; gap: 9px; padding: 5px 0;
+  font-size: 13.5px; font-weight: 600; color: var(--text); }
+.gsm-sammel-liste .gsl-hak { flex: none; width: 19px; height: 19px; border-radius: 50%;
+  background: #2e9e4f; color: #fff; font-size: 12px; display: grid; place-items: center; }
+
 /* ---- Mitarbeiter-Liste: erst der Überblick, Details erst beim Antippen ---- */
 .glas-ma-karte { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
   margin-bottom: 9px; overflow: hidden; transition: border-color .15s; }
@@ -2399,12 +2442,53 @@ html.dark .glas-lager-person .p-status.abw { color: #e0795e; }
    Nur der Kalender, wie TimeTree: kein blauer Kopf, keine Reiter. Gilt ausschließlich
    auf dem Kalender-Tab - navigiert man weg, erscheint die normale Oberfläche. Der
    blaue Statusleisten-Streifen oben kommt aus html.app-mode body::before. */
-body.glas-cal-pur .app-header { display: none; }
+/* Der Kopf wird NICHT mehr komplett versteckt: sonst gibt es keinen Weg zurück
+   zum Hub (der Kalender ist inzwischen eine eigene Hub-Kachel). Versteckt wird
+   nur der große Titel - die schlanke Nav-Zeile mit dem Hub-Knopf bleibt. */
+body.glas-cal-pur .app-header { padding-bottom: 10px; }
+/* Das runde Logo sitzt normalerweise unter dem (hohen) Kopf. Im geschrumpften
+   Kalender-Kopf lief es genau in den Hub-Knopf hinein - dort ist es reine Deko. */
+body.glas-cal-pur .logo-badge { display: none; }
+body.glas-cal-pur .app-header .greeting,
+body.glas-cal-pur .app-header .stat { display: none; }
 body.glas-cal-pur .tabs { display: none; }
-body.glas-cal-pur .app-sheet { margin-top: 0; border-radius: 0; }
+body.glas-cal-pur .app-sheet { border-radius: 18px 18px 0 0; }
 body.glas-cal-pur .app-sheet-content,
 html.app-mode body.glas-cal-pur .app-sheet-content {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+  padding-top: 10px;
+}
+
+/* Wochentagsleiste (Grundmaße = Handy, siehe Desktop-Block weiter unten) */
+.glas-cal-dow > div { text-align: center; font-size: 11px; font-weight: 600; }
+
+/* ---- Kalender auf dem DESKTOP ----
+   Das Handy-Layout bleibt exakt wie es ist (alle Regeln hier stehen hinter einer
+   min-width-Abfrage). Ab Tablet-Breite bekommt der Kalender das, was auf einem
+   großen Bildschirm fehlte: begrenzte Breite statt über die volle Fensterbreite
+   gezerrt, höhere Tageszellen und Schriftgrößen, die man auch aus Sitzabstand
+   noch lesen kann (8px-Chips waren am Rechner nicht zu entziffern). */
+@media (min-width: 760px) {
+  /* Der .wrap ist bewusst schmal (720px). Der Kalender darf daraus ausbrechen,
+     aber nicht mehr über die GANZE Fensterbreite laufen: begrenzt auf 1120px
+     und exakt mittig - der wrap selbst ist ja zentriert. */
+  .glas-fullwidth .glas-cal-card {
+    margin-left: calc(50% - min(560px, 50vw));
+    margin-right: calc(50% - min(560px, 50vw));
+    border-radius: 16px;
+  }
+  .glas-fullwidth .glas-cal-cell { min-height: 122px; padding: 5px 0 7px; gap: 3px; }
+  .glas-fullwidth .glas-cal-daynum { width: 25px; height: 25px; font-size: 13.5px; }
+  .glas-fullwidth .glas-cal-chip {
+    font-size: 11.5px; letter-spacing: 0; line-height: 1.35;
+    border-radius: 5px; padding: 2px 6px; margin: 0 3px;
+  }
+  .glas-fullwidth .glas-cal-dow > div { font-size: 13px; padding: 6px 0; }
+  .glas-fullwidth .glas-cal-kw { font-size: 10.5px; }
+  .glas-fullwidth .glas-cal-grid.with-kw { grid-template-columns: 26px repeat(7, 1fr); }
+}
+@media (min-width: 1180px) {
+  .glas-fullwidth .glas-cal-cell { min-height: 142px; }
+  .glas-fullwidth .glas-cal-chip { font-size: 12px; }
 }
 
 /* ---------------- Termin-Formular & -Detail im TimeTree-Stil ---------------- */
@@ -2716,7 +2800,27 @@ html.dark{ --jv-done:#3fa25f; --jv-plan:#3f83c4; --jv-open:#c07d3a; --jv-none:#7
 .geko-navbtn:active{ transform:scale(.94); background:rgba(255,255,255,.34); }
 /* Reines Symbol (z.B. Zurück-Pfeil) quadratisch halten */
 .geko-navbtn.icon{ width:38px; padding:0; font-size:17px; }
-.geko-navrow{ display:flex; align-items:center; gap:8px; min-height:38px; }
+/* ---- Hub-Knopf: der "Zuhause" der ganzen App-Familie ----
+   Vorher eine halbtransparente Fläche im blauen Kopf - sie verschwamm mit dem
+   Hintergrund und war klein. Jetzt eine solide weiße Pille mit Haussymbol im
+   getönten Kreis: sticht sofort heraus, ist deutlich größer zu treffen (44px
+   statt 38px = Apples empfohlene Mindestgröße) und liest sich als echter Knopf. */
+.geko-hubbtn{ display:inline-flex; align-items:center; gap:8px;
+  height:44px; padding:0 16px 0 6px; border-radius:22px;
+  background:#fff; border:none; text-decoration:none;
+  color:#1f5d92; font-size:14.5px; font-weight:700; font-family:inherit;
+  cursor:pointer; line-height:1; white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
+  box-shadow:0 2px 10px rgba(8,26,45,.22);
+  transition:transform .12s ease, box-shadow .15s ease; }
+.geko-hubbtn .hb-ic{ width:32px; height:32px; border-radius:50%; flex:none;
+  display:grid; place-items:center; font-size:17px; line-height:1;
+  background:rgba(31,93,146,.11); color:#1f5d92; }
+.geko-hubbtn:hover{ box-shadow:0 4px 14px rgba(8,26,45,.28); }
+.geko-hubbtn:active{ transform:scale(.95); }
+html.dark .geko-hubbtn{ background:#e8eef5; }
+
+.geko-navrow{ display:flex; align-items:center; gap:8px; min-height:44px; }
 .geko-navrow .geko-navbtn.right{ margin-left:auto; }
 /* Nav-Knöpfe stehen IMMER oben links; der Seitenname rutscht nach rechts. */
 .geko-brand{ margin-left:auto; display:inline-flex; align-items:center; gap:7px;
