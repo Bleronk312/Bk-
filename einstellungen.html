@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Einstellungen" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
-<link rel="stylesheet" href="css/style.css?v=161" />
+<link rel="stylesheet" href="css/style.css?v=162" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -56,10 +56,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=161"></script>
-  <script src="js/supabase-client.js?v=161"></script>
-  <script src="js/geko-auth.js?v=161"></script>
-  <script src="js/push.js?v=161"></script>
+  <script src="js/config.js?v=162"></script>
+  <script src="js/supabase-client.js?v=162"></script>
+  <script src="js/geko-auth.js?v=162"></script>
+  <script src="js/push.js?v=162"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -188,9 +188,6 @@
 
   function renderPush() {
     const e = pushEinstellungen || {};
-    const app = (rolle, icon, name) => `
-      <div class="est-zeile"><div class="est-name" style="font-weight:600;">${icon} ${name}</div>
-        <button class="btn" onclick="enablePushNotifications('${rolle}')">🔔 Auf diesem Gerät aktivieren</button></div>`;
     const schalter = (key, an, icon, text, quelle) => `
       <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
         <input type="checkbox" style="width:auto;" ${an ? "checked" : ""} onchange="pushSchalter('${key}', this.checked)" />
@@ -199,11 +196,7 @@
     return `
       <p class="est-sec-title">Benachrichtigungen</p>
       <div class="card">
-        <p class="muted" style="margin:0 0 4px; font-size:12.5px;">Einmal pro Gerät und App aktivieren. iPhone: geht nur, wenn die Seite als App auf dem Home-Bildschirm liegt.</p>
-        ${app("glas", "🪟", "Glasreinigung")}
-        ${app("kalender", "📅", "Kalender")}
-        ${app("graffiti", "🎨", "Graffiti")}
-        ${app("checkin_admin", "📍", "Check-ins")}
+        <p class="muted" style="margin:0 0 10px; font-size:12.5px;">Jedes App-Symbol meldet sich für genau seine eigenen Benachrichtigungen an. Aktiviert wird deshalb <b>einmal in der jeweiligen App</b> (Glas &amp; Kalender: unten „Positionen &amp; Archiv" → Glocke; Graffiti &amp; Check-ins: Glocken-Knopf oben). Hier stellst du ein, <b>wovon</b> berichtet wird – das gilt dann überall.</p>
       </div>
       <div class="card">
         <p style="margin:0 0 4px; font-weight:600;">Wovon möchtest du benachrichtigt werden?</p>

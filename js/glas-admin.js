@@ -3119,11 +3119,21 @@ function renderEinstellungenTab() {
   // (Design + Benachrichtigungen) - Statistik/Positionen/Archiv sind Glas-Verwaltung.
   // Allgemeines (Zugaenge, Benachrichtigungen, Darstellung) lebt zentral im
   // Hub unter Einstellungen - hier bleibt nur, was wirklich Glas ist.
+  // Die Aktivierung MUSS hier in der App bleiben: jedes App-Symbol hat seinen
+  // eigenen Benachrichtigungs-Kanal und meldet sich selbst an (eine Rolle pro
+  // Geraet/Symbol, siehe push.js). WAS gemeldet wird, stellt man zentral ein.
   const wegweiser = `
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:170px;">
+        <p style="margin:0; font-weight:600;">🔔 Benachrichtigungen</p>
+        <p class="muted" style="margin:3px 0 0;">Einmal pro Gerät für die ${glasCalApp ? "Kalender" : "Glasreinigung"}-App aktivieren</p>
+      </div>
+      <button class="btn btn-primary" onclick="glasPushAktivieren()">Auf diesem Gerät aktivieren</button>
+    </div>
     <a class="card" href="einstellungen.html" style="display:flex; justify-content:space-between; align-items:center; text-decoration:none; color:inherit;">
       <div>
         <p style="margin:0; font-weight:600;">⚙️ Allgemeine Einstellungen</p>
-        <p class="muted" style="margin:3px 0 0;">Zugänge &amp; Passwörter, Benachrichtigungen, Darstellung – im Hub</p>
+        <p class="muted" style="margin:3px 0 0;">Zugänge &amp; Passwörter, Benachrichtigungs-Themen, Darstellung – im Hub</p>
       </div>
       <span style="font-size:18px; color:var(--text-secondary);">›</span>
     </a>`;
