@@ -336,6 +336,7 @@ function glasShellHoehe() {
   if (!document.body.classList.contains("glas-shell")) return;
   if (!window.matchMedia("(max-width: 759px)").matches) {
     document.body.style.height = "";
+    document.body.style.top = "";
     document.documentElement.style.background = "";
     return;
   }
@@ -350,6 +351,13 @@ function glasShellHoehe() {
   if (bhParam > 0) { document.body.style.height = bhParam + "px"; glasDebugOverlay(); return; }
   const h = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
   if (h > 0) document.body.style.height = h + "px";
+  // Faehrt die Tastatur auf, verschiebt iOS den SICHTBAREN Bereich nach oben
+  // (offsetTop) - der fest verankerte Rahmen blieb bisher am alten Fleck und
+  // ragte ins Schwarze (Notizfeld im Lager-Plan). Deshalb die Verschiebung
+  // wortwoertlich mitfuehren: der Rahmen klebt damit immer am sichtbaren
+  // Bereich, egal wo iOS ihn gerade hinschiebt.
+  const oben = Math.round((window.visualViewport && window.visualViewport.offsetTop) || 0);
+  document.body.style.top = oben > 0 ? oben + "px" : "";
   glasDebugOverlay();
 }
 
@@ -423,8 +431,32 @@ function glasGraffitiTag(g) {
 
 async function glasInit() {
   glasShellHoehe();
-  if (window.visualViewport) window.visualViewport.addEventListener("resize", glasShellHoehe);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", glasShellHoehe);
+    // offsetTop aendert sich auch OHNE resize, wenn iOS den sichtbaren
+    // Bereich zur Tastatur schiebt - ohne diesen Horcher hing der Rahmen
+    // genau dann schief.
+    window.visualViewport.addEventListener("scroll", glasShellHoehe);
+  }
   window.addEventListener("resize", glasShellHoehe);
+
+  // Beim Fokus auf ein Eingabefeld: das Feld im INNEREN Roller sichtbar
+  // machen, sobald die Tastatur steht. iOS versucht das sonst uebers Fenster
+  // - und das ist bei der festen App-Shell der falsche Hebel.
+  document.addEventListener("focusin", (e) => {
+    if (!document.body.classList.contains("glas-shell")) return;
+    if (!e.target || !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    const feld = e.target;
+    setTimeout(() => {
+      glasShellHoehe();
+      try { feld.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (er) {}
+    }, 300);
+  });
+  document.addEventListener("focusout", () => {
+    if (!document.body.classList.contains("glas-shell")) return;
+    // Tastatur faehrt zu: Rahmen wieder auf volle Hoehe und Lage bringen
+    setTimeout(glasShellHoehe, 300);
+  });
   window.addEventListener("orientationchange", () => setTimeout(glasShellHoehe, 250));
   window.addEventListener("pageshow", glasShellHoehe);
   setInterval(glasDebugOverlay, 1500); // ohne ?debug=1 ein No-Op
