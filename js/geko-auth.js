@@ -99,6 +99,41 @@ async function gekoAbmelden() {
   try { await sb.auth.signOut(); } catch (e) {}
 }
 
+// Ein GÜLTIGES Anmelde-Token besorgen - notfalls vorher erneuern.
+//
+// Warum nötig: Das Token läuft nach einer Stunde ab. supabase-js erneuert im
+// Hintergrund, aber wenn die App vom Home-Bildschirm aus dem Schlaf geholt
+// wird, ist die erste Anfrage oft schneller als die Erneuerung. Sie ging dann
+// mit einem abgelaufenen Token raus, und der Server antwortete zu Recht mit
+// "Nur für angemeldete Admins" - obwohl man angemeldet war.
+async function gekoToken() {
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+  if (!session) return null;
+
+  // Läuft es in der nächsten Minute ab (oder ist schon abgelaufen)? Dann erst
+  // erneuern. Der Puffer fängt auch eine langsame Verbindung ab.
+  const laeuftAb = (session.expires_at || 0) * 1000;
+  if (laeuftAb && laeuftAb - Date.now() < 60000) {
+    try {
+      const { data, error } = await sb.auth.refreshSession();
+      if (!error && data && data.session) session = data.session;
+    } catch (e) { /* dann eben mit dem alten versuchen */ }
+  }
+  return session.access_token || null;
+}
+
+// Kommt die App aus dem Hintergrund zurueck (Home-Bildschirm-App, Tab-Wechsel),
+// die Anmeldung gleich auffrischen. Waehrend das Geraet schlaeft, laeuft die
+// Erneuerung im Hintergrund nicht - danach ist das Token oft abgelaufen, und
+// die erste Anfrage schlug fehl, bevor supabase-js nachziehen konnte.
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    gekoToken().catch(() => {});
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Wer ist gerade angemeldet?
 // ---------------------------------------------------------------------------

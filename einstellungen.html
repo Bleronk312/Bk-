@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=183" />
+<link rel="stylesheet" href="css/style.css?v=184" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -58,10 +58,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=183"></script>
-  <script src="js/supabase-client.js?v=183"></script>
-  <script src="js/geko-auth.js?v=183"></script>
-  <script src="js/push.js?v=183"></script>
+  <script src="js/config.js?v=184"></script>
+  <script src="js/supabase-client.js?v=184"></script>
+  <script src="js/geko-auth.js?v=184"></script>
+  <script src="js/push.js?v=184"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -92,17 +92,24 @@
   const sicher = (t) => String(t == null ? "" : t).replace(/[<>&"]/g,
     (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
 
-  async function ruf(nutzlast) {
-    let session = null;
-    try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
-    if (!session) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
+  async function ruf(nutzlast, zweiterVersuch) {
+    // gekoToken() erneuert das Token vorher, wenn es gleich ablaeuft.
+    const token = await gekoToken();
+    if (!token) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
     try {
       const antwort = await fetch(FUNKTION, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY,
-                   "Authorization": "Bearer " + session.access_token },
+                   "Authorization": "Bearer " + token },
         body: JSON.stringify(nutzlast),
       });
+      // 401/403 kann auch ein Token sein, das genau zwischen Pruefung und
+      // Ankunft abgelaufen ist. Einmal erneuern und wiederholen, bevor eine
+      // Fehlermeldung erscheint, die den Nutzer nur ratlos macht.
+      if ((antwort.status === 401 || antwort.status === 403) && !zweiterVersuch) {
+        try { await sb.auth.refreshSession(); } catch (e) {}
+        return await ruf(nutzlast, true);
+      }
       return await antwort.json();
     } catch (e) { return { error: "Keine Verbindung." }; }
   }
@@ -554,13 +561,12 @@
   async function testSenden(rolle, name) {
     if (!meinEndpoint) { showToast("Dieses Gerät ist nicht angemeldet"); return; }
     showToast("Test wird geschickt …");
-    let session = null;
-    try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+    const token = await gekoToken();
     try {
       const antwort = await fetch(SUPABASE_URL + "/functions/v1/send-push", {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY,
-                   "Authorization": "Bearer " + ((session && session.access_token) || SUPABASE_ANON_KEY) },
+                   "Authorization": "Bearer " + (token || SUPABASE_ANON_KEY) },
         body: JSON.stringify({
           role: rolle,
           endpoint: meinEndpoint,          // nur an dieses eine Geraet

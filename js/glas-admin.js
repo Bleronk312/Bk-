@@ -5613,20 +5613,26 @@ function glasMaZugangBadges(m) {
    Passwörter existieren hier genau EINMAL sichtbar: im Zettel-Fenster direkt
    nach dem Erzeugen. In der Datenbank landen sie nie im Klartext. */
 
-async function gekoKontoRuf(nutzlast) {
-  let session = null;
-  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
-  if (!session) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
+async function gekoKontoRuf(nutzlast, zweiterVersuch) {
+  // gekoToken() erneuert das Token vorher, wenn es gleich ablaeuft - sonst
+  // schickt die App nach laengerer Pause ein abgelaufenes und bekommt ein
+  // irrefuehrendes "Nur fuer angemeldete Admins" zurueck.
+  const token = await gekoToken();
+  if (!token) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
   try {
     const antwort = await fetch(SUPABASE_URL + "/functions/v1/benutzer-verwalten", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "apikey": SUPABASE_ANON_KEY,
-        "Authorization": "Bearer " + session.access_token,
+        "Authorization": "Bearer " + token,
       },
       body: JSON.stringify(nutzlast),
     });
+    if ((antwort.status === 401 || antwort.status === 403) && !zweiterVersuch) {
+      try { await sb.auth.refreshSession(); } catch (e) {}
+      return await gekoKontoRuf(nutzlast, true);
+    }
     return await antwort.json();
   } catch (e) {
     return { error: "Keine Verbindung." };
