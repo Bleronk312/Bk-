@@ -160,26 +160,35 @@ function ciSetHeaderDate() {
 
 /* ---------------- Login ---------------- */
 async function ciEnsureLoggedIn() {
+  // Zentrale Supabase-Sitzung statt eigenem Token. Der localStorage-Eintrag ist
+  // nur noch Profil-Zwischenspeicher fuers Offline-Oeffnen (Check-in am Objekt
+  // ohne Empfang), KEIN Anmeldenachweis.
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(CI_AUTH_KEY) || "null"); } catch (e) {}
-  if (!stored || !stored.id || !stored.tok) { ciRenderLogin(); return false; }
+
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+  if (!session) { ciRenderLogin(); return false; }
+
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, login_aktiv, zugang_checkin").eq("id", stored.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_checkin").eq("auth_user_id", session.user.id).maybeSingle();
     if (error) throw error;
-    if (!data || data.login_aktiv === false || !data.username) { ciLogout(); return false; }
+    if (!data) { ciRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet."); return false; }
+    if (data.login_aktiv === false) { ciLogout(); return false; }
     if (data.zugang_checkin !== true) { ciLogout(t("errNichtFrei")); return false; }
-    const tok = await gekoSessionTok(data.id, data.pass_hash);
-    if (tok !== stored.tok) { ciLogout(); return false; }
     ciUser = { id: data.id, name: data.name, username: data.username };
-    stored.name = data.name;
-    try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(stored)); } catch (e) {}
+    try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(ciUser)); } catch (e) {}
     ciSetHeaderWho();
     return true;
   } catch (e) {
-    ciUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
-    ciSetHeaderWho();
-    return true;
+    if (stored && stored.id) {
+      ciUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
+      ciSetHeaderWho();
+      return true;
+    }
+    ciRenderLogin(t("errVerbindung"));
+    return false;
   }
 }
 
@@ -219,17 +228,17 @@ async function ciDoLogin() {
   const btn = document.getElementById("ci_login_btn");
   if (btn) { btn.disabled = true; btn.textContent = t("pruefe"); }
   try {
+    // Passwort prueft der Server; hier kommt kein Hash mehr an.
+    const anm = await gekoAnmelden(user, pass);
+    if (!anm.ok) { ciRenderLogin(anm.fehler); return; }
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, pass_salt, login_aktiv, zugang_checkin").eq("username", user).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_checkin").eq("auth_user_id", anm.user.id).maybeSingle();
     if (error) throw error;
-    if (!data || !data.username || !data.pass_hash) { ciRenderLogin(t("errFalsch")); return; }
-    if (data.login_aktiv === false) { ciRenderLogin(t("errGesperrt")); return; }
-    const h = await gekoHashPw(pass, data.pass_salt || "");
-    if (h !== data.pass_hash) { ciRenderLogin(t("errFalsch")); return; }
-    if (data.zugang_checkin !== true) { ciRenderLogin(t("errNichtFrei")); return; }
-    const tok = await gekoSessionTok(data.id, data.pass_hash);
-    try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify({ id: data.id, tok, name: data.name, username: data.username })); } catch (e) {}
+    if (!data) { await gekoAbmelden(); ciRenderLogin(t("errFalsch")); return; }
+    if (data.login_aktiv === false) { await gekoAbmelden(); ciRenderLogin(t("errGesperrt")); return; }
+    if (data.zugang_checkin !== true) { await gekoAbmelden(); ciRenderLogin(t("errNichtFrei")); return; }
     ciUser = { id: data.id, name: data.name, username: data.username };
+    try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(ciUser)); } catch (e) {}
     ciInit();
   } catch (e) {
     ciRenderLogin(t("errVerbindung"));
@@ -237,6 +246,8 @@ async function ciDoLogin() {
 }
 
 function ciLogout(msg) {
+  // Zentrale Sitzung beenden - gilt damit fuer alle GEKO-Seiten.
+  try { sb.auth.signOut(); } catch (e) {}
   try { localStorage.removeItem(CI_AUTH_KEY); } catch (e) {}
   ciUser = null;
   ciRenderLogin(msg);

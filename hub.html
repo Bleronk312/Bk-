@@ -18,6 +18,12 @@
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
 <body class="glas-logo-left">
+  <!-- Zugangsschutz: echte Anmeldung, nur fuer die Verwaltung. -->
+  <script>
+  window.addEventListener("load", function () {
+    gekoSchuetze({ nurAdmin: true, overlay: true, titel: "GEKO Hub" });
+  });
+  </script>
 
   <div class="app-header">
     <div class="brand-row"><span class="dot"></span>GEKO Hub</div>
@@ -100,7 +106,10 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js?v=160"></script>
+  <script src="js/supabase-client.js?v=160"></script>
+  <script src="js/geko-auth.js?v=160"></script>
   <script src="js/fehler.js?v=160"></script>
   <script src="js/logo-asset.js?v=160"></script>
   <script src="js/pull-refresh.js?v=160"></script>

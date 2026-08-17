@@ -89,25 +89,35 @@ function glasOeffneTourAusLink() {
 // wird NUR, wenn der Account online nachweislich gesperrt/gelöscht ist. Bei fehlendem
 // Netz (Objekt ohne Empfang) NIE ausloggen, sonst blockiert das Unterschreiben.
 async function glasEnsureLoggedIn() {
+  // Angemeldet ist man jetzt ueber die zentrale Supabase-Sitzung (gilt fuer alle
+  // GEKO-Seiten). Der localStorage-Eintrag ist nur noch ein Profil-Zwischenspeicher
+  // fuers Offline-Oeffnen am Objekt - KEIN Anmeldenachweis mehr.
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(GLAS_AUTH_KEY) || "null"); } catch (e) {}
-  if (!stored || !stored.id || !stored.tok) { glasRenderLogin(); return false; }
+
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+  if (!session) { glasRenderLogin(); return false; }
+
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, login_aktiv, zugang_glas").eq("id", stored.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_glas").eq("auth_user_id", session.user.id).maybeSingle();
     if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
-    if (!data || data.login_aktiv === false || !data.username) { glasLogout(); return false; } // gesperrt/gelöscht
-    if (data.zugang_glas === false) { glasLogout(); return false; } // für Glas gesperrt (nur wenn ausdrücklich)
-    const tok = await gekoSessionTok(data.id, data.pass_hash);
-    if (tok !== stored.tok) { glasLogout(); return false; } // Passwort geändert -> neu anmelden
+    if (!data) { glasRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet."); return false; }
+    if (data.login_aktiv === false) { glasLogout(); return false; } // gesperrt
+    if (data.zugang_glas === false) { glasLogout(); return false; } // fuer Glas gesperrt (nur wenn ausdruecklich)
     glasCurrentUser = { id: data.id, name: data.name, username: data.username };
-    stored.name = data.name;
-    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(stored)); } catch (e) {}
+    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(glasCurrentUser)); } catch (e) {}
     return true;
   } catch (e) {
-    // Kein Netz: der zuletzt gespeicherten Anmeldung vertrauen (nicht ausloggen)
-    glasCurrentUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
-    return true;
+    // Kein Netz (Objekt ohne Empfang): dem Zwischenspeicher vertrauen - NIE
+    // ausloggen, sonst blockiert das Unterschreiben.
+    if (stored && stored.id) {
+      glasCurrentUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
+      return true;
+    }
+    glasRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
+    return false;
   }
 }
 
@@ -139,17 +149,17 @@ async function glasDoLogin() {
   const btn = document.getElementById("login_btn");
   if (btn) { btn.disabled = true; btn.textContent = "Prüfe…"; }
   try {
+    // Passwort prueft der Server; hier kommt kein Hash mehr an.
+    const anm = await gekoAnmelden(user, pass);
+    if (!anm.ok) { glasRenderLogin(anm.fehler); return; }
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas").eq("username", user).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_glas").eq("auth_user_id", anm.user.id).maybeSingle();
     if (error) throw error;
-    if (!data || !data.username || !data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
-    if (data.login_aktiv === false) { glasRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
-    if (data.zugang_glas === false) { glasRenderLogin("Für diesen Zugang ist die Glas-App nicht freigeschaltet. Bitte im Büro melden."); return; }
-    const h = await gekoHashPw(pass, data.pass_salt || "");
-    if (h !== data.pass_hash) { glasRenderLogin("Benutzername oder Passwort falsch."); return; }
-    const tok = await gekoSessionTok(data.id, data.pass_hash);
-    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify({ id: data.id, tok, name: data.name, username: data.username })); } catch (e) {}
+    if (!data) { await gekoAbmelden(); glasRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet. Bitte im Büro melden."); return; }
+    if (data.login_aktiv === false) { await gekoAbmelden(); glasRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
+    if (data.zugang_glas === false) { await gekoAbmelden(); glasRenderLogin("Für diesen Zugang ist die Glas-App nicht freigeschaltet. Bitte im Büro melden."); return; }
     glasCurrentUser = { id: data.id, name: data.name, username: data.username };
+    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(glasCurrentUser)); } catch (e) {}
     glasMaInit();
   } catch (e) {
     glasRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
@@ -157,6 +167,8 @@ async function glasDoLogin() {
 }
 
 function glasLogout() {
+  // Zentrale Sitzung beenden - gilt damit fuer alle GEKO-Seiten.
+  try { sb.auth.signOut(); } catch (e) {}
   try { localStorage.removeItem(GLAS_AUTH_KEY); } catch (e) {}
   glasCurrentUser = null;
   glasMaScreen = "home";

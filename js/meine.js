@@ -60,9 +60,9 @@ async function oneInit() {
 // pw_muss_wechsel), und falls die noch fehlen (SQL nicht ausgeführt) ohne sie.
 // So verschwinden Bausteine NICHT mehr beim erneuten Öffnen (der alte Bug).
 async function oneLoadUser(feld, wert) {
-  const voll = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager, pw_muss_wechsel";
-  const mittel = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel";
-  const schlank = "id, name, username, pass_hash, pass_salt, login_aktiv, zugang_glas, zugang_checkin";
+  const voll = "id, name, username, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager, pw_muss_wechsel";
+  const mittel = "id, name, username, login_aktiv, zugang_glas, zugang_checkin, zugang_graffiti, pw_muss_wechsel";
+  const schlank = "id, name, username, login_aktiv, zugang_glas, zugang_checkin";
   let { data, error } = await sb.from("glas_mitarbeiter").select(voll).eq(feld, wert).maybeSingle();
   if (error && /zugang_lager/i.test(error.message || "")) {
     ({ data, error } = await sb.from("glas_mitarbeiter").select(mittel).eq(feld, wert).maybeSingle());
@@ -79,27 +79,37 @@ async function oneLoadUser(feld, wert) {
 // zuletzt bekannten Freischaltungen aus der Sitzung weiterverwenden, damit die Kacheln
 // auch offline stehen bleiben.
 async function oneEnsureLoggedIn() {
+  // Profil-Zwischenspeicher fuers Offline-Oeffnen (Kacheln bleiben stehen).
+  // Er ist KEIN Anmeldenachweis mehr - der liegt jetzt bei Supabase, das seine
+  // Sitzung selbst im Browser haelt und erneuert.
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(ONE_AUTH_KEY) || "null"); } catch (e) {}
-  if (!stored || !stored.id || !stored.tok) { oneRenderLogin(); return false; }
+
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+  if (!session) { oneRenderLogin(); return false; }
+
   try {
-    const { data, error } = await oneLoadUser("id", stored.id);
+    const { data, error } = await oneLoadUser("auth_user_id", session.user.id);
     if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
-    if (!data || data.login_aktiv === false || !data.username) { oneLogout(); return false; }
-    const tok = await gekoSessionTok(data.id, data.pass_hash);
-    if (tok !== stored.tok) { oneLogout(); return false; } // Passwort geändert -> neu anmelden
+    if (!data) { oneRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet."); return false; }
+    if (data.login_aktiv === false) { await oneLogout(); return false; }
     oneUser = data;
     oneCacheZugaenge(data, stored);
     if (data.pw_muss_wechsel) oneScreen = "pwZwang";
     return true;
   } catch (e) {
-    // Kein Netz: letzte bekannte Freischaltungen aus der Sitzung nehmen (Kacheln bleiben)
-    oneUser = {
-      id: stored.id, name: stored.name || "", username: stored.username || "",
-      zugang_glas: stored.zugang_glas, zugang_checkin: stored.zugang_checkin, zugang_graffiti: stored.zugang_graffiti,
-      zugang_lager: stored.zugang_lager,
-    };
-    return true;
+    // Kein Netz: letzte bekannte Freischaltungen aus dem Zwischenspeicher (Kacheln bleiben)
+    if (stored && stored.id) {
+      oneUser = {
+        id: stored.id, name: stored.name || "", username: stored.username || "",
+        zugang_glas: stored.zugang_glas, zugang_checkin: stored.zugang_checkin, zugang_graffiti: stored.zugang_graffiti,
+        zugang_lager: stored.zugang_lager,
+      };
+      return true;
+    }
+    oneRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
+    return false;
   }
 }
 
@@ -143,12 +153,21 @@ async function oneDoLogin() {
   const btn = document.getElementById("login_btn");
   if (btn) { btn.disabled = true; btn.textContent = "Prüfe…"; }
   try {
-    const { data, error } = await oneLoadUser("username", user);
+    // Passwort prueft jetzt der Server - hier kommt nie mehr ein Hash an.
+    const anm = await gekoAnmelden(user, pass);
+    if (!anm.ok) { oneRenderLogin(anm.fehler); return; }
+    const { data, error } = await oneLoadUser("auth_user_id", anm.user.id);
     if (error) throw error;
-    if (!data || !data.username || !data.pass_hash) { oneRenderLogin("Benutzername oder Passwort falsch."); return; }
-    if (data.login_aktiv === false) { oneRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
-    const h = await gekoHashPw(pass, data.pass_salt || "");
-    if (h !== data.pass_hash) { oneRenderLogin("Benutzername oder Passwort falsch."); return; }
+    if (!data) {
+      await gekoAbmelden();
+      oneRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet. Bitte im Büro melden.");
+      return;
+    }
+    if (data.login_aktiv === false) {
+      await gekoAbmelden();
+      oneRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden.");
+      return;
+    }
     await oneStoreSessions(data);
     oneUser = data;
     oneScreen = data.pw_muss_wechsel ? "pwZwang" : "home";
@@ -162,14 +181,16 @@ async function oneDoLogin() {
 // Schreibt die GEKO-One-Sitzung UND die Sitzungen der freigeschalteten Apps - dadurch
 // öffnen sich Glas-Touren und Check-ins ohne erneute Anmeldung (gleicher Browser).
 async function oneStoreSessions(data) {
-  const tok = await gekoSessionTok(data.id, data.pass_hash);
+  // Nur noch Profil-Zwischenspeicher (Name + Freischaltungen) fuer Offline.
+  // Angemeldet ist man ueber die Supabase-Sitzung, die fuer alle GEKO-Seiten
+  // auf dieser Domain gilt - Glas- und Check-ins-App brauchen kein eigenes Token mehr.
   const sitz = {
-    id: data.id, tok, name: data.name, username: data.username,
+    id: data.id, name: data.name, username: data.username,
     zugang_glas: data.zugang_glas, zugang_checkin: data.zugang_checkin, zugang_graffiti: data.zugang_graffiti,
     zugang_lager: data.zugang_lager,
   };
   const roh = JSON.stringify(sitz);
-  const schlank = JSON.stringify({ id: data.id, tok, name: data.name, username: data.username });
+  const schlank = JSON.stringify({ id: data.id, name: data.name, username: data.username });
   try {
     localStorage.setItem(ONE_AUTH_KEY, roh);
     if (data.zugang_glas !== false) localStorage.setItem(ONE_GLAS_KEY, schlank);
@@ -177,10 +198,16 @@ async function oneStoreSessions(data) {
   } catch (e) {}
 }
 
-function oneLogout() {
-  // Bewusst NUR die eigene Sitzung löschen: Wer sich z.B. nur aus GEKO One abmeldet,
-  // soll nicht mitten am Arbeitstag aus der Glas-App fliegen.
-  try { localStorage.removeItem(ONE_AUTH_KEY); } catch (e) {}
+async function oneLogout() {
+  // Es gibt jetzt EINE Anmeldung fuer alle GEKO-Seiten - abmelden heisst also
+  // ueberall abmelden. Das alte "nur hier abmelden" gibt es nicht mehr; halb
+  // angemeldet zu sein war vorher schon eher verwirrend als hilfreich.
+  try { await sb.auth.signOut(); } catch (e) {}
+  try {
+    localStorage.removeItem(ONE_AUTH_KEY);
+    localStorage.removeItem(ONE_GLAS_KEY);
+    localStorage.removeItem(ONE_CI_KEY);
+  } catch (e) {}
   oneUser = null;
   oneScreen = "home";
   oneRenderLogin();
@@ -507,38 +534,45 @@ async function oneChangePw(zwang) {
   const alt = document.getElementById("pw_alt")?.value || "";
   const neu = document.getElementById("pw_neu")?.value || "";
   const neu2 = document.getElementById("pw_neu2")?.value || "";
-  if (neu.length < 6) { onePwFehler("Das neue Passwort braucht mindestens 6 Zeichen."); return; }
+  if (neu.length < 8) { onePwFehler("Das neue Passwort braucht mindestens 8 Zeichen."); return; }
   if (neu !== neu2) { onePwFehler("Die beiden Eingaben sind nicht gleich."); return; }
   const btn = document.getElementById("pw_btn");
   if (btn) { btn.disabled = true; btn.textContent = "Speichere…"; }
 
   try {
-    // Frischen Stand laden (Hash/Salt könnten sich geändert haben)
-    const { data, error } = await oneLoadUser("id", oneUser.id);
-    if (error) throw error;
-    if (!data) { onePwFehler("Konto nicht gefunden - bitte im Büro melden."); return; }
-
+    // Das Passwort lebt jetzt bei Supabase - in unseren Tabellen wird es weder
+    // gespeichert noch gehasht. Beim freiwilligen Wechsel wird das alte Passwort
+    // durch eine Probe-Anmeldung geprueft (Supabase kennt kein "altes Passwort
+    // pruefen" beim Aendern).
     if (!zwang) {
-      const hAlt = await gekoHashPw(alt, data.pass_salt || "");
-      if (hAlt !== data.pass_hash) { onePwFehler("Das aktuelle Passwort stimmt nicht."); if (btn) { btn.disabled = false; btn.textContent = "Passwort speichern"; } return; }
+      const { data: { user: aktUser } } = await sb.auth.getUser();
+      const mail = aktUser && aktUser.email;
+      if (!mail) throw new Error("keine Sitzung");
+      const { error: eAlt } = await sb.auth.signInWithPassword({ email: mail, password: alt });
+      if (eAlt) {
+        onePwFehler("Das aktuelle Passwort stimmt nicht.");
+        if (btn) { btn.disabled = false; btn.textContent = "Passwort speichern"; }
+        return;
+      }
     }
 
-    // Neues Passwort verhacken. pass_klar wird bewusst GELEERT: Ab jetzt kann niemand
-    // mehr das Passwort einsehen - das Büro kann nur noch zurücksetzen.
-    const salt = gekoMakeSalt();
-    const hash = await gekoHashPw(neu, salt);
-    const payload = { pass_salt: salt, pass_hash: hash, pass_klar: null, pw_selbst_gesetzt: true, pw_muss_wechsel: false };
-    let { error: e2 } = await sb.from("glas_mitarbeiter").update(payload).eq("id", oneUser.id);
-    if (e2 && /(pw_selbst_gesetzt|pw_muss_wechsel)/i.test(e2.message || "")) {
-      // Neue Spalten fehlen noch (SQL nicht ausgeführt) - Passwortwechsel trotzdem durchführen
-      delete payload.pw_selbst_gesetzt; delete payload.pw_muss_wechsel;
-      ({ error: e2 } = await sb.from("glas_mitarbeiter").update(payload).eq("id", oneUser.id));
+    const { error: e2 } = await sb.auth.updateUser({ password: neu });
+    if (e2) {
+      onePwFehler(/weak|short|least/i.test(e2.message || "")
+        ? "Das Passwort ist zu kurz oder zu einfach."
+        : "Fehler beim Speichern. Bitte erneut versuchen.");
+      if (btn) { btn.disabled = false; btn.textContent = "Passwort speichern"; }
+      return;
     }
-    if (e2) throw e2;
 
-    // Sitzungen auf das neue Passwort umschreiben - so bleibt man hier UND in den
-    // verknüpften Apps angemeldet, statt überall rauszufliegen.
-    await oneStoreSessions({ ...data, pass_hash: hash });
+    // Merker in der Mitarbeiter-Tabelle nachziehen (fuers Buero sichtbar).
+    const payload = { pw_selbst_gesetzt: true, pw_muss_wechsel: false, pass_klar: null };
+    let { error: e3 } = await sb.from("glas_mitarbeiter").update(payload).eq("id", oneUser.id);
+    if (e3) {
+      // Aeltere Datenbank ohne diese Spalten: nicht schlimm, Passwort ist geaendert.
+      try { await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", oneUser.id); } catch (e) {}
+    }
+
     oneUser.pw_muss_wechsel = false;
     oneScreen = "home";
     renderOne();

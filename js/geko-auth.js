@@ -119,11 +119,11 @@ async function gekoSchuetze(optionen) {
   if (!sitzung) { gekoZeigeLogin(opt); return; }
 
   if (opt.nurAdmin && !sitzung.istAdmin) {
-    gekoZeigeSperre("Dieser Bereich ist der Verwaltung vorbehalten.", sitzung);
+    gekoZeigeSperre("Dieser Bereich ist der Verwaltung vorbehalten.", sitzung, opt);
     return;
   }
   if (opt.bereich && !gekoDarf(sitzung, opt.bereich)) {
-    gekoZeigeSperre("Für diesen Bereich ist dein Zugang nicht freigeschaltet.", sitzung);
+    gekoZeigeSperre("Für diesen Bereich ist dein Zugang nicht freigeschaltet.", sitzung, opt);
     return;
   }
   // Erstpasswort noch nicht geändert -> erst das, dann weiter.
@@ -131,19 +131,43 @@ async function gekoSchuetze(optionen) {
     gekoZeigePasswortWechsel(opt, sitzung);
     return;
   }
+  _gekoOverlayWeg();
   if (typeof opt.weiter === "function") opt.weiter(sitzung);
 }
 
 // ---------------------------------------------------------------------------
 // Oberflächen (bewusst schlicht und ohne Abhängigkeiten)
 // ---------------------------------------------------------------------------
-function _gekoRahmen(inhalt) {
+// Zwei Darstellungen:
+//  - normal:  ersetzt die ganze Seite (für reine Verwaltungsseiten wie benutzer.html)
+//  - overlay: legt sich VOR eine fertige App (admin.html & Co.) - deren Aufbau
+//    bleibt unangetastet, bis die Anmeldung steht. Danach wird das Overlay entfernt.
+function _gekoRahmen(inhalt, opt) {
+  const karte =
+    '<div style="width:100%;max-width:380px;background:#fff;border-radius:16px;padding:26px;'
+    + 'box-shadow:0 2px 12px rgba(0,0,0,.09);color:#1c2530">' + inhalt + '</div>';
+  if (opt && opt.overlay) {
+    let o = document.getElementById("gekoAuthOverlay");
+    if (!o) {
+      o = document.createElement("div");
+      o.id = "gekoAuthOverlay";
+      o.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;"
+        + "justify-content:center;padding:20px;background:linear-gradient(160deg,#1f5d92,#132d47);"
+        + "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+      document.body.appendChild(o);
+    }
+    o.innerHTML = karte;
+    return;
+  }
   document.body.innerHTML =
     '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;'
     + 'padding:20px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'
-    + '\'Segoe UI\',Roboto,sans-serif">'
-    + '<div style="width:100%;max-width:380px;background:#fff;border-radius:16px;padding:26px;'
-    + 'box-shadow:0 2px 12px rgba(0,0,0,.09)">' + inhalt + '</div></div>';
+    + '\'Segoe UI\',Roboto,sans-serif">' + karte + '</div>';
+}
+
+function _gekoOverlayWeg() {
+  const o = document.getElementById("gekoAuthOverlay");
+  if (o) o.remove();
 }
 
 const _gekoFeld = 'width:100%;padding:13px;font-size:16px;border:1px solid #ccd3da;'
@@ -164,7 +188,7 @@ function gekoZeigeLogin(opt) {
     + '<input id="gekoPw" type="password" style="' + _gekoFeld + '" autocomplete="current-password">'
     + '<button id="gekoLos" style="' + _gekoKnopf + '">Anmelden</button>'
     + '<div id="gekoFehler" style="display:none;margin-top:13px;padding:11px;border-radius:9px;'
-    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>');
+    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>', opt);
 
   const knopf = document.getElementById("gekoLos");
   const fehler = document.getElementById("gekoFehler");
@@ -179,6 +203,9 @@ function gekoZeigeLogin(opt) {
       knopf.disabled = false; knopf.textContent = "Anmelden";
       return;
     }
+    // Im Overlay-Modus hat sich die App dahinter schon ohne Anmeldung
+    // aufgebaut - einmal neu laden, damit sie mit Anmeldung frisch startet.
+    if (opt && opt.overlay) { location.reload(); return; }
     gekoSchuetze(opt);   // gleiche Prüfung nochmal, jetzt angemeldet
   };
   knopf.onclick = senden;
@@ -186,13 +213,13 @@ function gekoZeigeLogin(opt) {
   document.getElementById("gekoUser").focus();
 }
 
-function gekoZeigeSperre(text, sitzung) {
+function gekoZeigeSperre(text, sitzung, opt) {
   _gekoRahmen(
     '<h1 style="font-size:19px;margin:0 0 8px">Kein Zugriff</h1>'
     + '<p style="color:#3a4652;font-size:15px;line-height:1.5;margin:0">' + text + '</p>'
     + '<p style="color:#6b7785;font-size:13px;margin:14px 0 0">Angemeldet als '
     + ((sitzung && (sitzung.ma?.name || sitzung.user?.email)) || "unbekannt") + '</p>'
-    + '<button id="gekoRaus" style="' + _gekoKnopf + ';background:#58636e">Abmelden</button>');
+    + '<button id="gekoRaus" style="' + _gekoKnopf + ';background:#58636e">Abmelden</button>', opt);
   document.getElementById("gekoRaus").onclick = async () => { await gekoAbmelden(); location.reload(); };
 }
 
@@ -209,7 +236,7 @@ function gekoZeigePasswortWechsel(opt, sitzung) {
     + '<input id="gekoNeu2" type="password" style="' + _gekoFeld + '" autocomplete="new-password">'
     + '<button id="gekoSpeichern" style="' + _gekoKnopf + '">Speichern und weiter</button>'
     + '<div id="gekoPwFehler" style="display:none;margin-top:13px;padding:11px;border-radius:9px;'
-    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>');
+    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>', opt);
 
   const knopf = document.getElementById("gekoSpeichern");
   const fehler = document.getElementById("gekoPwFehler");
@@ -226,6 +253,7 @@ function gekoZeigePasswortWechsel(opt, sitzung) {
 
     await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", sitzung.ma.id);
     _gekoSitzung = null;
+    if (opt && opt.overlay) { location.reload(); return; }
     gekoSchuetze(opt);
   };
 }

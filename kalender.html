@@ -23,6 +23,12 @@
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
 <body class="glas-logo-left">
+  <!-- Zugangsschutz: echte Anmeldung, nur fuer die Verwaltung. -->
+  <script>
+  window.addEventListener("load", function () {
+    gekoSchuetze({ nurAdmin: true, overlay: true, titel: "GEKO Kalender" });
+  });
+  </script>
 
   <div class="app-header">
     <div class="brand-row geko-navrow"><a href="hub.html" class="geko-hubbtn" title="Zur Startseite"><span class="hb-ic">⌂</span>Hub</a><span class="geko-brand"><span class="dot"></span>GEKO Kalender</span></div>
@@ -48,6 +54,7 @@
   <script src="js/logo-asset.js?v=160"></script>
   <script src="js/pull-refresh.js?v=160"></script>
   <script src="js/supabase-client.js?v=160"></script>
+  <script src="js/geko-auth.js?v=160"></script>
   <script src="js/app-shared.js?v=160"></script>
   <script src="js/glas-shared.js?v=160"></script>
   <script defer src="js/pdf-fonts.js?v=160"></script>

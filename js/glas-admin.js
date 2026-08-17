@@ -5619,7 +5619,7 @@ function renderMaListe() {
           <div class="glas-ma-fakten">
             <div><span>Bereiche</span><b>${glasMaZugangBadges(m)}</b></div>
             <div><span>Urlaub ${new Date().getFullYear()}</span><b>${b.genommen} genommen · <span style="color:${uebrigFarbe};">${b.uebrig} übrig</span> (von ${b.anspruch})</b></div>
-            ${m.username ? `<div><span>Anmeldung</span><b>${escapeHtml(m.username)}${m.pass_klar ? ` · Passwort: ${escapeHtml(m.pass_klar)}` : " · eigenes Passwort (nicht einsehbar)"}</b></div>` : ""}
+            ${m.username ? `<div><span>Anmeldung</span><b>${escapeHtml(m.username)}</b></div>` : ""}
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
             <button class="btn btn-sm btn-primary" onclick="glasMaEditing=${JSON.stringify(m).replace(/"/g, "&quot;")}; renderGlasAdmin();">Bearbeiten</button>
@@ -5675,26 +5675,9 @@ function glasMaZugangBadges(m) {
 // sich danach beim nächsten Anmelden ein eigenes setzen (pw_muss_wechsel) - das alte
 // ist ab sofort tot. Das Klartext-Feld bleibt nur bis zu diesem ersten Login gefüllt.
 async function glasMaPasswortReset(id) {
-  const m = glasMitarbeiter.find((x) => x.id === id);
-  if (!m) return;
-  const vorschlag = "Start" + Math.floor(1000 + Math.random() * 9000);
-  const neu = prompt(`Einmal-Passwort für ${m.name} vergeben.\n\nDer Mitarbeiter meldet sich damit an und MUSS sich sofort ein eigenes Passwort setzen. Das alte Passwort funktioniert danach nicht mehr.`, vorschlag);
-  if (neu === null) return;
-  const pw = String(neu).trim();
-  if (pw.length < 6) { showToast("Bitte mindestens 6 Zeichen"); return; }
-  const salt = gekoMakeSalt();
-  const payload = { pass_salt: salt, pass_hash: await gekoHashPw(pw, salt), pass_klar: pw, pw_muss_wechsel: true, pw_selbst_gesetzt: false };
-  let { error } = await sb.from("glas_mitarbeiter").update(payload).eq("id", id);
-  if (error && /(pw_muss_wechsel|pw_selbst_gesetzt)/i.test(error.message || "")) {
-    delete payload.pw_muss_wechsel; delete payload.pw_selbst_gesetzt;
-    showToast("Hinweis: Pflicht-Wechsel nicht gesetzt – bitte supabase_add_geko_one.sql ausführen");
-    ({ error } = await sb.from("glas_mitarbeiter").update(payload).eq("id", id));
-  }
-  if (error) { showToast("Fehler: " + error.message); return; }
-  await loadGlasMitarbeiter();
-  if (glasMaEditing && glasMaEditing.id === id) glasMaEditing = glasMitarbeiter.find((x) => x.id === id) || glasMaEditing;
-  renderGlasAdmin();
-  alert(`Einmal-Passwort für ${m.name}:\n\n${pw}\n\nBitte dem Mitarbeiter mitteilen. Beim nächsten Anmelden muss er sich ein eigenes Passwort setzen.`);
+  // Passwoerter werden nicht mehr hier gesetzt - das macht die zentrale
+  // Zugangsverwaltung, die sie sicher beim Anmeldedienst ablegt.
+  location.href = "benutzer.html";
 }
 
 function renderMaForm() {
@@ -5719,22 +5702,13 @@ function renderMaForm() {
       <div class="field" style="margin:0;"><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>`)}
 
     ${teil("🔑 Anmeldung &amp; Passwort", `
-      <div class="field"><label class="muted">Benutzername</label>
-        <input type="text" id="ma_username" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" />
-        <p class="muted" style="margin:4px 0 0; font-size:12px;">Klein &amp; ohne Leerzeichen. Leer lassen = dieser MA kann sich nicht anmelden.</p></div>
-      ${m.id && m.username && !m.pass_klar ? `
-      <div class="field">
-        <label class="muted">Passwort</label>
-        <div class="card" style="margin:0; padding:11px 13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <span style="flex:1; min-width:140px; font-size:13px;">🔒 <b>Eigenes Passwort gesetzt</b> – aus Sicherheitsgründen nicht einsehbar.</span>
-          <button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Zurücksetzen</button>
-        </div>
-        <p class="muted" style="margin:5px 0 0; font-size:12px;">Beim Zurücksetzen vergibst du ein Einmal-Passwort; der Mitarbeiter muss sich danach sofort ein eigenes setzen.</p>
-      </div>` : `
-      <div class="field"><label class="muted">Passwort <span class="muted" style="font-weight:400;">(sichtbar – zum Nachschauen &amp; Ändern)</span></label>
-        <input type="text" id="ma_pass" value="${escapeHtml(m.pass_klar || "")}" placeholder="Passwort vergeben" autocapitalize="none" autocorrect="off" spellcheck="false" />
-        ${m.id && m.username ? `<p class="muted" style="margin:5px 0 0; font-size:12px;">Sobald der Mitarbeiter sich in GEKO One ein eigenes Passwort setzt, verschwindet es hier – dann geht nur noch Zurücksetzen.</p>` : ""}</div>`}
-      ${m.id ? `<label class="glas-aktiv-toggle" style="margin:0;"><input type="checkbox" id="ma_aktiv" ${m.login_aktiv === false ? "" : "checked"} /> <span>Zugang aktiv &nbsp;<span class="muted">(Haken raus = gesperrt)</span></span></label>` : ""}`)}
+      <div class="card" style="margin:0; padding:11px 13px;">
+        <p style="margin:0; font-size:13px;">${m.username
+          ? `Benutzername: <b>${escapeHtml(m.username)}</b>`
+          : "Noch kein Zugang angelegt."}</p>
+        <p class="muted" style="margin:6px 0 10px; font-size:12px;">Zugänge, Passwörter und Sperren laufen jetzt über die zentrale Zugangsverwaltung – Passwörter werden dort nirgends mehr im Klartext gespeichert.</p>
+        <a class="btn btn-sm" href="benutzer.html">🔑 Zur Zugangsverwaltung</a>
+      </div>`)}
 
     ${teil("🧩 Bausteine &nbsp;<span class=\"muted\" style=\"font-weight:400; font-size:12px;\">= Kacheln in GEKO One</span>", `
       <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren</span></label>
@@ -5797,30 +5771,10 @@ async function saveGlasMa() {
   const anspruch = parseInt(document.getElementById("ma_anspruch").value, 10);
   const payload = { id: m.id || genCode(), name, arbeitstage: document.getElementById("ma_tage").value, urlaubsanspruch: isNaN(anspruch) ? 30 : Math.max(0, anspruch) };
 
-  // ---- App-Zugang (Benutzername/Passwort/gesperrt) ----
-  const username = (document.getElementById("ma_username")?.value || "").trim().toLowerCase().replace(/\s+/g, "");
-  const passRaw = document.getElementById("ma_pass")?.value || "";
-  const aktivEl = document.getElementById("ma_aktiv");
-  if (username) {
-    const konflikt = glasMitarbeiter.find((x) => x.id !== payload.id && (x.username || "").toLowerCase() === username);
-    if (konflikt) { showToast(`Benutzername „${username}" ist schon vergeben (${konflikt.name})`); return; }
-    if (!m.pass_hash && !passRaw) { showToast("Bitte ein Passwort für den neuen Zugang vergeben"); return; }
-    payload.username = username;
-    payload.login_aktiv = aktivEl ? aktivEl.checked : true;
-  } else {
-    payload.username = null; // kein Login für diesen MA
-  }
-  // WICHTIG: Nur neu verschlüsseln, wenn das Passwort auch WIRKLICH geändert wurde.
-  // Das Feld ist mit dem bisherigen Passwort vorausgefüllt - würde man bei jedem
-  // Speichern neu hashen (neues Salt = neuer Hash), verlieren alle Geräte des
-  // Mitarbeiters ihre Anmeldung und er müsste sich jedes Mal neu einloggen, nur
-  // weil im Büro z.B. ein Haken gesetzt wurde. Genau das war der Fehler.
-  if (passRaw && passRaw !== (m.pass_klar || "")) {
-    const salt = gekoMakeSalt();
-    payload.pass_salt = salt;
-    payload.pass_hash = await gekoHashPw(passRaw, salt);
-    payload.pass_klar = passRaw; // zum Nachschauen im Büro (Admin-only, hinter PIN)
-  }
+  // Anmeldedaten (Benutzername/Passwort/Sperre) werden hier NICHT mehr
+  // angefasst - das laeuft komplett ueber die zentrale Zugangsverwaltung
+  // (benutzer.html). Dieses Formular pflegt nur noch die Personaldaten
+  // und die Bausteine.
 
   // Per-App-Zugang: bestimmt, WO sich dieser Login anmelden darf (Glas / Check-ins).
   const zGlasEl = document.getElementById("ma_zugang_glas");
