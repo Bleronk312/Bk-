@@ -643,9 +643,14 @@ async function ciTagOeffnen(iso) {
   ciTagLaedt = false;
   renderCheckinsMa();
 
-  const inGeladen = (ciData.logs || []).some((l) => l.datum === iso)
-    || (ciTagExtra.geladen || []).includes(iso);
-  if (inGeladen) return;
+  const heute = ciTodayIso();
+  const montag = ciIsoFromDate((function () {
+    const n = new Date(); n.setDate(n.getDate() - (ciIsoDay(n) - 1)); return n;
+  })());
+  // Die laufende Woche ist beim Start vollständig geladen (inkl. Kollegen);
+  // alles davor muss geholt werden.
+  const schonDa = (iso >= montag && iso <= heute) || (ciTagExtra.geladen || []).includes(iso);
+  if (schonDa) return;
 
   ciTagLaedt = true;
   renderCheckinsMa();

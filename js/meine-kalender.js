@@ -232,17 +232,24 @@ async function oneKalLaden() {
       // ergibt sich, welche Rundgänge an welchem Tag schon erledigt wurden.
       const [rRes, lRes] = await Promise.all([
         oneKalMitTimeout(sb.from("checkin_rundgaenge").select("id, name, mitarbeiter_id, mitarbeiter_ids, tage, fenster_von, fenster_bis, aktiv, punkte")),
-        oneKalMitTimeout(sb.from("checkin_logs").select("rundgang_id, datum, mitarbeiter_id")
-          .eq("mitarbeiter_id", ich).gte("datum", vonIso).lte("datum", bisIso)).catch(() => ({ data: [] })),
+        // BEWUSST ohne Mitarbeiter-Filter: Ein Rundgang ist eine GEMEINSAME
+        // Aufgabe - checkt ein Kollege einen Punkt ein, ist der erledigt, egal
+        // für wen. Vorher zählte hier nur der eigene Check-in, dadurch stand im
+        // Kalender "0/5" (und ein roter Balken), obwohl der Rundgang gelaufen war.
+        oneKalMitTimeout(sb.from("checkin_logs").select("rundgang_id, punkt_id, datum")
+          .gte("datum", vonIso).lte("datum", bisIso)).catch(() => ({ data: [] })),
       ]);
       const data = rRes.data;
       const logs = (lRes && lRes.data) || [];
-      // "rundgang_id|datum" -> Anzahl abgehakter Punkte an dem Tag
+      // "rundgang_id|datum" -> Menge der abgehakten PUNKTE an dem Tag.
+      // Eine Menge, kein Zähler: Checken zwei Leute denselben Punkt ein, ist er
+      // trotzdem nur einmal erledigt - sonst käme man auf 6/5.
       const erledigt = new Map();
       logs.forEach((l) => {
         if (!l.rundgang_id || !l.datum) return;
         const k = l.rundgang_id + "|" + l.datum;
-        erledigt.set(k, (erledigt.get(k) || 0) + 1);
+        if (!erledigt.has(k)) erledigt.set(k, new Set());
+        erledigt.get(k).add(l.punkt_id || "?");
       });
       const letzter = new Date(m.jahr, m.monat + 1, 0).getDate();
       (data || []).forEach((r) => {
@@ -263,7 +270,7 @@ async function oneKalLaden() {
           // schon abgehakt? Daraus ergibt sich "erledigt" bzw. "teilweise".
           let punkte = [];
           try { punkte = Array.isArray(r.punkte) ? r.punkte : JSON.parse(r.punkte || "[]"); } catch (e) { punkte = []; }
-          const gemacht = erledigt.get(r.id + "|" + iso) || 0;
+          const gemacht = (erledigt.get(r.id + "|" + iso) || new Set()).size;
           const fertig = punkte.length > 0 && gemacht >= punkte.length;
           const teilweise = gemacht > 0 && !fertig;
           eintraege.push({
