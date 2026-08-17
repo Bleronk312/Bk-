@@ -497,21 +497,10 @@ function renderOneKalender() {
   const weeks = glasWeeksInRange({ year: m.jahr, month: m.monat }, { year: m.jahr, month: m.monat });
   const zellen = oneKalRasterZellen(weeks, heute);
 
-  // Kommende Termine (ab heute). Wiederkehrende Rundgänge werden dabei zusammengefasst:
-  // Sonst stünde derselbe Rundgang 20x untereinander und würde Touren, Graffiti-Termine
-  // und Urlaub verdrängen. Im Monatsraster bleiben trotzdem ALLE Tage markiert, und beim
-  // Antippen eines Tages zeigt das Tages-Blatt alles, was an dem Tag ansteht.
-  const gesehen = new Set();
-  const kommend = (oneKalTermine || [])
-    .filter((e) => (e.bis || e.von) >= heute)
-    .filter((e) => {
-      if (e.art !== "checkin") return true;
-      if (gesehen.has(e.titel)) return false;
-      gesehen.add(e.titel);
-      return true;
-    })
-    .slice(0, 12);
-
+  // Bewusst KEINE "Kommende Termine"-Liste mehr unter dem Kalender: was ansteht,
+  // steht als Balken im Monat, und beim Antippen eines Tages zeigt das Tages-Blatt
+  // alle Einzelheiten. Die doppelte Liste hat nur Platz gekostet - den bekommt
+  // jetzt das Raster, damit die Tage nicht mehr gequetscht wirken.
   return `
     <div class="okal-kopf">
       <button class="btn btn-sm" onclick="oneKalBlaettern(-1)" aria-label="Vorheriger Monat">‹</button>
@@ -529,10 +518,7 @@ function renderOneKalender() {
 
     <button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>
     ${renderOneUrlaubForm()}
-    ${renderOneMeineAntraege()}
-
-    <p class="one-label">KOMMENDE TERMINE</p>
-    ${oneKalListe(kommend, true)}`;
+    ${renderOneMeineAntraege()}`;
 }
 
 let oneKalTagGewaehlt = null;
