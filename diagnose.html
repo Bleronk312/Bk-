@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="GEKO Diagnose" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO Diagnose</title>
@@ -90,9 +91,9 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/config.js?v=170"></script>
-<script src="js/supabase-client.js?v=170"></script>
-<script src="js/fehler.js?v=170"></script>
+<script src="js/config.js?v=171"></script>
+<script src="js/supabase-client.js?v=171"></script>
+<script src="js/fehler.js?v=171"></script>
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function zeile(k,v,cls){ return `<div class="r"><b>${esc(k)}</b><span class="${cls||""}">${esc(v)}</span></div>`; }
