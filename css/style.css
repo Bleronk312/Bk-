@@ -385,7 +385,11 @@ label {
 /* Erledigte Touren: klar als fertig erkennbar (grün + leicht durchgestrichen) */
 .glas-cal-chip.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
-.glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+/* -1px: die Chips ueberlappen sich minimal. Die Kanten liegen bei 1fr-Spalten fast
+   immer auf KRUMMEN Pixelpositionen (z.B. 262,328) - rechnerisch ohne Luecke, aber
+   beim Rastern entsteht dort eine helle Naht, und der Balken sah zerschnitten aus.
+   Die Ueberlappung ist unsichtbar (gleiche Farbe) und schliesst die Naht sicher. */
+.glas-cal-chip.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -1px; }
 /* Fortsetzungstage tragen jetzt selbst Textstücke (siehe glasCalTextAufTage) und
    werden mittig gesetzt - so liest sich der Name über den ganzen Balken. */
 .glas-cal-chip { text-align: center; }
