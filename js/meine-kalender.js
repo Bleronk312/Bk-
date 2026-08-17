@@ -15,7 +15,8 @@
 // kleine Punkte, deshalb bewusst satt statt pastellig.
 const ONE_KAL_FARBEN = {
   glas: "#1668b8",      // Blau
-  graffiti: "#c2189c",  // Magenta
+  graffiti: "#c2189c",       // Lila/Magenta - offen
+  graffitiFertig: "#7a2a6b", // dieselbe Familie, nur dunkler - erledigt
   checkin: "#ef7d00",   // Orange
   urlaub: "#12a150",    // Grün
   lager: "#6b4ee6",     // Violett
@@ -223,7 +224,7 @@ async function oneKalLaden() {
           sub: ((s.adresse || "").split("\n")[0] || "Graffiti") + (fertig ? " · erledigt" : ""),
           // Direkt IN den Abnahmeschein springen, nicht nur in die Graffiti-App
           ziel: "mitarbeiter.html#/schein/" + encodeURIComponent(s.id),
-          erledigt: fertig,
+          fertig,
         });
       });
     })());
@@ -385,7 +386,8 @@ function renderOneKalLegende() {
     vorhanden.add(e.art);
     // Grün und Rot nur erklären, wenn es sie im angezeigten Monat auch gibt.
     const vorbei = (e.bis || e.von) < heute;
-    if (vorbei && e.art !== "urlaub" && e.art !== "lager") {
+    // Graffiti bleibt lila und wird nie grün/rot - also auch nicht so erklären.
+    if (vorbei && e.art !== "urlaub" && e.art !== "lager" && e.art !== "graffiti") {
       vorhanden.add((e.fertig || e.erledigt) ? "erledigt" : "verpasst");
     }
   });
@@ -444,6 +446,10 @@ function oneKalBalkenFarbe(e) {
   if (e.art === "urlaub") return vorbei ? ONE_KAL_FARBEN.grau : ONE_KAL_FARBEN.urlaub;
   // Lager ebenso: dass man da war, hakt das Büro ab, nicht der Kalender.
   if (e.art === "lager") return vorbei ? ONE_KAL_FARBEN.grau : ONE_KAL_FARBEN.lager;
+  // Graffiti behält IMMER sein Lila - erledigt nur dunkler, wie im Büro-Kalender.
+  // Grün/Rot wäre hier eine Wertung, die niemand einlösen kann: unterschrieben
+  // wird beim Kunden, ein Schein ohne Unterschrift ist deshalb nicht "verpasst".
+  if (e.art === "graffiti") return e.fertig ? ONE_KAL_FARBEN.graffitiFertig : ONE_KAL_FARBEN.graffiti;
 
   if (!vorbei) return ONE_KAL_FARBEN[e.art] || ONE_KAL_FARBEN.glas;
   return (e.fertig || e.erledigt) ? ONE_KAL_FARBEN.erledigt : ONE_KAL_FARBEN.verpasst;
@@ -456,9 +462,11 @@ function oneKalBalken() {
     datum: e.von,
     datum_bis: e.bis || e.von,
     col: oneKalBalkenFarbe(e),
-    // "done" macht den Balken blasser. Nur für wirklich Erledigtes - Verpasstes
-    // soll ins Auge fallen, nicht zurücktreten.
-    done: !!(e.fertig || e.erledigt) && (e.bis || e.von) < heute,
+    // "done" streicht den Balken durch und macht ihn blasser. Nur für wirklich
+    // Erledigtes - Verpasstes soll ins Auge fallen, nicht zurücktreten.
+    // Graffiti zählt schon ab der Unterschrift als fertig, nicht erst wenn der
+    // Tag vorbei ist: unterschrieben ist unterschrieben.
+    done: e.art === "graffiti" ? !!e.fertig : (!!(e.fertig || e.erledigt) && (e.bis || e.von) < heute),
     // Urlaub (auch beantragter) bewusst dezent/kursiv - klar anders als Arbeit
     urlaub: e.art === "urlaub",
     label: oneKalBalkenLabel(e),
