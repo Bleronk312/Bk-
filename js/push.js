@@ -63,9 +63,20 @@ async function enablePushNotifications(role, mitarbeiterId) {
 async function pushUpsertSubscription(role, subJson, mitarbeiterId) {
   const row = { role, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth };
   if (mitarbeiterId) row.mitarbeiter_id = mitarbeiterId; // für gezielte MA-Erinnerungen
+  // Konto-Nummer mitschreiben: nur damit lassen sich Meldungen einer PERSON
+  // zuordnen. mitarbeiter_id genügt dafür nicht - reine Verwaltungskonten
+  // haben gar keinen Mitarbeiter-Datensatz.
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) row.auth_user_id = data.session.user.id;
+  } catch (e) {}
   // ERST die neue Rolle sicher speichern ...
   let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" });
   // Spalte mitarbeiter_id fehlt evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut versuchen
+  if (error && /auth_user_id/i.test(error.message || "")) {
+    delete row.auth_user_id;                       // SQL noch nicht ausgeführt
+    ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));
+  }
   if (error && /mitarbeiter_id/i.test(error.message || "")) {
     delete row.mitarbeiter_id;
     ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));

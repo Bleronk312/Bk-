@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=173" />
+<link rel="stylesheet" href="css/style.css?v=174" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -58,10 +58,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=173"></script>
-  <script src="js/supabase-client.js?v=173"></script>
-  <script src="js/geko-auth.js?v=173"></script>
-  <script src="js/push.js?v=173"></script>
+  <script src="js/config.js?v=174"></script>
+  <script src="js/supabase-client.js?v=174"></script>
+  <script src="js/geko-auth.js?v=174"></script>
+  <script src="js/push.js?v=174"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -515,10 +515,34 @@
   // Bisher gab es nur Meldungen, wenn jemand etwas TUT. Das hier ist die
   // Gegenrichtung: eine Meldung, wenn etwas NICHT passiert ist.
   function renderErinnerungen() {
-    const zeit = (pushEinstellungen || {}).lager_erinnerung_zeit || "";
+    const e = pushEinstellungen || {};
+    const zeit = e.lager_erinnerung_zeit || "";
     const an = !!zeit;
     const zeiten = [];
     for (let h = 12; h <= 22; h++) zeiten.push(String(h).padStart(2, "0") + ":00");
+
+    // Wer kommt als Empfänger in Frage? Alle Verwaltungskonten - die mit
+    // Mitarbeiter-Datensatz und die reinen Bürokonten.
+    const kandidaten = [];
+    ((zugangsdaten && zugangsdaten.mitarbeiter) || []).forEach((m) => {
+      if (m.rolle === "admin" && m.hat_konto) kandidaten.push({ id: m.auth_user_id || null, name: m.name, sub: m.username });
+    });
+    ((zugangsdaten && zugangsdaten.admins_ohne_mitarbeiter) || []).forEach((a) => {
+      kandidaten.push({ id: a.user_id, name: a.name || a.email, sub: a.email });
+    });
+
+    const gewaehlt = Array.isArray(e.lager_erinnerung_an) ? e.lager_erinnerung_an : [];
+    const alle = gewaehlt.length === 0;
+
+    const person = (k) => {
+      if (!k.id) return "";
+      const drin = gewaehlt.includes(k.id);
+      return `<label style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" style="width:auto;" ${drin ? "checked" : ""} onchange="lagerEmpfaenger('${k.id}', this.checked)" />
+        <span><span style="font-size:14px; font-weight:600;">${sicher(k.name)}</span>
+        <span class="est-sub">${sicher(k.sub || "")}</span></span>
+      </label>`;
+    };
 
     return `
       <p class="est-sec-title">Erinnerungen</p>
@@ -537,9 +561,62 @@
             ${zeiten.map((z) => `<option value="${z}" ${z === zeit ? "selected" : ""}>${z} Uhr</option>`).join("")}
           </select>
         </div>
-        <p class="muted" style="margin:10px 0 0; font-size:12px;">Kommt nur, wenn bis dahin nichts verschickt wurde – und nie sonntags, weil montags ohnehin neu eingeteilt wird. Ist der Plan raus, bleibt es still.</p>`
+
+        <p style="margin:16px 0 0; font-weight:600; font-size:14px;">An wen?</p>
+        <label style="display:flex; align-items:center; gap:10px; padding:8px 0; cursor:pointer;">
+          <input type="checkbox" style="width:auto;" ${alle ? "checked" : ""} onchange="lagerEmpfaengerAlle(this.checked)" />
+          <span style="font-size:14px;">Alle, die Glasreinigungs-Meldungen empfangen</span>
+        </label>
+        ${alle ? "" : kandidaten.map(person).join("")}
+        <p class="muted" style="margin:10px 0 0; font-size:12px;">
+          ${alle
+            ? "Jedes Gerät, auf dem Glasreinigungs-Benachrichtigungen an sind."
+            : "Nur die angehakten Personen – und nur auf deren Geräten, wo Glasreinigungs-Benachrichtigungen an sind."}
+        </p>
+        <p class="muted" style="margin:10px 0 0; font-size:12px;">Kommt nur, wenn bis dahin nichts verschickt wurde – und nie sonntags, weil montags ohnehin neu eingeteilt wird.</p>`
         : ""}
       </div>`;
+  }
+
+  async function speichereEinstellung(feld, wert) {
+    pushEinstellungen = { ...(pushEinstellungen || {}), [feld]: wert };
+    const { error } = await sb.from("glas_einstellungen").upsert({ id: "default", [feld]: wert });
+    if (error) {
+      showToast(/lager_erinnerung/i.test(error.message || "")
+        ? "Bitte supabase_add_lager_erinnerung.sql ausführen"
+        : "Fehler: " + error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function lagerEmpfaengerAlle(alle) {
+    // Leere Liste bedeutet "an alle" - so bleibt es auch dann sinnvoll, wenn
+    // später jemand dazukommt, den man sonst extra anhaken müsste.
+    const wert = alle ? [] : [meineSitzung.user.id];
+    if (await speichereEinstellung("lager_erinnerung_an", wert)) {
+      showToast(alle ? "An alle" : "Nur ausgewählte");
+      render();
+    }
+  }
+
+  async function lagerEmpfaenger(userId, drin) {
+    const jetzt = Array.isArray((pushEinstellungen || {}).lager_erinnerung_an)
+      ? [...pushEinstellungen.lager_erinnerung_an] : [];
+    const neu = drin ? [...new Set([...jetzt, userId])] : jetzt.filter((x) => x !== userId);
+    // Alle abgewählt = niemand bekäme etwas. Dann lieber zurück auf "an alle",
+    // statt eine Erinnerung zu haben, die nirgends ankommt.
+    if (!neu.length) {
+      if (await speichereEinstellung("lager_erinnerung_an", [])) {
+        showToast("Niemand ausgewählt – geht wieder an alle");
+        render();
+      }
+      return;
+    }
+    if (await speichereEinstellung("lager_erinnerung_an", neu)) {
+      showToast("Gespeichert");
+      render();
+    }
   }
 
   async function lagerErinnerungUmschalten(an) {

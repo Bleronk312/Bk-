@@ -58,3 +58,24 @@ select cron.schedule(
 
 -- Kontrolle: alle geplanten Aufgaben
 select jobname, schedule, active from cron.job order by jobname;
+
+
+-- ============================================================================
+-- Nachtrag: Erinnerung gezielt an bestimmte Personen
+-- ============================================================================
+-- Bisher ging die Erinnerung an jedes Gerät, das Glasreinigungs-Meldungen
+-- empfängt. Damit man sie einzelnen Personen zuordnen kann, braucht ein
+-- angemeldetes Gerät einen Bezug zum Konto - mitarbeiter_id reicht dafür
+-- nicht, weil reine Verwaltungskonten gar keinen Mitarbeiter-Datensatz haben.
+alter table push_subscriptions add column if not exists auth_user_id uuid;
+
+-- Wer soll die Lager-Erinnerung bekommen? Liste von Konto-Nummern.
+-- Leer oder NULL = alle, die Glasreinigungs-Meldungen empfangen (bisheriges
+-- Verhalten, damit nach dem Einspielen nichts stillschweigend ausfällt).
+alter table glas_einstellungen add column if not exists lager_erinnerung_an jsonb;
+
+-- Kontrolle
+select column_name, data_type
+from information_schema.columns
+where table_name = 'push_subscriptions' and column_name in ('auth_user_id', 'mitarbeiter_id')
+order by column_name;
