@@ -5674,10 +5674,82 @@ function glasMaZugangBadges(m) {
 // Passwort zurücksetzen: Das Büro vergibt ein Einmal-Passwort. Der Mitarbeiter MUSS
 // sich danach beim nächsten Anmelden ein eigenes setzen (pw_muss_wechsel) - das alte
 // ist ab sofort tot. Das Klartext-Feld bleibt nur bis zu diesem ersten Login gefüllt.
+/* ---------------- Zugänge (Anmeldekonten) direkt im Mitarbeiter-Formular ----
+   Konten legt der Server an (Edge Function benutzer-verwalten) - nur dort gibt
+   es den dafür nötigen Schlüssel, und nur angemeldete Admins kommen durch.
+   Passwörter existieren hier genau EINMAL sichtbar: im Zettel-Fenster direkt
+   nach dem Erzeugen. In der Datenbank landen sie nie im Klartext. */
+
+async function gekoKontoRuf(nutzlast) {
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
+  if (!session) return { error: "Anmeldung abgelaufen – bitte Seite neu laden." };
+  try {
+    const antwort = await fetch(SUPABASE_URL + "/functions/v1/benutzer-verwalten", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + session.access_token,
+      },
+      body: JSON.stringify(nutzlast),
+    });
+    return await antwort.json();
+  } catch (e) {
+    return { error: "Keine Verbindung." };
+  }
+}
+
+// Vorlesbar und abtippbar: ohne 0/O und 1/l/I, die am Telefon nicht zu
+// unterscheiden sind.
+function gekoPasswortVorschlag() {
+  const zeichen = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const zufall = crypto.getRandomValues(new Uint32Array(10));
+  let aus = "";
+  for (let i = 0; i < 10; i++) aus += zeichen[zufall[i] % zeichen.length];
+  return aus;
+}
+
+async function glasMaZugangAnlegen(id) {
+  const m = glasMitarbeiter.find((x) => x.id === id);
+  if (!m) return;
+  const benutzername = (document.getElementById("ma_konto_user")?.value || "").trim();
+  if (!benutzername) { showToast("Bitte einen Benutzernamen eintragen"); return; }
+  const rolle = document.getElementById("ma_konto_admin")?.checked ? "admin" : "mitarbeiter";
+  const passwort = gekoPasswortVorschlag();
+  const erg = await gekoKontoRuf({ aktion: "anlegen", mitarbeiter_id: id, benutzername, passwort, rolle });
+  if (erg.error) { showToast("Fehler: " + erg.error); return; }
+  await loadGlasMitarbeiter();
+  if (glasMaEditing) glasMaEditing = glasMitarbeiter.find((x) => x.id === id) || glasMaEditing;
+  renderGlasAdmin();
+  alert(`Zugang für ${m.name} steht ✓\n\nBenutzername: ${erg.benutzername}\nEinmal-Passwort: ${passwort}\n\nDas Passwort siehst du nur JETZT – bitte gleich weitergeben. Beim ersten Anmelden setzt sich ${m.name} ein eigenes.`);
+}
+
 async function glasMaPasswortReset(id) {
-  // Passwoerter werden nicht mehr hier gesetzt - das macht die zentrale
-  // Zugangsverwaltung, die sie sicher beim Anmeldedienst ablegt.
-  location.href = "benutzer.html";
+  const m = glasMitarbeiter.find((x) => x.id === id);
+  if (!m) return;
+  if (!m.auth_user_id) { showToast("Erst einen Zugang anlegen"); return; }
+  if (!confirm(`Neues Einmal-Passwort für ${m.name} vergeben?\n\nDas alte Passwort gilt danach nicht mehr.`)) return;
+  const passwort = gekoPasswortVorschlag();
+  const erg = await gekoKontoRuf({ aktion: "passwort_neu", mitarbeiter_id: id, passwort });
+  if (erg.error) { showToast("Fehler: " + erg.error); return; }
+  await loadGlasMitarbeiter();
+  if (glasMaEditing) glasMaEditing = glasMitarbeiter.find((x) => x.id === id) || glasMaEditing;
+  renderGlasAdmin();
+  alert(`Einmal-Passwort für ${m.name}:\n\n${passwort}\n\nNur JETZT sichtbar – bitte gleich weitergeben. Beim nächsten Anmelden muss ${m.name} sich ein eigenes setzen.`);
+}
+
+async function glasMaKontoSperre(id) {
+  const m = glasMitarbeiter.find((x) => x.id === id);
+  if (!m || !m.auth_user_id) return;
+  const sperren = m.login_aktiv !== false;
+  if (sperren && !confirm(`${m.name} sperren?\n\nAnmelden geht dann nicht mehr. Alle Daten (Touren, Unterschriften, Urlaub) bleiben erhalten.`)) return;
+  const erg = await gekoKontoRuf({ aktion: sperren ? "sperren" : "entsperren", mitarbeiter_id: id });
+  if (erg.error) { showToast("Fehler: " + erg.error); return; }
+  await loadGlasMitarbeiter();
+  if (glasMaEditing) glasMaEditing = glasMitarbeiter.find((x) => x.id === id) || glasMaEditing;
+  renderGlasAdmin();
+  showToast(sperren ? `${m.name} ist gesperrt` : `${m.name} ist wieder frei`);
 }
 
 function renderMaForm() {
@@ -5701,14 +5773,19 @@ function renderMaForm() {
     ${teil("👤 Name", `
       <div class="field" style="margin:0;"><input type="text" id="ma_name" value="${escapeHtml(m.name || "")}" placeholder="z.B. Manuel" /></div>`)}
 
-    ${teil("🔑 Anmeldung &amp; Passwort", `
-      <div class="card" style="margin:0; padding:11px 13px;">
-        <p style="margin:0; font-size:13px;">${m.username
-          ? `Benutzername: <b>${escapeHtml(m.username)}</b>`
-          : "Noch kein Zugang angelegt."}</p>
-        <p class="muted" style="margin:6px 0 10px; font-size:12px;">Zugänge, Passwörter und Sperren laufen jetzt über die zentrale Zugangsverwaltung – Passwörter werden dort nirgends mehr im Klartext gespeichert.</p>
-        <a class="btn btn-sm" href="benutzer.html">🔑 Zur Zugangsverwaltung</a>
-      </div>`)}
+    ${teil("🔑 Anmeldung &amp; Passwort", !m.id ? `
+      <p class="muted" style="margin:0; font-size:13px;">Erst den Mitarbeiter speichern – danach kannst du hier seinen Zugang anlegen.</p>` : m.auth_user_id ? `
+      <p style="margin:0; font-size:13px;">Benutzername: <b>${escapeHtml(m.username || "?")}</b>${m.login_aktiv === false ? ' · <b style="color:var(--danger);">gesperrt</b>' : ""}${m.pw_muss_wechsel ? ' · <span class="muted">Einmal-Passwort aktiv</span>' : ""}</p>
+      <p class="muted" style="margin:6px 0 10px; font-size:12px;">Sein Passwort setzt sich der Mitarbeiter beim ersten Anmelden selbst – es ist für niemanden einsehbar, auch nicht fürs Büro. Passwort vergessen? Neues Einmal-Passwort vergeben.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-sm" onclick="glasMaPasswortReset('${m.id}')">🔄 Einmal-Passwort</button>
+        <button class="btn btn-sm" ${m.login_aktiv === false ? "" : 'style="color:var(--danger);"'} onclick="glasMaKontoSperre('${m.id}')">${m.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>
+      </div>` : `
+      <p class="muted" style="margin:0 0 8px; font-size:13px;">Noch kein Zugang – ohne Zugang kann sich ${escapeHtml(m.name || "der Mitarbeiter")} nirgends anmelden.</p>
+      <div class="field" style="margin:0 0 8px;"><label class="muted">Benutzername</label>
+        <input type="text" id="ma_konto_user" value="${escapeHtml(m.username || "")}" placeholder="z.B. manuel" autocapitalize="none" autocorrect="off" spellcheck="false" /></div>
+      <label class="glas-aktiv-toggle" style="margin:0 0 10px;"><input type="checkbox" id="ma_konto_admin" /> <span>Verwaltungs-Zugang <span class="muted">(sieht alles, kann Zugänge vergeben)</span></span></label>
+      <button class="btn btn-primary btn-sm" onclick="glasMaZugangAnlegen('${m.id}')">🔑 Zugang anlegen</button>`)}
 
     ${teil("🧩 Bausteine &nbsp;<span class=\"muted\" style=\"font-weight:400; font-size:12px;\">= Kacheln in GEKO One</span>", `
       <label class="glas-aktiv-toggle"><input type="checkbox" id="ma_zugang_glas" ${m.zugang_glas === false ? "" : "checked"} /> <span>🧽 Glas-Touren</span></label>
@@ -5828,6 +5905,13 @@ async function saveGlasMa() {
 async function deleteGlasMa(id) {
   const anzahl = glasUrlaub.filter((u) => u.mitarbeiter_id === id).length;
   if (!confirm(anzahl ? `Diesen Mitarbeiter inkl. ${anzahl} Urlaubseintrag/-einträgen löschen?` : "Diesen Mitarbeiter löschen?")) return;
+  // Erst das Anmeldekonto entfernen - sonst bliebe ein Konto uebrig, das sich
+  // anmelden kann, aber zu niemandem mehr gehoert.
+  const mKonto = glasMitarbeiter.find((x) => x.id === id);
+  if (mKonto && mKonto.auth_user_id) {
+    const ergKonto = await gekoKontoRuf({ aktion: "konto_loeschen", mitarbeiter_id: id });
+    if (ergKonto.error) { showToast("Konto konnte nicht entfernt werden: " + ergKonto.error); return; }
+  }
   if (anzahl) await sb.from("glas_urlaub").delete().eq("mitarbeiter_id", id);
   const { error } = await sb.from("glas_mitarbeiter").delete().eq("id", id);
   if (error) { showToast("Fehler: " + error.message); return; }
