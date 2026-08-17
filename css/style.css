@@ -390,6 +390,11 @@ label {
 .glas-cal-chip-spacer { visibility: hidden; }
 /* Erledigte Touren: klar als fertig erkennbar (grün + leicht durchgestrichen) */
 .glas-cal-chip.is-done { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.92; }
+/* Der Balkenname liegt in einem absolut positionierten Feld (.ccal-txt) - dorthin
+   vererbt sich text-decoration NICHT (out-of-flow). Ohne diese Zeile war bei
+   fertigen Touren nur der leere Platzhalter durchgestrichen, der Name selbst
+   nicht - "erledigt" war im Monat also gar nicht mehr zu sehen. */
+.glas-cal-chip.is-done .ccal-txt { text-decoration: line-through; text-decoration-thickness: 1px; }
 .glas-cal-chip.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
 /* -1px: die Chips ueberlappen sich minimal. Die Kanten liegen bei 1fr-Spalten fast
    immer auf KRUMMEN Pixelpositionen (z.B. 262,328) - rechnerisch ohne Luecke, aber

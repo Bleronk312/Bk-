@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO One" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO One - Meine Übersicht</title>
-<link rel="stylesheet" href="css/style.css?v=159" />
+<link rel="stylesheet" href="css/style.css?v=160" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="preconnect" href="https://tjeheehmaefrqutbjmxn.supabase.co" crossorigin />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
@@ -214,6 +214,37 @@ html.dark .okal-dow > div.frei { color: #e0795e; }
 }
 .okal-feiertag-hinweis { margin: 10px 2px 0; font-size: 12.5px; font-weight: 700; color: #c2452a; }
 
+/* Urlaubsantrag: eigenes, festes Layout. Die allgemeinen .field-Bausteine haben
+   auf dem iPhone nicht getragen - Safari zentriert den Wert eines Datumsfeldes
+   und ignoriert dessen Breite, dadurch standen Beschriftung und Datum versetzt
+   und die Karte wirkte auseinandergefallen. */
+.one-urlform { margin-top: 12px; padding: 14px 15px 15px; }
+.one-urlform .uf-kopf { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+.one-urlform .uf-kopf b { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 800; color: var(--text); }
+.uf-zu { flex: none; width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: var(--bg); color: var(--text-secondary); font-size: 14px; font-family: inherit; cursor: pointer; }
+.uf-zu:active { transform: scale(.9); }
+.uf-zeile { display: flex; gap: 10px; }
+.uf-feld { display: block; flex: 1; min-width: 0; margin-bottom: 12px; }
+.uf-feld > span { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  color: var(--text-secondary); margin-bottom: 5px; }
+.uf-feld input {
+  display: block; width: 100%; box-sizing: border-box;
+  /* 44px = sichere Tippfläche, 16px Schrift = iOS zoomt beim Antippen nicht rein */
+  min-height: 44px; padding: 0 12px;
+  font-family: inherit; font-size: 16px; color: var(--text); text-align: left;
+  background: var(--card); border: 1px solid var(--border); border-radius: 11px;
+  -webkit-appearance: none; appearance: none;
+}
+/* Safari rendert den Datumswert in einem eigenen Innenteil - der muss ebenfalls
+   linksbündig gesetzt werden, sonst klebt das Datum weiter in der Feldmitte. */
+.uf-feld input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.uf-feld input[type="date"]::-webkit-calendar-picker-indicator { margin-left: auto; opacity: .55; }
+.uf-feld input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31,93,146,.14); }
+.uf-aktionen { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.uf-aktionen .btn-primary { margin-left: auto; }
+.uf-hinweis { margin: 12px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--text-secondary); }
+
 /* Tages-Blatt: kommt von unten hoch (wie in nativen Kalender-Apps), statt die
    Termine weiter unten auf der Seite aufzuklappen. */
 .okal-sheet-ov { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end;
@@ -275,17 +306,17 @@ html.dark .okal-feiertag-hinweis { color: #e0795e; }
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=159"></script>
-  <script src="js/fehler.js?v=159"></script>
-  <script src="js/logo-asset.js?v=159"></script>
-  <script src="js/pull-refresh.js?v=159"></script>
-  <script src="js/supabase-client.js?v=159"></script>
-  <script src="js/app-shared.js?v=159"></script>
-  <script src="js/glas-shared.js?v=159"></script>
-  <script src="js/push.js?v=159"></script>
-  <script src="js/meine-kalender.js?v=11"></script>
+  <script src="js/config.js?v=160"></script>
+  <script src="js/fehler.js?v=160"></script>
+  <script src="js/logo-asset.js?v=160"></script>
+  <script src="js/pull-refresh.js?v=160"></script>
+  <script src="js/supabase-client.js?v=160"></script>
+  <script src="js/app-shared.js?v=160"></script>
+  <script src="js/glas-shared.js?v=160"></script>
+  <script src="js/push.js?v=160"></script>
+  <script src="js/meine-kalender.js?v=12"></script>
   <!-- Übersetzung (Albanisch) - legt sich über das gerenderte Deutsch, siehe ma-i18n.js -->
-  <script src="js/ma-i18n.js?v=159"></script>
+  <script src="js/ma-i18n.js?v=160"></script>
   <script src="js/meine.js?v=5"></script>
 </body>
 </html>

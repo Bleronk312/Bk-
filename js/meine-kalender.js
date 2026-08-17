@@ -516,7 +516,7 @@ function renderOneKalender() {
 
     ${renderOneKalLegende()}
 
-    <button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>
+    ${oneUrlaubFormOffen ? "" : `<button class="btn btn-sm" style="margin-top:14px;" onclick="oneUrlaubFormOeffnen()">🏖️ Urlaub beantragen</button>`}
     ${renderOneUrlaubForm()}
     ${renderOneMeineAntraege()}`;
 }
@@ -759,27 +759,39 @@ function oneUrlaubFormOeffnen() {
   renderOne();
 }
 
+function oneUrlaubFormZu() {
+  oneUrlaubFormOffen = false;
+  renderOne();
+}
+
+// Eigenes, festes Layout statt der allgemeinen .field-Bausteine: die Datumsfelder
+// sind auf dem iPhone der Knackpunkt (Safari zentriert den Wert und ignoriert die
+// Feldbreite), deshalb bekommen sie hier eine klare eigene Form.
 function renderOneUrlaubForm() {
   if (!oneUrlaubFormOffen) return "";
   const heute = oneKalHeute();
+  const vor = oneKalTagGewaehlt && oneKalTagGewaehlt >= heute ? oneKalTagGewaehlt : "";
   return `
-    <div class="card" style="margin-top:10px;">
-      <p style="margin:0 0 10px; font-weight:700;">🏖️ Urlaub beantragen</p>
-      <div id="url_err"></div>
-      <div class="row" style="display:flex; gap:8px;">
-        <div class="field" style="flex:1;"><label class="muted">Von</label>
-          <input type="date" id="url_von" min="${heute}" value="${oneKalTagGewaehlt || ""}" style="font-size:16px;" /></div>
-        <div class="field" style="flex:1;"><label class="muted">Bis</label>
-          <input type="date" id="url_bis" min="${heute}" value="${oneKalTagGewaehlt || ""}" style="font-size:16px;" /></div>
+    <div class="card one-urlform">
+      <div class="uf-kopf">
+        <b>🏖️ Urlaub beantragen</b>
+        <button class="uf-zu" onclick="oneUrlaubFormZu()" aria-label="Schließen" title="Schließen">✕</button>
       </div>
-      <div class="field"><label class="muted">Notiz ans Büro (optional)</label>
-        <input type="text" id="url_notiz" placeholder="z.B. Familienbesuch" style="font-size:16px;" /></div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn-sm" onclick="oneUrlaubFormOffen=false; renderOne();">Abbrechen</button>
-        <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="oneUrlaubSenden()" ${oneUrlaubBusy ? "disabled" : ""}>
+      <div id="url_err"></div>
+      <div class="uf-zeile">
+        <label class="uf-feld"><span>Von</span>
+          <input type="date" id="url_von" min="${heute}" value="${vor}" /></label>
+        <label class="uf-feld"><span>Bis</span>
+          <input type="date" id="url_bis" min="${heute}" value="${vor}" /></label>
+      </div>
+      <label class="uf-feld"><span>Notiz ans Büro (optional)</span>
+        <input type="text" id="url_notiz" placeholder="z.B. Familienbesuch" /></label>
+      <div class="uf-aktionen">
+        <button class="btn btn-sm" onclick="oneUrlaubFormZu()">Abbrechen</button>
+        <button class="btn btn-primary btn-sm" onclick="oneUrlaubSenden()" ${oneUrlaubBusy ? "disabled" : ""}>
           ${oneUrlaubBusy ? "Sende…" : "Antrag senden"}</button>
       </div>
-      <p class="muted" style="margin:9px 0 0; font-size:12px;">Das Büro sieht deinen Antrag sofort und gibt ihn frei oder lehnt ab. Du siehst den Stand hier.</p>
+      <p class="uf-hinweis">Das Büro sieht deinen Antrag sofort und gibt ihn frei oder lehnt ab. Du siehst den Stand hier.</p>
     </div>`;
 }
 
