@@ -1,0 +1,214 @@
+// Supabase Edge Function: benutzer-verwalten
+//
+// Legt Anmeldekonten an, setzt Passwörter zurück, sperrt und entsperrt.
+//
+// WARUM ÜBERHAUPT EINE FUNCTION?
+// Konten anlegen geht nur mit dem Service-Role-Schlüssel. Der darf NIEMALS in
+// den Browser — wer ihn hat, kommt an jede Zeile jeder Tabelle, an RLS vorbei.
+// Deshalb läuft das hier auf dem Server, und der Browser darf nur fragen.
+//
+// SICHERHEIT — der wichtigste Teil dieser Datei:
+// Supabase prüft von sich aus nur, dass überhaupt ein gültiger Schlüssel dabei
+// ist — und der anon-Schlüssel steht in js/config.js, ist also öffentlich. Diese
+// Function MUSS deshalb selbst prüfen, WER da fragt. Genau das macht istAdmin():
+// sie liest das mitgeschickte Konto-Token und verlangt geko_rolle == "admin"
+// aus app_metadata (das kann nur der Server setzen, siehe Schritt-1-SQL).
+// Ohne diese Prüfung könnte sich jeder Besucher selbst ein Admin-Konto anlegen.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Anmeldename -> interne Adresse. Die Mitarbeiter tippen weiterhin NUR ihren
+// Benutzernamen; die Adresse hängt die App an. Sie muss keine Mails empfangen
+// können (Bestätigung ist aus), soll aber zur Firma passen, damit im Supabase-
+// Dashboard sofort erkennbar ist, worum es sich handelt.
+const MAIL_DOMAIN = "ma.gekoclean.de";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json",
+};
+
+const antwort = (daten: unknown, status = 200) =>
+  new Response(JSON.stringify(daten), { status, headers: cors });
+
+// Benutzername säubern: klein, ohne Leerzeichen, nur was in einer Adresse
+// erlaubt ist. Verhindert zugleich, dass jemand über einen Namen wie
+// "x@fremd.de" eine fremde Adresse unterschiebt.
+function nameSaeubern(roh: string): string {
+  return String(roh || "")
+    .trim().toLowerCase()
+    .replace(/[äÄ]/g, "ae").replace(/[öÖ]/g, "oe").replace(/[üÜ]/g, "ue").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9._-]/g, "");
+}
+
+const mailFuer = (benutzername: string) => `${benutzername}@${MAIL_DOMAIN}`;
+
+// Ist der Aufrufer wirklich ein angemeldeter Admin?
+async function istAdmin(req: Request, admin: ReturnType<typeof createClient>) {
+  const kopf = req.headers.get("Authorization") || "";
+  const token = kopf.replace(/^Bearer\s+/i, "").trim();
+  // Der anon-Schlüssel ist öffentlich und wird von supabase-js als Authorization
+  // geschickt, wenn niemand angemeldet ist. Der ist KEIN Konto-Token.
+  if (!token || token === Deno.env.get("SUPABASE_ANON_KEY")) return null;
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data?.user) return null;
+  if ((data.user.app_metadata as Record<string, unknown> | null)?.geko_rolle !== "admin") return null;
+  return data.user;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const aufrufer = await istAdmin(req, admin);
+  if (!aufrufer) return antwort({ error: "Nur für angemeldete Admins." }, 403);
+
+  let eingabe: Record<string, string | boolean>;
+  try {
+    eingabe = await req.json();
+  } catch {
+    return antwort({ error: "Ungültige Anfrage." }, 400);
+  }
+
+  const aktion = String(eingabe.aktion || "");
+  const maId = String(eingabe.mitarbeiter_id || "");     // glas_mitarbeiter.id
+  const benutzername = nameSaeubern(String(eingabe.benutzername || ""));
+  const passwort = String(eingabe.passwort || "");
+  const rolle = eingabe.rolle === "admin" ? "admin" : "mitarbeiter";
+
+  // Zu welchem Konto gehört dieser Mitarbeiter?
+  async function kontoVon(id: string) {
+    const { data } = await admin.from("glas_mitarbeiter")
+      .select("id, name, username, auth_user_id").eq("id", id).maybeSingle();
+    return data;
+  }
+
+  try {
+    switch (aktion) {
+
+      // ---- Konto anlegen -------------------------------------------------
+      case "anlegen": {
+        if (!maId || !benutzername || passwort.length < 8) {
+          return antwort({ error: "Mitarbeiter, Benutzername und ein Passwort mit mindestens 8 Zeichen sind Pflicht." }, 400);
+        }
+        const ma = await kontoVon(maId);
+        if (!ma) return antwort({ error: "Diesen Mitarbeiter gibt es nicht." }, 404);
+        if (ma.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es schon ein Konto." }, 409);
+
+        const { data, error } = await admin.auth.admin.createUser({
+          email: mailFuer(benutzername),
+          password: passwort,
+          email_confirm: true,                       // keine Bestätigungsmail nötig
+          app_metadata: { geko_rolle: rolle, mitarbeiter_id: maId },
+          user_metadata: { name: ma.name || benutzername },
+        });
+        if (error) {
+          // Häufigster Fall: Benutzername schon vergeben — klar benennen,
+          // statt eine englische Rohmeldung durchzureichen.
+          const doppelt = /already|registered|exists/i.test(error.message || "");
+          return antwort({ error: doppelt ? "Diesen Benutzernamen gibt es schon." : error.message }, doppelt ? 409 : 400);
+        }
+
+        // Verknüpfen. Klappt das nicht, wird das Konto wieder entfernt —
+        // sonst bliebe ein Konto ohne Mitarbeiter übrig, das sich anmelden
+        // könnte, aber nirgends zugeordnet wäre.
+        const { error: verknuepft } = await admin.from("glas_mitarbeiter")
+          .update({ auth_user_id: data.user.id, username: benutzername, login_aktiv: true, pw_muss_wechsel: true })
+          .eq("id", maId);
+        if (verknuepft) {
+          await admin.auth.admin.deleteUser(data.user.id);
+          return antwort({ error: "Konto konnte nicht zugeordnet werden: " + verknuepft.message }, 500);
+        }
+        return antwort({ ok: true, benutzername, user_id: data.user.id });
+      }
+
+      // ---- Passwort neu setzen -------------------------------------------
+      case "passwort_neu": {
+        if (passwort.length < 8) return antwort({ error: "Das Passwort braucht mindestens 8 Zeichen." }, 400);
+        const ma = await kontoVon(maId);
+        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es noch kein Konto." }, 404);
+        const { error } = await admin.auth.admin.updateUserById(ma.auth_user_id, { password: passwort });
+        if (error) return antwort({ error: error.message }, 400);
+        // Beim nächsten Anmelden muss er sich ein eigenes Passwort setzen.
+        await admin.from("glas_mitarbeiter").update({ pw_muss_wechsel: true }).eq("id", maId);
+        return antwort({ ok: true });
+      }
+
+      // ---- Sperren / entsperren ------------------------------------------
+      // Gesperrt = darf sich nicht mehr anmelden, aber alle Daten (Touren,
+      // Unterschriften, Urlaub) bleiben erhalten. Genau das will man, wenn
+      // jemand die Firma verlässt — löschen würde die Historie mitreißen.
+      case "sperren":
+      case "entsperren": {
+        const ma = await kontoVon(maId);
+        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es noch kein Konto." }, 404);
+        const sperren = aktion === "sperren";
+        const { error } = await admin.auth.admin.updateUserById(ma.auth_user_id, {
+          ban_duration: sperren ? "876000h" : "none",   // ~100 Jahre bzw. Sperre aufheben
+        });
+        if (error) return antwort({ error: error.message }, 400);
+        await admin.from("glas_mitarbeiter").update({ login_aktiv: !sperren }).eq("id", maId);
+        return antwort({ ok: true, login_aktiv: !sperren });
+      }
+
+      // ---- Rolle ändern ---------------------------------------------------
+      case "rolle_setzen": {
+        const ma = await kontoVon(maId);
+        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es noch kein Konto." }, 404);
+        // Sich selbst die Admin-Rolle zu nehmen wäre eine Falle: dann käme
+        // womöglich niemand mehr an die Benutzerverwaltung.
+        if (ma.auth_user_id === aufrufer.id && rolle !== "admin") {
+          return antwort({ error: "Du kannst dir die Admin-Rolle nicht selbst wegnehmen." }, 400);
+        }
+        const { error } = await admin.auth.admin.updateUserById(ma.auth_user_id, {
+          app_metadata: { geko_rolle: rolle, mitarbeiter_id: maId },
+        });
+        if (error) return antwort({ error: error.message }, 400);
+        return antwort({ ok: true, rolle });
+      }
+
+      // ---- Konto löschen (Mitarbeiter-Datensatz bleibt!) -------------------
+      case "konto_loeschen": {
+        const ma = await kontoVon(maId);
+        if (!ma?.auth_user_id) return antwort({ error: "Für diesen Mitarbeiter gibt es kein Konto." }, 404);
+        if (ma.auth_user_id === aufrufer.id) return antwort({ error: "Du kannst dein eigenes Konto nicht löschen." }, 400);
+        const { error } = await admin.auth.admin.deleteUser(ma.auth_user_id);
+        if (error) return antwort({ error: error.message }, 400);
+        await admin.from("glas_mitarbeiter")
+          .update({ auth_user_id: null, login_aktiv: false }).eq("id", maId);
+        return antwort({ ok: true });
+      }
+
+      // ---- Übersicht für die Admin-Oberfläche ------------------------------
+      case "liste": {
+        const { data } = await admin.from("glas_mitarbeiter")
+          .select("id, name, username, auth_user_id, login_aktiv, pw_muss_wechsel").order("name");
+        const { data: konten } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const rollen = new Map(
+          (konten?.users || []).map((u) => [u.id, String((u.app_metadata as Record<string, unknown>)?.geko_rolle || "mitarbeiter")]),
+        );
+        return antwort({
+          ok: true,
+          mitarbeiter: (data || []).map((m) => ({
+            ...m,
+            hat_konto: !!m.auth_user_id,
+            rolle: m.auth_user_id ? rollen.get(m.auth_user_id) || "mitarbeiter" : null,
+          })),
+        });
+      }
+
+      default:
+        return antwort({ error: "Unbekannte Aktion." }, 400);
+    }
+  } catch (e) {
+    console.error("benutzer-verwalten:", e);
+    return antwort({ error: "Unerwarteter Fehler." }, 500);
+  }
+});
