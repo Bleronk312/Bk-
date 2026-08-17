@@ -181,6 +181,10 @@ Deno.serve(async (_req) => {
         for (const e of punkte) {
           const p = ptMap[e.punkt_id];
           if (!p) continue;
+          // Ausdrücklich abgeschaltet? Dann keine Meldungen für diesen Punkt -
+          // weder an den Mitarbeiter noch ans Büro. Fehlt das Feld, wird erinnert
+          // (so verhalten sich alle bestehenden Rundgänge unverändert weiter).
+          if (e && e.erinnern === false) continue;
           const f = effFenster(rg, e, p);
           if (f.von == null || f.bis == null) continue; // nur Punkte mit Zeitfenster
           const done = (logRes.data || []).some((l) => l.rundgang_id === rg.id && l.punkt_id === e.punkt_id && l.datum === berlinDate);

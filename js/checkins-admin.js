@@ -817,6 +817,10 @@ function ciaRenderRgForm() {
         · Tol. <select class="f-mini" id="rgtol_${p.id}">
           ${[["","Std."],["0","± 0"],["15","± 15"],["30","± 30"],["60","± 60"]].map(([v,l])=>`<option value="${v}" ${String((e&&e.toleranz_min)??"")===v?"selected":""}>${l}</option>`).join("")}
         </select>
+        · <label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+            <input type="checkbox" id="rgerin_${p.id}" ${(e && e.erinnern === false) ? "" : "checked"} style="width:auto;margin:0;" />
+            🔔 erinnern
+          </label>
       </div></div>`;
   }).join("") : `<p class="ci-empty">Erst im Reiter „Punkte" GPS-Punkte anlegen.</p>`;
 
@@ -831,6 +835,7 @@ function ciaRenderRgForm() {
       ${CI_TAGE_KURZ.map((t,i) => `<button type="button" class="dchip ${tage.includes(i+1)?"on":""}" data-d="${i+1}" onclick="this.classList.toggle('on')">${t}</button>`).join("")}
     </div>
     <div class="f-lbl">Standard-Zeitfenster (gilt, wenn ein Punkt nichts Eigenes hat)</div>
+    <p class="ci-hint" style="margin:0 0 6px;font-size:12px;opacity:.75;">Erinnerungen laufen über das Zeitfenster: Der Mitarbeiter bekommt eine Meldung, wenn ein Punkt fällig wird und nochmal 15 Minuten vor Ablauf. Läuft das Fenster ab, ohne dass eingecheckt wurde, meldet sich das Büro. Mit dem Haken „🔔 erinnern" lässt sich das je Punkt abschalten – ohne das Zeitfenster zu verlieren.</p>
     <div style="display:flex;gap:8px;align-items:center;">
       <input class="f-in" id="rg_von" style="flex:1;" value="${escapeHtml(f.fenster_von||"")}" placeholder="06:00" />
       <span class="muted">bis</span>
@@ -870,6 +875,11 @@ async function ciaSaveRg() {
     if (von) eintrag.fenster_von = von;
     if (bis) eintrag.fenster_bis = bis;
     if (tolRaw !== "") eintrag.toleranz_min = parseInt(tolRaw, 10);
+    // Nur speichern, wenn AUSgeschaltet - so bleiben bestehende Rundgänge
+    // unverändert und erinnern wie bisher (fehlendes Feld = an).
+    if (document.getElementById(`rgerin_${p.id}`) && !document.getElementById(`rgerin_${p.id}`).checked) {
+      eintrag.erinnern = false;
+    }
     punkte.push(eintrag);
   });
   if (!punkte.length) { showToast("Bitte mindestens einen Punkt auswählen"); return; }
