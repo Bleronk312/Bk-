@@ -3055,3 +3055,18 @@ html.dark .glas-skelett-karte{
 .geko-updatebar.auf { transform: translate(-50%, 0); opacity: 1; }
 .geko-updatebar b { font-weight: 800; text-decoration: underline; }
 .geko-updatebar:active { transform: translate(-50%, 0) scale(.96); }
+
+/* ============ Tipp-Rückmeldung (gesetzt von geko-auth.js) ============ */
+/* Warum per Script statt nur :active: iOS zeigt :active bei schnellen Tipps
+   gar nicht an - der Finger ist weg, bevor der Zustand greift. Das Script
+   hält den Druck mindestens ~90ms sichtbar und lässt ihn dann mit leichtem
+   Federn zurück. Nur transform/opacity: läuft auf der Grafikeinheit und
+   berechnet kein Layout neu - kostet also keine Geschwindigkeit. */
+.tap-federt { transition: transform .22s cubic-bezier(.34, 1.56, .64, 1), opacity .18s ease; will-change: transform; }
+.tap-druck { transform: scale(.962); opacity: .85; }
+/* Kleine Bedienelemente duerfen staerker reagieren als grosse Karten */
+button.tap-druck:not(.hub-tile):not(.one-kachel):not(.glas-tour-card) { transform: scale(.94); }
+@media (prefers-reduced-motion: reduce) {
+  .tap-federt { transition: none; will-change: auto; }
+  .tap-druck { transform: none; opacity: .75; }
+}

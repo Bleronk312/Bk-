@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=188" />
+<link rel="stylesheet" href="css/style.css?v=189" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -36,6 +36,10 @@
     width: 92%; background: var(--card-bg, #fff); color: var(--text, #1c2530);
     box-shadow: 0 8px 30px rgba(0,0,0,.25); }
   dialog.est-dlg::backdrop { background: rgba(15,23,32,.55); }
+  /* Dialog federt kurz herein statt hart aufzupoppen - nur transform/opacity */
+  dialog.est-dlg[open] { animation: estPop .2s cubic-bezier(.32,.72,0,1); }
+  @keyframes estPop { from { transform: scale(.95) translateY(8px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { dialog.est-dlg[open] { animation: none; } }
   .est-zettel { background: rgba(224,179,87,.12); border: 1px dashed #cfa14f;
     border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 15px; line-height: 1.7; }
   .est-zettel code { font-weight: 800; font-size: 15px; }
@@ -72,12 +76,12 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=188"></script>
-  <script src="js/supabase-client.js?v=188"></script>
-  <script src="js/geko-auth.js?v=188"></script>
-  <script src="js/push.js?v=188"></script>
-  <script defer src="js/pdf-fonts.js?v=188"></script>
-  <script defer src="js/glas-lager-pdf.js?v=188"></script>
+  <script src="js/config.js?v=189"></script>
+  <script src="js/supabase-client.js?v=189"></script>
+  <script src="js/geko-auth.js?v=189"></script>
+  <script src="js/push.js?v=189"></script>
+  <script defer src="js/pdf-fonts.js?v=189"></script>
+  <script defer src="js/glas-lager-pdf.js?v=189"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)

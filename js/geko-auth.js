@@ -544,6 +544,47 @@ function _gekoSchrittBenachrichtigungen(k) {
 }
 
 // ---------------------------------------------------------------------------
+// Tipp-Rückmeldung
+// ---------------------------------------------------------------------------
+// Jeder Tipp auf etwas Anklickbares drückt es kurz sichtbar ein. :active
+// allein reicht auf dem iPhone nicht: Safari zeigt es bei schnellen Tipps gar
+// nicht erst an - deshalb wirkte die App, als wüsste man nicht, ob man
+// getroffen hat. Ein delegierter, passiver Horcher für alles; die Klassen
+// animieren nur transform/opacity (Grafikeinheit, kein Layout).
+if (typeof document !== "undefined") {
+  // Weckt die :active-Zustände auf iOS - ohne irgendeinen Touch-Horcher
+  // ignoriert Safari sie großflächig.
+  document.addEventListener("touchstart", function () {}, { passive: true });
+
+  let _tapEl = null, _tapAb = 0;
+  const _tapLos = () => {
+    if (!_tapEl) return;
+    const el = _tapEl; _tapEl = null;
+    // Mindestens ~90ms gedrückt zeigen - sonst ist der schnelle Tipp wieder
+    // unsichtbar, und genau darum geht es ja.
+    const rest = Math.max(0, 90 - (Date.now() - _tapAb));
+    setTimeout(() => {
+      el.classList.remove("tap-druck");
+      setTimeout(() => el.classList.remove("tap-federt"), 240);
+    }, rest);
+  };
+  document.addEventListener("pointerdown", (e) => {
+    const el = e.target && e.target.closest
+      ? e.target.closest('button, a[href], [role="button"], [onclick]') : null;
+    if (!el) return;
+    // Formularfelder und Sonderflächen nicht anfassen: Kalenderzellen bauen
+    // sich beim Tipp sofort neu (Animation liefe auf einem toten Element),
+    // und auf dem Unterschriften-Feld hat eine Druck-Animation nichts verloren.
+    if (el.closest("input, textarea, select, canvas, .glas-cal-cell, .sig-wrap")) return;
+    _tapEl = el; _tapAb = Date.now();
+    el.classList.add("tap-federt");
+    el.classList.add("tap-druck");
+  }, { passive: true });
+  document.addEventListener("pointerup", _tapLos, { passive: true });
+  document.addEventListener("pointercancel", _tapLos, { passive: true });
+}
+
+// ---------------------------------------------------------------------------
 // Selbststart
 // ---------------------------------------------------------------------------
 // Die geschuetzten Seiten hinterlegen ihre Anforderungen in window.__gekoGate
