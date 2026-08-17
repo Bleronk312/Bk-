@@ -556,7 +556,7 @@ if (typeof document !== "undefined") {
   // ignoriert Safari sie großflächig.
   document.addEventListener("touchstart", function () {}, { passive: true });
 
-  let _tapEl = null, _tapAb = 0;
+  let _tapEl = null, _tapAb = 0, _tapX = 0, _tapY = 0;
   const _tapLos = () => {
     if (!_tapEl) return;
     const el = _tapEl; _tapEl = null;
@@ -568,7 +568,18 @@ if (typeof document !== "undefined") {
       setTimeout(() => el.classList.remove("tap-federt"), 240);
     }, rest);
   };
+  // Scrollen ist KEIN Tipp: Sobald der Finger nennenswert wandert, wird der
+  // Druck sofort zurückgenommen. Ohne das schrumpfte jedes Element unter dem
+  // Finger, wenn man darüber zu scrollen begann - das wirkte kaputt statt
+  // flüssig.
+  const _tapAbbruch = () => {
+    if (!_tapEl) return;
+    const el = _tapEl; _tapEl = null;
+    el.classList.remove("tap-druck");
+    setTimeout(() => el.classList.remove("tap-federt"), 240);
+  };
   document.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;  // nur Haupttaste/Finger
     const el = e.target && e.target.closest
       ? e.target.closest('button, a[href], [role="button"], [onclick]') : null;
     if (!el) return;
@@ -576,12 +587,17 @@ if (typeof document !== "undefined") {
     // sich beim Tipp sofort neu (Animation liefe auf einem toten Element),
     // und auf dem Unterschriften-Feld hat eine Druck-Animation nichts verloren.
     if (el.closest("input, textarea, select, canvas, .glas-cal-cell, .sig-wrap")) return;
-    _tapEl = el; _tapAb = Date.now();
+    _tapEl = el; _tapAb = Date.now(); _tapX = e.clientX; _tapY = e.clientY;
     el.classList.add("tap-federt");
     el.classList.add("tap-druck");
   }, { passive: true });
+  document.addEventListener("pointermove", (e) => {
+    if (!_tapEl) return;
+    if (Math.abs(e.clientX - _tapX) > 8 || Math.abs(e.clientY - _tapY) > 8) _tapAbbruch();
+  }, { passive: true });
+  document.addEventListener("scroll", _tapAbbruch, { passive: true, capture: true });
   document.addEventListener("pointerup", _tapLos, { passive: true });
-  document.addEventListener("pointercancel", _tapLos, { passive: true });
+  document.addEventListener("pointercancel", _tapAbbruch, { passive: true });
 }
 
 // ---------------------------------------------------------------------------

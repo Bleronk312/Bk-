@@ -91,9 +91,9 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/config.js?v=189"></script>
-<script src="js/supabase-client.js?v=189"></script>
-<script src="js/fehler.js?v=189"></script>
+<script src="js/config.js?v=190"></script>
+<script src="js/supabase-client.js?v=190"></script>
+<script src="js/fehler.js?v=190"></script>
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function zeile(k,v,cls){ return `<div class="r"><b>${esc(k)}</b><span class="${cls||""}">${esc(v)}</span></div>`; }
@@ -116,8 +116,18 @@ async function appInfo(){
     else swInfo = "nicht unterstützt";
   }catch(e){ swInfo="Fehler"; }
   let db = "wird geprüft…";
+  // Anmelde-Zustand: zeigt, ob die Schnellstart-Daten da sind, ohne etwas
+  // preiszugeben (nur ja/nein und Rolle).
+  let anm = "keine";
+  try {
+    const sA = JSON.parse(localStorage.getItem("geko_auth") || "null");
+    const pA = JSON.parse(localStorage.getItem("geko_profil") || "null");
+    const uA = sA && (sA.user || (sA.currentSession && sA.currentSession.user));
+    anm = uA ? ("angemeldet" + (pA && pA.uid === uA.id ? " · Profil ✓ · " + (pA.rolle || "?") : " · Profil fehlt")) : "keine";
+  } catch (e) { anm = "nicht lesbar"; }
   document.getElementById("app").innerHTML =
     zeile("Version", ver, ver==="unbekannt"?"bad":"ok") +
+    zeile("Anmeldung", anm, anm.includes("Profil ✓") ? "ok" : "") +
     zeile("Adresse", location.host) +
     zeile("Zwischenspeicher", caches_) +
     zeile("Hintergrund-Dienst", swInfo) +
