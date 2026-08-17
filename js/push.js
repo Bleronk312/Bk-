@@ -1,3 +1,9 @@
+// Zwei Gruppen von Kanälen. Innerhalb einer Gruppe darf ein Gerät beliebig
+// viele gleichzeitig haben; zwischen den Gruppen wird gewechselt, damit ein
+// Mitarbeiter-Handy keine Büro-Meldungen bekommt (und andersherum).
+const GEKO_PUSH_VERWALTUNG = ["admin", "glas", "kalender", "graffiti", "checkin_admin"];
+const GEKO_PUSH_MITARBEITER = ["mitarbeiter", "geko_one", "checkin_ma"];
+
 const VAPID_PUBLIC_KEY = "BH5svn75k_QSVlXToFm2CUppfk7vLY4Fdr34pxrFxKN9zSUdfOxJJDtTOg_ZT9WD-MfPMUPSTQJHI1jCOPN9dzM";
 
 function urlBase64ToUint8Array(base64String) {
@@ -65,12 +71,54 @@ async function pushUpsertSubscription(role, subJson, mitarbeiterId) {
     ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));
   }
   if (error) ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint" }));
-  // ... und NUR wenn das geklappt hat, alte Rollen desselben Geräts wegräumen (ein
-  // Home-Bildschirm-App-Symbol = ein Endpoint = genau EINE Rolle). Reihenfolge wichtig:
-  // schlägt das Speichern fehl (z.B. SQL noch nicht ausgeführt), bleibt die bisherige
-  // Anmeldung erhalten, statt dass man am Ende ganz ohne Benachrichtigungen dasteht.
-  if (!error) { try { await sb.from("push_subscriptions").delete().eq("endpoint", subJson.endpoint).neq("role", role); } catch (e) {} }
+  // Aufräumen, aber nur GRUPPENWEISE. Ein Gerät der Verwaltung darf ruhig alle
+  // Verwaltungs-Kanäle gleichzeitig haben - dafür ist der Schlüssel (endpoint,
+  // role) da. Wechselt ein Gerät dagegen die Seite (Chef-Handy wird
+  // Mitarbeiter-Handy oder umgekehrt), sollen die Kanäle der anderen Gruppe
+  // weg, sonst bekäme ein Mitarbeiter die Meldungen des Büros.
+  // (Vorher flog hier pauschal JEDE andere Rolle raus - dadurch konnte ein
+  // Gerät immer nur einen einzigen Bereich empfangen.)
+  if (!error) {
+    const andere = GEKO_PUSH_VERWALTUNG.includes(role)
+      ? GEKO_PUSH_MITARBEITER : GEKO_PUSH_VERWALTUNG;
+    try {
+      await sb.from("push_subscriptions").delete()
+        .eq("endpoint", subJson.endpoint).in("role", andere);
+    } catch (e) {}
+  }
   return error;
+}
+
+// Meldet dieses Gerät in EINEM Rutsch für mehrere Kanäle an. Dahinter steckt
+// eine einzige Browser-Anmeldung (ein Endpoint) - die Kanäle sind nur Zeilen
+// in der Tabelle. Deshalb reicht ein Knopf für alles.
+async function gekoPushAktivierenFuer(rollen, mitarbeiterId) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return { ok: false, grund: "nicht_unterstuetzt" };
+  }
+  try {
+    const erlaubnis = await Notification.requestPermission();
+    if (erlaubnis !== "granted") return { ok: false, grund: "abgelehnt" };
+
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const subJson = sub.toJSON();
+    const fehler = [];
+    for (const rolle of rollen) {
+      const e = await pushUpsertSubscription(rolle, subJson, mitarbeiterId);
+      if (e) fehler.push(rolle + ": " + (e.message || e));
+    }
+    return { ok: !fehler.length, fehler, endpoint: subJson.endpoint };
+  } catch (e) {
+    return { ok: false, grund: "fehler", fehler: [String((e && e.message) || e)] };
+  }
 }
 
 // Hat der Nutzer Benachrichtigungen einmal erlaubt, erneuert jedes Öffnen der Seite die

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Einstellungen" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
-<link rel="stylesheet" href="css/style.css?v=166" />
+<link rel="stylesheet" href="css/style.css?v=167" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -56,10 +56,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=166"></script>
-  <script src="js/supabase-client.js?v=166"></script>
-  <script src="js/geko-auth.js?v=166"></script>
-  <script src="js/push.js?v=166"></script>
+  <script src="js/config.js?v=167"></script>
+  <script src="js/supabase-client.js?v=167"></script>
+  <script src="js/geko-auth.js?v=167"></script>
+  <script src="js/push.js?v=167"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -364,56 +364,67 @@
   }
 
   // ==== Benachrichtigungen ================================================
-  // Zwei getrennte Fragen, die vorher durcheinandergingen:
-  //   1. Empfaengt DIESES Geraet ueberhaupt? (Erlaubnis + Anmeldung pro App)
-  //   2. WOVON soll berichtet werden? (gilt fuer alle Geraete)
+  // EIN Knopf fuer alles. Technisch steckt hinter allen Bereichen eine einzige
+  // Browser-Anmeldung dieses Geraets; die "Kanaele" sind nur Zeilen in der
+  // Tabelle (Schluessel: endpoint + role). Es gibt also keinen Grund, den
+  // Nutzer dafuer durch vier Apps zu schicken.
+  const GEKO_BEREICHE = [
+    { rolle: "glas", icon: "🪟", name: "Glasreinigung" },
+    { rolle: "kalender", icon: "📅", name: "Kalender" },
+    { rolle: "graffiti", icon: "🎨", name: "Graffiti" },
+    { rolle: "checkin_admin", icon: "📍", name: "Check-ins" },
+  ];
+
   function renderPush() {
     const e = pushEinstellungen || {};
     const erlaubnis = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
+    const fehlen = GEKO_BEREICHE.filter((b) => !meineAbos.includes(b.rolle));
+    const alleAn = fehlen.length === 0 && meineAbos.length > 0;
 
-    const apps = [
-      { rolle: "glas", icon: "🪟", name: "Glasreinigung", seite: "glas-admin.html" },
-      { rolle: "kalender", icon: "📅", name: "Kalender", seite: "kalender.html" },
-      { rolle: "graffiti", icon: "🎨", name: "Graffiti", seite: "admin.html" },
-      { rolle: "checkin_admin", icon: "📍", name: "Check-ins", seite: "checkins-admin.html" },
-    ];
-
-    const zeile = (a) => {
-      const an = meineAbos.includes(a.rolle);
-      return `<div class="est-zeile">
-        <div style="flex:1; min-width:150px;">
-          <div class="est-name">${a.icon} ${a.name}</div>
-          <div class="est-sub">${an
-            ? '<span style="color:#2e9e4f; font-weight:700;">✓ empfängt auf diesem Gerät</span>'
-            : "auf diesem Gerät nicht angemeldet"}</div>
-        </div>
-        <div class="est-btns">${an
-          ? `<button class="btn" onclick="testSenden('${a.rolle}', '${a.name}')">Test senden</button>`
-          : `<a class="btn" href="${a.seite}">Dort aktivieren →</a>`}</div>
+    const liste = GEKO_BEREICHE.map((b) => {
+      const an = meineAbos.includes(b.rolle);
+      return `<div style="display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--border); font-size:14px;">
+        <span style="width:22px;">${b.icon}</span>
+        <span style="flex:1;">${b.name}</span>
+        <span style="font-weight:700; color:${an ? "#2e9e4f" : "var(--text-secondary)"};">${an ? "✓ an" : "aus"}</span>
       </div>`;
-    };
+    }).join("");
 
-    const hinweisErlaubnis = erlaubnis === "denied"
-      ? '<p class="muted" style="margin:0 0 10px; color:var(--danger);">Dieses Gerät hat Benachrichtigungen <b>blockiert</b>. Das lässt sich nur in den Einstellungen des Geräts wieder erlauben (Safari → Einstellungen für diese Website → Mitteilungen), nicht aus der App heraus.</p>'
-      : erlaubnis === "default"
-        ? '<p class="muted" style="margin:0 0 10px;">Dieses Gerät hat noch nicht nach der Erlaubnis gefragt. Sie kommt beim ersten Aktivieren in einer App.</p>'
-        : "";
+    // Blockiert kann nur das Geraet selbst wieder freigeben - ein Knopf hier
+    // waere wirkungslos, deshalb steht stattdessen der Weg dahin.
+    if (erlaubnis === "denied") {
+      return `
+        <p class="est-sec-title">Benachrichtigungen · dieses Gerät</p>
+        <div class="card">
+          <p style="margin:0 0 8px; color:var(--danger); font-weight:600;">Dieses Gerät blockiert Benachrichtigungen.</p>
+          <p class="muted" style="margin:0;">Das lässt sich nur am Gerät selbst aufheben: iPhone → Einstellungen → Apps → Safari → Erweitert → Website-Daten, oder in den Mitteilungs-Einstellungen der installierten App. Danach hier neu laden.</p>
+        </div>
+        ${renderThemen(e)}`;
+    }
 
+    return `
+      <p class="est-sec-title">Benachrichtigungen · dieses Gerät</p>
+      <div class="card">
+        <p class="muted" style="margin:0 0 10px; font-size:12.5px;">Gilt für dieses Gerät. Auf einem weiteren Handy oder Rechner einmal genauso einschalten.</p>
+        ${liste}
+        <div class="est-btns" style="margin-top:14px;">
+          ${alleAn
+            ? `<button class="btn btn-primary" onclick="testSenden()">🔔 Test-Benachrichtigung</button>
+               <button class="btn" onclick="pushAusschalten()">Ausschalten</button>`
+            : `<button class="btn btn-primary" id="pushAnKnopf" onclick="pushAlleAktivieren()">🔔 ${meineAbos.length ? "Fehlende einschalten" : "Für alle Bereiche einschalten"}</button>`}
+        </div>
+        ${alleAn ? '<p class="muted" style="margin:10px 0 0; font-size:12px;">Der Test geht <b>nur an dieses Gerät</b> – niemand sonst bekommt etwas mit.</p>' : ""}
+      </div>
+      ${renderThemen(e)}`;
+  }
+
+  function renderThemen(e) {
     const schalter = (key, an, icon, text, quelle) => `
       <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
         <input type="checkbox" style="width:auto;" ${an ? "checked" : ""} onchange="pushSchalter('${key}', this.checked)" />
         <span style="font-size:13.5px;">${icon} ${text} &middot; <span class="muted">${quelle}</span></span>
       </label>`;
-
     return `
-      <p class="est-sec-title">Benachrichtigungen · dieses Gerät</p>
-      <div class="card">
-        ${hinweisErlaubnis}
-        <p class="muted" style="margin:0 0 4px; font-size:12.5px;">Jedes App-Symbol ist ein eigener Kanal und meldet sich selbst an – deshalb steht der Aktivieren-Knopf in der jeweiligen App. Hier siehst du, was davon auf <b>diesem</b> Gerät ankommt.</p>
-        ${apps.map(zeile).join("")}
-        <p class="muted" style="margin:10px 0 0; font-size:12px;">„Test senden" schickt eine echte Benachrichtigung <b>nur an dieses Gerät</b> – niemand sonst bekommt etwas mit.</p>
-      </div>
-
       <p class="est-sec-title">Wovon berichtet wird</p>
       <div class="card">
         <p class="muted" style="margin:0 0 4px; font-size:12.5px;">Gilt für alle Geräte der Verwaltung.</p>
@@ -426,8 +437,36 @@
       </div>`;
   }
 
-  // Welche Kanaele empfaengt DIESES Geraet? Erkannt wird das am Endpoint der
-  // Browser-Anmeldung - der ist pro Geraet und App-Symbol eindeutig.
+  async function pushAlleAktivieren() {
+    const knopf = document.getElementById("pushAnKnopf");
+    if (knopf) { knopf.disabled = true; knopf.textContent = "Moment …"; }
+    const erg = await gekoPushAktivierenFuer(GEKO_BEREICHE.map((b) => b.rolle));
+    if (!erg.ok) {
+      const text = erg.grund === "abgelehnt"
+        ? "Die Erlaubnis wurde nicht erteilt – ohne sie geht es leider nicht."
+        : erg.grund === "nicht_unterstuetzt"
+          ? "Dieses Gerät unterstützt keine Benachrichtigungen."
+          : "Fehler: " + (erg.fehler || []).join(", ");
+      showToast(text);
+      if (knopf) { knopf.disabled = false; knopf.textContent = "🔔 Für alle Bereiche einschalten"; }
+      return;
+    }
+    showToast("Eingeschaltet ✓");
+    await meineAbosLaden();
+    render();
+  }
+
+  async function pushAusschalten() {
+    if (!confirm("Benachrichtigungen auf diesem Gerät ausschalten?")) return;
+    if (!meinEndpoint) return;
+    await sb.from("push_subscriptions").delete().eq("endpoint", meinEndpoint);
+    showToast("Ausgeschaltet");
+    await meineAbosLaden();
+    render();
+  }
+
+  // Welche Kanaele empfaengt DIESES Geraet? Erkannt am Endpoint der
+  // Browser-Anmeldung, der pro Geraet eindeutig ist.
   async function meineAbosLaden() {
     meinEndpoint = null;
     meineAbos = [];
@@ -443,7 +482,7 @@
     } catch (e) { /* ohne Anmeldung bleibt die Liste leer - das ist die Aussage */ }
   }
 
-  async function testSenden(rolle, name) {
+  async function testSenden() {
     if (!meinEndpoint) { showToast("Dieses Gerät ist nicht angemeldet"); return; }
     showToast("Test wird geschickt …");
     let session = null;
@@ -454,10 +493,10 @@
         headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY,
                    "Authorization": "Bearer " + ((session && session.access_token) || SUPABASE_ANON_KEY) },
         body: JSON.stringify({
-          role: rolle,
+          role: "glas",
           endpoint: meinEndpoint,          // nur an dieses eine Geraet
           title: "GEKO · Test",
-          body: "Wenn du das siehst, kommen " + name + "-Benachrichtigungen an ✓",
+          body: "Wenn du das siehst, kommen Benachrichtigungen auf diesem Gerät an ✓",
         }),
       });
       const erg = await antwort.json();
