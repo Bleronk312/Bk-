@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-title" content="GEKO Einstellungen" />
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
-<link rel="stylesheet" href="css/style.css?v=162" />
+<link rel="stylesheet" href="css/style.css?v=163" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -56,10 +56,10 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=162"></script>
-  <script src="js/supabase-client.js?v=162"></script>
-  <script src="js/geko-auth.js?v=162"></script>
-  <script src="js/push.js?v=162"></script>
+  <script src="js/config.js?v=163"></script>
+  <script src="js/supabase-client.js?v=163"></script>
+  <script src="js/geko-auth.js?v=163"></script>
+  <script src="js/push.js?v=163"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -72,6 +72,10 @@
   let meineSitzung = null;
   let zugangsdaten = null;      // Antwort der "liste"-Aktion
   let pushEinstellungen = {};   // Zeile aus glas_einstellungen
+  let mitarbeiter = [];         // glas_mitarbeiter (Stammdaten)
+  let urlaube = [];             // glas_urlaub (nur fuer die Resttage-Bilanz)
+  let offenerMa = null;         // aufgeklappte Mitarbeiter-Karte
+  let bearbeiten = null;        // Mitarbeiter im Formular (null = Liste)
 
   function showToast(text) {
     const t = document.getElementById("toast");
@@ -109,19 +113,50 @@
 
   // ---- Laden -------------------------------------------------------------
   async function allesLaden() {
-    const [liste, einst] = await Promise.all([
+    const [liste, einst, ma, url] = await Promise.all([
       ruf({ aktion: "liste" }),
       sb.from("glas_einstellungen").select("*").eq("id", "default").maybeSingle(),
+      sb.from("glas_mitarbeiter").select("*").order("name"),
+      sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, status"),
     ]);
     zugangsdaten = liste;
     pushEinstellungen = (einst && einst.data) || {};
+    mitarbeiter = (ma && ma.data) || [];
+    urlaube = (url && url.data) || [];
     render();
+  }
+
+  // ---- Urlaubs-Bilanz (gleiche Rechnung wie in der Glas-App) --------------
+  // Nur guelltiger Urlaub zaehlt: offene Antraege sind nicht entschieden,
+  // abgelehnte gelten nicht. Ohne Status = alter Eintrag = guelltig.
+  function urlaubBilanz(m) {
+    const jahr = new Date().getFullYear();
+    const meine = urlaube.filter((u) => u.mitarbeiter_id === m.id && (!u.status || u.status === "genehmigt"));
+    let moFr = 0, moSa = 0;
+    meine.forEach((r) => {
+      let d = new Date(r.von + "T00:00:00");
+      const end = new Date((r.bis || r.von) + "T00:00:00");
+      let schutz = 0;
+      while (d <= end && schutz++ < 800) {
+        if (d.getFullYear() === jahr) {
+          const wd = d.getDay();               // 0 = Sonntag
+          if (wd !== 0) moSa++;
+          if (wd !== 0 && wd !== 6) moFr++;
+        }
+        d.setDate(d.getDate() + 1);
+      }
+    });
+    const genommen = m.arbeitstage === "mo_sa" ? moSa : moFr;
+    const anspruch = m.urlaubsanspruch != null ? m.urlaubsanspruch : 30;
+    return { anspruch, genommen, uebrig: anspruch - genommen };
   }
 
   // ---- Zeichnen ----------------------------------------------------------
   function render() {
     const el = document.getElementById("inhalt");
-    el.innerHTML = renderMeinKonto() + renderZugaenge() + renderPush() + renderDarstellung();
+    el.innerHTML = bearbeiten
+      ? renderMaFormular()
+      : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten() + renderPush() + renderDarstellung();
   }
 
   function renderMeinKonto() {
@@ -138,32 +173,116 @@
       </div>`;
   }
 
-  function renderZugaenge() {
-    if (!zugangsdaten) return "";
-    if (zugangsdaten.error) {
-      return `<p class="est-sec-title">Zugänge</p>
-        <div class="card"><b>Fehler:</b> ${sicher(zugangsdaten.error)}</div>`;
-    }
-    const leute = zugangsdaten.mitarbeiter || [];
-    const freie = zugangsdaten.admins_ohne_mitarbeiter || [];
+  // ==== Mitarbeiter: Stammdaten, Bausteine, Urlaubsanspruch, Zugang ========
+  // Alles an EINEM Ort - vorher lagen Zugaenge hier und die Stammdaten in der
+  // Glas-Verwaltung, was beim Pflegen staendig zum Hin- und Herspringen zwang.
+  function renderMitarbeiter() {
+    const konten = new Map(((zugangsdaten && zugangsdaten.mitarbeiter) || []).map((k) => [k.id, k]));
+    const liste = [...mitarbeiter].sort((a, b) => {
+      const rang = (x) => (!x.username ? 2 : x.login_aktiv === false ? 1 : 0);
+      return rang(a) - rang(b) || (a.name || "").localeCompare(b.name || "", "de");
+    });
 
-    const maZeile = (m) => {
-      const marken =
-        (m.rolle === "admin" ? '<span class="est-marke m-admin">Verwaltung</span>' : "")
-        + (m.hat_konto && m.login_aktiv === false ? '<span class="est-marke m-rot">gesperrt</span>' : "")
-        + (m.hat_konto && m.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort</span>' : "");
-      const knoepfe = m.hat_konto
-        ? `<button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Passwort</button>
-           <button class="btn" onclick="aktionRolle('${m.id}', '${m.rolle}', '${sicher(m.name)}')">Rolle</button>
-           <button class="btn" onclick="aktionSperre('${m.id}', null, ${m.login_aktiv === false}, '${sicher(m.name)}')">${m.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>`
-        : `<button class="btn btn-primary" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`;
-      return `<div class="est-zeile"><div style="flex:1; min-width:150px;">
-          <div class="est-name">${sicher(m.name || m.id)}${marken}</div>
-          <div class="est-sub">${m.hat_konto ? "Benutzername: " + sicher(m.username || "—") : "Noch kein Zugang"}</div>
-        </div><div class="est-btns">${knoepfe}</div></div>`;
+    const karte = (m) => {
+      const k = konten.get(m.id) || {};
+      const auf = offenerMa === m.id;
+      const b = urlaubBilanz(m);
+      const restFarbe = b.uebrig < 0 ? "var(--danger)" : b.uebrig <= 3 ? "#d08a1f" : "#2e9e4f";
+      const status = !k.hat_konto
+        ? '<span class="est-marke m-gelb">kein Zugang</span>'
+        : (k.login_aktiv === false ? '<span class="est-marke m-rot">gesperrt</span>' : "")
+          + (k.rolle === "admin" ? '<span class="est-marke m-admin">Verwaltung</span>' : "")
+          + (k.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort</span>' : "");
+      const bereiche = [
+        m.zugang_glas !== false ? "🧽 Glas" : null,
+        m.zugang_graffiti === true ? "🎨 Graffiti" : null,
+        m.zugang_checkin === true ? "📍 Check-ins" : null,
+        m.zugang_lager === true ? "📦 Lager" : null,
+      ].filter(Boolean).join(" · ") || "<i>keine Bereiche</i>";
+
+      return `
+        <div class="est-zeile" style="display:block;">
+          <div style="display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="maOeffnen('${m.id}')">
+            <div style="flex:1; min-width:0;">
+              <div class="est-name">${sicher(m.name || m.id)}${status}</div>
+              <div class="est-sub">${m.arbeitstage === "mo_sa" ? "Mo–Sa" : "Mo–Fr"}
+                · <b style="color:${restFarbe};">${b.uebrig} Urlaubstage übrig</b>
+                ${k.username ? " · " + sicher(k.username) : ""}</div>
+            </div>
+            <span style="color:var(--text-secondary); font-size:18px;">${auf ? "⌄" : "›"}</span>
+          </div>
+          ${auf ? `
+          <div style="padding:10px 0 4px;">
+            <p class="est-sub" style="margin:0 0 4px;">Bereiche: ${bereiche}</p>
+            <p class="est-sub" style="margin:0 0 10px;">Urlaub ${new Date().getFullYear()}: ${b.genommen} genommen von ${b.anspruch}</p>
+            <div class="est-btns">
+              <button class="btn btn-primary" onclick="maBearbeiten('${m.id}')">Bearbeiten</button>
+              ${k.hat_konto ? `
+                <button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Passwort</button>
+                <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${sicher(m.name)}')">Rolle</button>
+                <button class="btn" onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${sicher(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>`
+                : `<button class="btn" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`}
+            </div>
+          </div>` : ""}
+        </div>`;
     };
 
-    const freiZeile = (a) => `
+    const fehler = zugangsdaten && zugangsdaten.error
+      ? `<p class="muted" style="margin:0 0 8px; color:var(--danger);">Zugänge konnten nicht geladen werden: ${sicher(zugangsdaten.error)}</p>` : "";
+
+    return `
+      <p class="est-sec-title">Mitarbeiter</p>
+      <div class="card">
+        ${fehler}
+        ${liste.length ? liste.map(karte).join("") : '<p class="muted" style="margin:0;">Noch keine Mitarbeiter angelegt.</p>'}
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="maNeu()">+ Neuer Mitarbeiter</button>
+        <p class="muted" style="margin:8px 0 0; font-size:12px;">Urlaub eintragen und Anträge genehmigen läuft weiter im Kalender der Glas-Verwaltung – dort steht der Monatsüberblick, wer wann weg ist.</p>
+      </div>`;
+  }
+
+  function renderMaFormular() {
+    const m = bearbeiten;
+    const neu = !m.id;
+    const feld = (id, label, wert, extra) => `
+      <div class="field"><label class="muted">${label}</label>
+        <input id="${id}" value="${sicher(wert)}" ${extra || ""} /></div>`;
+    const haken = (id, an, text) => `
+      <label style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" id="${id}" style="width:auto;" ${an ? "checked" : ""} /> <span>${text}</span></label>`;
+
+    return `
+      <button class="btn" style="margin:16px 0 12px;" onclick="bearbeiten=null; render();">← Zurück</button>
+      <h2 style="margin:0 0 12px;">${neu ? "Neuer Mitarbeiter" : sicher(m.name)}</h2>
+
+      <div class="card">
+        ${feld("f_name", "Name", m.name || "", 'placeholder="z.B. Manuel"')}
+        <div class="field"><label class="muted">Arbeitswoche</label>
+          <select id="f_tage">
+            <option value="mo_fr" ${m.arbeitstage !== "mo_sa" ? "selected" : ""}>Mo–Fr (5 Tage)</option>
+            <option value="mo_sa" ${m.arbeitstage === "mo_sa" ? "selected" : ""}>Mo–Sa (6 Tage)</option>
+          </select></div>
+        ${feld("f_anspruch", "Urlaubstage / Jahr", m.urlaubsanspruch != null ? m.urlaubsanspruch : 30, 'type="number" min="0" max="366"')}
+      </div>
+
+      <div class="card">
+        <p style="margin:0 0 2px; font-weight:600;">🧩 Bausteine</p>
+        <p class="muted" style="margin:0 0 4px; font-size:12px;">Bestimmt, welche Kacheln er in GEKO One sieht und welche Apps er öffnen darf.</p>
+        ${haken("f_glas", m.zugang_glas !== false, "🧽 Glas-Touren")}
+        ${haken("f_graffiti", m.zugang_graffiti === true, "🎨 Graffiti")}
+        ${haken("f_checkin", m.zugang_checkin === true, "📍 Check-ins")}
+        ${haken("f_lager", m.zugang_lager === true, "📦 Lager-Plan")}
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button class="btn btn-primary" onclick="maSpeichern()">Speichern</button>
+        ${neu ? "" : `<button class="btn" style="color:var(--danger); margin-left:auto;" onclick="maLoeschen('${m.id}')">Löschen</button>`}
+      </div>`;
+  }
+
+  // ==== Reine Verwaltungskonten (ohne Mitarbeiter-Eintrag) =================
+  function renderVerwaltungsKonten() {
+    const freie = (zugangsdaten && zugangsdaten.admins_ohne_mitarbeiter) || [];
+    const zeile = (a) => `
       <div class="est-zeile"><div style="flex:1; min-width:150px;">
         <div class="est-name">${sicher(a.name || a.email)}
           <span class="est-marke m-admin">Verwaltung</span>
@@ -173,17 +292,72 @@
         <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
         <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
         <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${sicher(a.name || a.email)}')">Löschen</button>`}</div></div>`;
-
     return `
-      <p class="est-sec-title">Zugänge · Mitarbeiter</p>
-      <div class="card">${leute.length ? leute.map(maZeile).join("") : '<p class="muted" style="margin:0;">Keine Mitarbeiter gefunden.</p>'}
-        <p class="muted" style="margin:10px 0 0; font-size:12px;">Arbeitswoche, Urlaub und Bausteine pflegst du weiter in der Glas-Verwaltung unter „Mitarbeiter".</p>
-      </div>
-      <p class="est-sec-title">Zugänge · Verwaltung (ohne Mitarbeiter-Eintrag)</p>
-      <div class="card">${freie.length ? freie.map(freiZeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine.</p>'}
+      <p class="est-sec-title">Weitere Verwaltungs-Zugänge</p>
+      <div class="card">
+        ${freie.length ? freie.map(zeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine.</p>'}
         <button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
-        <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind. Sieht alles und kann Zugänge vergeben.</p>
+        <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind – sie tauchen in Touren, Urlaub und Lager nicht auf.</p>
       </div>`;
+  }
+
+  // ---- Mitarbeiter-Aktionen ----------------------------------------------
+  function maOeffnen(id) { offenerMa = offenerMa === id ? null : id; render(); }
+  function maNeu() { bearbeiten = { id: null, name: "", arbeitstage: "mo_fr", urlaubsanspruch: 30 }; render(); }
+  function maBearbeiten(id) {
+    bearbeiten = mitarbeiter.find((x) => x.id === id) || null;
+    render();
+  }
+
+  function neueId() {
+    const zeichen = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const zufall = crypto.getRandomValues(new Uint32Array(6));
+    let aus = "";
+    for (let i = 0; i < 6; i++) aus += zeichen[zufall[i] % zeichen.length];
+    return aus;
+  }
+
+  async function maSpeichern() {
+    const name = document.getElementById("f_name").value.trim();
+    if (!name) { showToast("Bitte einen Namen eintragen"); return; }
+    const anspruch = parseInt(document.getElementById("f_anspruch").value, 10);
+    const zeile = {
+      id: bearbeiten.id || neueId(),
+      name,
+      arbeitstage: document.getElementById("f_tage").value,
+      urlaubsanspruch: isNaN(anspruch) ? 30 : Math.max(0, anspruch),
+      zugang_glas: document.getElementById("f_glas").checked,
+      zugang_graffiti: document.getElementById("f_graffiti").checked,
+      zugang_checkin: document.getElementById("f_checkin").checked,
+      zugang_lager: document.getElementById("f_lager").checked,
+    };
+    const { error } = await sb.from("glas_mitarbeiter").upsert(zeile);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast("Gespeichert ✓");
+    bearbeiten = null;
+    allesLaden();
+  }
+
+  async function maLoeschen(id) {
+    const m = mitarbeiter.find((x) => x.id === id);
+    const k = ((zugangsdaten && zugangsdaten.mitarbeiter) || []).find((x) => x.id === id);
+    const anzahl = urlaube.filter((u) => u.mitarbeiter_id === id).length;
+    if (!confirm(`${m ? m.name : "Diesen Mitarbeiter"} wirklich löschen?`
+      + (anzahl ? `\n\nDazu gehören ${anzahl} Urlaubseinträge.` : "")
+      + (k && k.hat_konto ? "\n\nSein Anmeldezugang wird mit entfernt." : "")
+      + "\n\nTipp: Zum Ausscheiden reicht meist Sperren – dann bleibt die Historie erhalten.")) return;
+
+    // Erst das Konto: sonst bliebe ein Zugang uebrig, der zu niemandem gehoert.
+    if (k && k.hat_konto) {
+      const erg = await ruf({ aktion: "konto_loeschen", mitarbeiter_id: id });
+      if (erg.error) { showToast("Zugang konnte nicht entfernt werden: " + erg.error); return; }
+    }
+    if (anzahl) await sb.from("glas_urlaub").delete().eq("mitarbeiter_id", id);
+    const { error } = await sb.from("glas_mitarbeiter").delete().eq("id", id);
+    if (error) { showToast("Fehler: " + error.message); return; }
+    showToast("Gelöscht");
+    bearbeiten = null; offenerMa = null;
+    allesLaden();
   }
 
   function renderPush() {

@@ -1478,6 +1478,9 @@ async function glasLagerLoeschen(id) {
   showToast("Entfernt");
 }
 
+// Bewusst KURZ: Lager-Plan hat eine eigene Hub-Kachel, Mitarbeiter (Stammdaten,
+// Bausteine, Zugaenge) liegen zentral in den Einstellungen im Hub. Hier steht nur,
+// was wirklich zur Glasreinigung gehoert.
 function renderMehrTab() {
   const item = (icon, label, sub, onclick) => `
     <button class="glas-menu-item" style="padding:16px;" onclick="${onclick}">
@@ -1493,10 +1496,8 @@ function renderMehrTab() {
   return `
     <h2 style="margin:2px 0 12px;">Mehr</h2>
     <div class="card" style="padding:0; overflow:hidden;">
-      ${item("📦", "Lager-Plan", "Wer muss morgens wann im Lager sein – mit Benachrichtigung", "glasOpenLager()")}
       ${item("📅", "Jahresvorschau", "Anstehende Reinigungen pro Monat – erledigt, geplant, offen", "glasOpenJahr()")}
       ${item("📊", "Statistiken", "Reinigungen, Jahres-QM und Kunden-Auswertung", "glasOpenStatistik()")}
-      ${item("👥", "Mitarbeiter", "Arbeitswoche, Urlaub, Bausteine & Zugang", "goGlasMaVerwaltung()")}
       ${item("📋", "Positionen & Archiv", "Preislisten-Positionen und archivierte Touren", "goGlasTab('einstellungen')")}
     </div>`;
 }
@@ -1504,10 +1505,8 @@ function renderMehrTab() {
 // Direkt zur Mitarbeiter-Verwaltung (Login/Passwort/Sperren). goGlasTab setzt die
 // Flags zurück, darum ERST wechseln, DANN die Verwaltung öffnen.
 function goGlasMaVerwaltung() {
-  goGlasTab("kalender");
-  glasKalenderAnsicht = "urlaub";
-  glasUrlaubVerwaltung = true;
-  renderGlasAdmin();
+  // Mitarbeiter werden zentral gepflegt (Hub -> Einstellungen).
+  location.href = "einstellungen.html";
 }
 
 // Eigener Reiter für die fälligen Objekte (früher Unterreiter im Kalender).
@@ -5323,7 +5322,7 @@ function renderUrlaubKalender() {
     ${chips}
     ${statCard}
     <div style="display:flex; justify-content:flex-end; gap:8px; margin:0 0 4px;">
-      <button class="btn btn-sm" onclick="glasUrlaubVerwaltung=true; renderGlasAdmin();">⚙️ Mitarbeiter</button>
+      <a class="btn btn-sm" href="einstellungen.html">⚙️ Mitarbeiter</a>
       <button class="btn btn-sm btn-primary" onclick="glasOpenUrlaub(null)">+ Urlaub eintragen</button>
     </div>
     ${renderUrlaubMonat()}
@@ -5510,13 +5509,13 @@ function renderUrlaubMonat() {
 }
 
 function glasOpenUrlaubAmTag(iso) {
-  if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen (⚙️ Mitarbeiter)"); glasUrlaubVerwaltung = true; renderGlasAdmin(); return; }
+  if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen – im Hub unter Einstellungen"); return; }
   glasUrlaubEditing = { id: null, mitarbeiter_id: glasUrlaubMaFilter || glasMitarbeiter[0].id, von: iso, bis: iso, notiz: "" };
   renderGlasAdmin();
 }
 function glasOpenUrlaub(id) {
   if (!id) {
-    if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen (⚙️ Mitarbeiter)"); glasUrlaubVerwaltung = true; renderGlasAdmin(); return; }
+    if (!glasMitarbeiter.length) { showToast("Erst einen Mitarbeiter anlegen – im Hub unter Einstellungen"); return; }
     glasUrlaubEditing = { id: null, mitarbeiter_id: glasUrlaubMaFilter || glasMitarbeiter[0].id, von: glasTodayIso(), bis: glasTodayIso(), notiz: "" };
   } else {
     glasUrlaubEditing = { ...glasUrlaub.find((u) => u.id === id) };
