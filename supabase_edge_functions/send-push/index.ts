@@ -29,7 +29,10 @@ Deno.serve(async (req) => {
     // mitarbeiter_id (optional): schickt die Nachricht NUR an die Geräte dieses einen
     // Mitarbeiters statt an alle mit dieser Rolle. Wird z.B. bei der Antwort auf einen
     // Urlaubsantrag genutzt - die geht niemanden sonst etwas an.
-    const { role, title, body, url, mitarbeiter_id } = await req.json();
+    // endpoint (optional): schickt NUR an dieses eine Geraet. Gedacht fuer den
+    // "Test-Benachrichtigung"-Knopf in den Einstellungen - so klingelt nicht
+    // die ganze Firma, nur das eigene Handy.
+    const { role, title, body, url, mitarbeiter_id, endpoint } = await req.json();
 
     if (!role || !title) {
       return new Response(JSON.stringify({ error: "role und title sind Pflicht" }), { status: 400, headers: corsHeaders });
@@ -45,6 +48,7 @@ Deno.serve(async (req) => {
     // Gezielt an einen Mitarbeiter: nur dessen Geräte. Ohne Angabe wie bisher an alle
     // Geräte dieser Rolle.
     if (mitarbeiter_id) abfrage = abfrage.eq("mitarbeiter_id", mitarbeiter_id);
+    if (endpoint) abfrage = abfrage.eq("endpoint", endpoint);
     const { data: subs, error } = await abfrage;
 
     if (error) {
