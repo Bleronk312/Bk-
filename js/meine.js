@@ -343,7 +343,7 @@ function renderOne() {
   }
   if (oneScreen === "urlaub") { oneSetGreeting("Meine Urlaubsanträge"); view.innerHTML = renderOneUrlaubHistorie(); return; }
   if (oneScreen === "lager") { oneSetGreeting("Lager-Plan"); view.innerHTML = renderOneLager(); return; }
-  if (oneScreen === "lohn") { oneSetGreeting("Lohnabrechnungen"); view.innerHTML = renderOneLohn(); oneLohnLaden(); return; }
+  if (oneScreen === "lohn") { oneSetGreeting("Meine Dokumente"); view.innerHTML = renderOneLohn(); oneLohnLaden(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
@@ -391,8 +391,8 @@ function renderOne() {
         <b>Mein Kalender</b><span>Touren, Termine & dein Urlaub</span>
       </button>
       <button class="one-kachel" style="animation-delay:${d + 0.21}s;" onclick="oneScreen='lohn'; renderOne();">
-        <span class="k-ico" style="background:#0f8a6d;">💶</span>
-        <b>Lohnabrechnungen</b><span>Deine PDFs vom Büro</span>
+        <span class="k-ico" style="background:#0f8a6d;">📄</span>
+        <b>Meine Dokumente</b><span>Lohnabrechnung & mehr</span>
       </button>
     </div>`;
 }
@@ -468,9 +468,19 @@ let oneLohnFehler = "";
 
 const ONE_LOHN_MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 function oneLohnLabel(name) {
-  const m = String(name || "").match(/^(\d{4})-(\d{2})\.pdf$/);
-  if (!m) return name;
-  return `${ONE_LOHN_MON[parseInt(m[2], 10) - 1] || m[2]} ${m[1]}`;
+  const roh = String(name || "");
+  // Neue Ablage: die Überschrift steckt kodiert im Dateinamen (Umlaute inklusive)
+  const b = roh.match(/^\d+__b64-([A-Za-z0-9_-]+)\.pdf$/);
+  if (b) {
+    try {
+      const b64 = b[1].replace(/-/g, "+").replace(/_/g, "/");
+      return decodeURIComponent(escape(atob(b64 + "===".slice((b64.length + 3) % 4))));
+    } catch (e) { /* dann roh anzeigen */ }
+  }
+  // Altbestand der ersten Fassung: JJJJ-MM.pdf
+  const m = roh.match(/^(\d{4})-(\d{2})\.pdf$/);
+  if (m) return `Lohnabrechnung ${ONE_LOHN_MON[parseInt(m[2], 10) - 1] || m[2]} ${m[1]}`;
+  return roh.replace(/\.pdf$/, "");
 }
 
 async function oneLohnLaden() {
@@ -495,13 +505,13 @@ function renderOneLohn() {
   if (oneLohnFehler) return `<div class="card"><p class="muted" style="margin:0;">${escapeHtml(oneLohnFehler)}</p></div>`;
   if (!oneLohnListe.length) {
     return `<div class="card" style="text-align:center; padding:26px 16px;">
-      <div style="font-size:30px; margin-bottom:8px;">💶</div>
-      <p class="muted" style="margin:0;">Noch keine Abrechnung da.<br>Sobald das Büro eine hochlädt, findest du sie hier – du bekommst dann eine Benachrichtigung.</p>
+      <div style="font-size:30px; margin-bottom:8px;">📄</div>
+      <p class="muted" style="margin:0;">Noch nichts da.<br>Sobald das Büro dir ein Dokument hochlädt – Lohnabrechnung, Vertrag, Info – findest du es hier und bekommst eine Benachrichtigung.</p>
     </div>`;
   }
   return oneLohnListe.map((f) => `
     <button class="one-menu-row" onclick="oneLohnOeffnen('${escapeHtml(f.name)}')">
-      <span style="font-size:20px;">💶</span>
+      <span style="font-size:20px;">📄</span>
       <span style="flex:1; text-align:left;"><b>${escapeHtml(oneLohnLabel(f.name))}</b>
         <span class="muted" style="display:block; font-size:12px;">PDF ansehen</span></span>
       <span class="muted">›</span>
