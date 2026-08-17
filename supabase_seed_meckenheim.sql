@@ -8,6 +8,7 @@
 -- Kd.-Nr. war in der Excel nicht angegeben (bleibt leer). Vorlage: geko.
 -- Koordinaten werden beim naechsten Oeffnen der Admin-Seite automatisch ergaenzt.
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
+-- qm 08/2026 exakt nach Original-Preisblatt 'Los 3.1 GlR' korrigiert (Summe 5757,28 qm).
 
 -- Kunde anlegen, falls es ihn noch nicht gibt
 insert into kunden (id, name, adresse, kdnr, bereich)
@@ -20,7 +21,7 @@ select 'meck1', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck1')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck1-p1', 'meck1', '1', 'Glas- und Rahmenreinigung', '210', 'feste_monate', '3,10', 0
+select 'meck1-p1', 'meck1', '1', 'Glas- und Rahmenreinigung', '209,08', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck1')
 on conflict (id) do nothing;
 
@@ -30,7 +31,7 @@ select 'meck2', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck2')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck2-p1', 'meck2', '1', 'Glas- und Rahmenreinigung', '167', 'feste_monate', '3,10', 0
+select 'meck2-p1', 'meck2', '1', 'Glas- und Rahmenreinigung', '167,00', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck2')
 on conflict (id) do nothing;
 
@@ -40,7 +41,7 @@ select 'meck3', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck3')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck3-p1', 'meck3', '1', 'Glas- und Rahmenreinigung', '72,5', 'feste_monate', '3,10', 0
+select 'meck3-p1', 'meck3', '1', 'Glas- und Rahmenreinigung', '72,51', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck3')
 on conflict (id) do nothing;
 
@@ -50,7 +51,7 @@ select 'meck4', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck4')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck4-p1', 'meck4', '1', 'Glas- und Rahmenreinigung', '25', 'feste_monate', '3,10', 0
+select 'meck4-p1', 'meck4', '1', 'Glas- und Rahmenreinigung', '24,30', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck4')
 on conflict (id) do nothing;
 
@@ -60,7 +61,7 @@ select 'meck5', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck5')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, faelligkeit_override, reihenfolge)
-select 'meck5-p1', 'meck5', '1', 'Glas- und Rahmenreinigung', '2475', 'feste_monate', '3,10', '2027-03-01', 0
+select 'meck5-p1', 'meck5', '1', 'Glas- und Rahmenreinigung', '2475,66', 'feste_monate', '3,10', '2027-03-01', 0
 where exists (select 1 from glas_objekte where id = 'meck5')
 on conflict (id) do nothing;
 
@@ -70,7 +71,7 @@ select 'meck6', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck6')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, faelligkeit_override, reihenfolge)
-select 'meck6-p1', 'meck6', '1', 'Glas- und Rahmenreinigung', '1340', 'feste_monate', '3,10', '2027-03-01', 0
+select 'meck6-p1', 'meck6', '1', 'Glas- und Rahmenreinigung', '1339,35', 'feste_monate', '3,10', '2027-03-01', 0
 where exists (select 1 from glas_objekte where id = 'meck6')
 on conflict (id) do nothing;
 
@@ -80,7 +81,7 @@ select 'meck7', (select id from kunden where name ilike '%meckenheim%' limit 1),
 where not exists (select 1 from glas_objekte where id = 'meck7')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, faelligkeit_override, reihenfolge)
-select 'meck7-p1', 'meck7', '1', 'Glas- und Rahmenreinigung', '335', 'feste_monate', '3,10', '2027-03-01', 0
+select 'meck7-p1', 'meck7', '1', 'Glas- und Rahmenreinigung', '335,35', 'feste_monate', '3,10', '2027-03-01', 0
 where exists (select 1 from glas_objekte where id = 'meck7')
 on conflict (id) do nothing;
 
@@ -110,7 +111,7 @@ select 'meck10', (select id from kunden where name ilike '%meckenheim%' limit 1)
 where not exists (select 1 from glas_objekte where id = 'meck10')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, faelligkeit_override, reihenfolge)
-select 'meck10-p1', 'meck10', '1', 'Glas- und Rahmenreinigung', '459', 'feste_monate', '3,10', '2027-03-01', 0
+select 'meck10-p1', 'meck10', '1', 'Glas- und Rahmenreinigung', '459,04', 'feste_monate', '3,10', '2027-03-01', 0
 where exists (select 1 from glas_objekte where id = 'meck10')
 on conflict (id) do nothing;
 
@@ -140,7 +141,7 @@ select 'meck13', (select id from kunden where name ilike '%meckenheim%' limit 1)
 where not exists (select 1 from glas_objekte where id = 'meck13')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck13-p1', 'meck13', '1', 'Glas- und Rahmenreinigung', '99,5', 'feste_monate', '3,10', 0
+select 'meck13-p1', 'meck13', '1', 'Glas- und Rahmenreinigung', '99,50', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck13')
 on conflict (id) do nothing;
 
@@ -170,7 +171,7 @@ select 'meck16', (select id from kunden where name ilike '%meckenheim%' limit 1)
 where not exists (select 1 from glas_objekte where id = 'meck16')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'meck16-p1', 'meck16', '1', 'Glas- und Rahmenreinigung', '109', 'feste_monate', '3,10', 0
+select 'meck16-p1', 'meck16', '1', 'Glas- und Rahmenreinigung', '109,08', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'meck16')
 on conflict (id) do nothing;
 

@@ -7,6 +7,8 @@
 -- Kd.-Nr. war in der Excel nicht angegeben (bleibt leer). Vorlage: geko.
 -- Koordinaten werden beim naechsten Oeffnen der Admin-Seite automatisch ergaenzt.
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
+-- 08/2026 gegen Original-Preisblatt (Anlage GLS, Los 7) geprueft: Flaechen waren exakt
+--   (Summe 9478,56 qm). Ergaenzt: Innenglasreinigung 43,62 qm an der KGS St. Franziskus.
 
 -- Kunde anlegen, falls es ihn noch nicht gibt
 insert into kunden (id, name, adresse, kdnr, bereich)
@@ -19,7 +21,11 @@ select 'bruehl1', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl1')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl1-p1', 'bruehl1', '1', 'Glas- und Rahmenreinigung', '480,4', 'feste_monate', '3,10', 0
+select 'bruehl1-p1', 'bruehl1', '1', 'Glas- und Rahmenreinigung', '480,40', 'feste_monate', '3,10', 0
+where exists (select 1 from glas_objekte where id = 'bruehl1')
+on conflict (id) do nothing;
+insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
+select 'bruehl1-p2', 'bruehl1', '2', 'Innenglasreinigung (ohne Rahmen)', '43,62', 'feste_monate', '3,10', 1
 where exists (select 1 from glas_objekte where id = 'bruehl1')
 on conflict (id) do nothing;
 
@@ -69,7 +75,7 @@ select 'bruehl6', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl6')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl6-p1', 'bruehl6', '1', 'Glas- und Rahmenreinigung', '691,8', 'feste_monate', '3,10', 0
+select 'bruehl6-p1', 'bruehl6', '1', 'Glas- und Rahmenreinigung', '691,80', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl6')
 on conflict (id) do nothing;
 
@@ -89,7 +95,7 @@ select 'bruehl8', (select id from kunden where name ilike '%brühl%' limit 1), (
 where not exists (select 1 from glas_objekte where id = 'bruehl8')
 on conflict (id) do nothing;
 insert into glas_objekt_positionen (id, objekt_id, nr, art, qm, intervall_typ, feste_monate, reihenfolge)
-select 'bruehl8-p1', 'bruehl8', '1', 'Glas- und Rahmenreinigung', '1333,7', 'feste_monate', '3,10', 0
+select 'bruehl8-p1', 'bruehl8', '1', 'Glas- und Rahmenreinigung', '1333,70', 'feste_monate', '3,10', 0
 where exists (select 1 from glas_objekte where id = 'bruehl8')
 on conflict (id) do nothing;
 
