@@ -19,7 +19,9 @@ const ONE_KAL_FARBEN = {
   checkin: "#ef7d00",   // Orange
   urlaub: "#12a150",    // Grün
   lager: "#6b4ee6",     // Violett
-  erledigt: "#8e99a6",  // Grau: erledigt = tritt zurück
+  erledigt: "#2e9e4f",  // Grün: in der Vergangenheit erledigt
+  verpasst: "#d13438",  // Rot: Termin ist vorbei und wurde nicht erledigt
+  grau: "#8e99a6",      // Vergangenes ohne Erledigt-Begriff (z.B. Urlaub)
 };
 
 let oneKalTermine = null;   // geladene Termine (Array) oder null = noch nicht geladen
@@ -179,13 +181,22 @@ async function oneKalLaden() {
         // oder vorbei UND vollständig erledigt. Eine vergangene Tour mit noch offenen
         // Stopps bleibt bewusst öffenbar - die muss der Mitarbeiter ja nacharbeiten.
         const abgelaufen = !!t.archiviert_am || (ende < heute && meine.length > 0 && !offen);
+        // Für die Kalenderfarbe zählt etwas anderes als für die Öffenbarkeit:
+        // erledigt = kein Stopp mehr offen. Eine vergangene Tour mit offenen
+        // Stopps ist NICHT erledigt und erscheint deshalb rot.
+        const erledigt = meine.length > 0 && !offen;
+        const fertigeStopps = meine.filter((x) => x.status !== "offen").length;
         eintraege.push({
           art: "glas", ico: "🧽", titel: t.name || "Tour",
           von: t.datum, bis: ende,
-          sub: abgelaufen ? "Glas-Tour · abgeschlossen" : "Glas-Tour",
+          sub: erledigt
+            ? `Glas-Tour · erledigt${meine.length ? ` (${meine.length}/${meine.length})` : ""}`
+            : (ende < heute && meine.length)
+              ? `Glas-Tour · offen (${fertigeStopps}/${meine.length})`
+              : "Glas-Tour",
           // Direkt IN die Tour springen (nicht nur in die App)
           ziel: abgelaufen ? null : `glas-mitarbeiter.html?tour=${encodeURIComponent(t.id)}`,
-          abgelaufen,
+          abgelaufen, erledigt,
         });
       });
     })());
@@ -265,6 +276,8 @@ async function oneKalLaden() {
                 : `Rundgang · ${r.fenster_von || "?"}–${r.fenster_bis || "?"}`,
             // Direkt zu DIESEM Tag springen (nicht nur in die App): dort steht dann,
             // was an dem Tag abgehakt wurde und wie lange gearbeitet wurde.
+            // Vergangene Tage bleiben ausdruecklich anklickbar: dort steht,
+            // wann wo eingecheckt wurde - genau das will man rueckblickend sehen.
             ziel: `checkins-ma.html?datum=${iso}`, tage, fertig,
           });
         }
@@ -350,7 +363,16 @@ function oneKalAmTag(iso) {
 // dessen Termine beim nächsten Laden weg und die Zeile verschwindet automatisch
 // mit. Kommt einer dazu, erscheint sie von selbst.
 function renderOneKalLegende() {
-  const vorhanden = new Set((oneKalTermine || []).map((e) => (e.fertig ? "erledigt" : e.art)));
+  const heute = oneKalHeute();
+  const vorhanden = new Set();
+  (oneKalTermine || []).forEach((e) => {
+    vorhanden.add(e.art);
+    // Grün und Rot nur erklären, wenn es sie im angezeigten Monat auch gibt.
+    const vorbei = (e.bis || e.von) < heute;
+    if (vorbei && e.art !== "urlaub" && e.art !== "lager") {
+      vorhanden.add((e.fertig || e.erledigt) ? "erledigt" : "verpasst");
+    }
+  });
   const zeilen = [
     ["glas", "Glas-Touren"],
     ["graffiti", "Graffiti"],
@@ -358,6 +380,7 @@ function renderOneKalLegende() {
     ["lager", "Lager"],
     ["urlaub", "Dein Urlaub"],
     ["erledigt", "Erledigt"],
+    ["verpasst", "Offen geblieben"],
   ].filter(([k]) => vorhanden.has(k));
   if (!zeilen.length) return "";
   return `<div class="okal-legende">${zeilen
@@ -390,14 +413,36 @@ function oneKalBalkenLabel(e) {
 }
 
 // Die geladenen Termine als Balken: Zeitraum, Farbe, Beschriftung.
+// Welche Farbe bekommt ein Balken?
+//   Zukunft/heute : Farbe des Bereichs (blau Glas, orange Check-ins, ...)
+//   Vergangenheit : grün wenn erledigt, rot wenn nicht
+// Vorher war beides grau - man sah also nicht, ob eine vergangene Tour
+// abgearbeitet wurde oder liegengeblieben ist. Genau darum geht es aber beim
+// Blick zurück.
+function oneKalBalkenFarbe(e) {
+  const heute = oneKalHeute();
+  const bis = e.bis || e.von;
+  const vorbei = bis < heute;
+
+  // Urlaub kennt kein "erledigt" - vergangener Urlaub tritt einfach zurück.
+  if (e.art === "urlaub") return vorbei ? ONE_KAL_FARBEN.grau : ONE_KAL_FARBEN.urlaub;
+  // Lager ebenso: dass man da war, hakt das Büro ab, nicht der Kalender.
+  if (e.art === "lager") return vorbei ? ONE_KAL_FARBEN.grau : ONE_KAL_FARBEN.lager;
+
+  if (!vorbei) return ONE_KAL_FARBEN[e.art] || ONE_KAL_FARBEN.glas;
+  return (e.fertig || e.erledigt) ? ONE_KAL_FARBEN.erledigt : ONE_KAL_FARBEN.verpasst;
+}
+
 function oneKalBalken() {
+  const heute = oneKalHeute();
   return (oneKalTermine || []).map((e, i) => ({
     _i: i,
     datum: e.von,
     datum_bis: e.bis || e.von,
-    // Erledigtes/Abgelaufenes tritt grau zurück, alles andere in der Bereichsfarbe
-    col: (e.fertig || e.abgelaufen) ? ONE_KAL_FARBEN.erledigt : (ONE_KAL_FARBEN[e.art] || ONE_KAL_FARBEN.glas),
-    done: !!(e.fertig || e.abgelaufen),
+    col: oneKalBalkenFarbe(e),
+    // "done" macht den Balken blasser. Nur für wirklich Erledigtes - Verpasstes
+    // soll ins Auge fallen, nicht zurücktreten.
+    done: !!(e.fertig || e.erledigt) && (e.bis || e.von) < heute,
     // Urlaub (auch beantragter) bewusst dezent/kursiv - klar anders als Arbeit
     urlaub: e.art === "urlaub",
     label: oneKalBalkenLabel(e),
@@ -1146,7 +1191,7 @@ function oneKalListe(eintraege, zusammengefasst) {
       ? `${oneKalTageText(e.tage)} · immer wieder`
       : mehrtaegig ? `${oneLagerTagText(e.von)} – ${oneLagerTagText(e.bis)}` : oneLagerTagText(e.von);
     const inner = `
-      <span class="okal-strich" style="background:${e.fertig ? ONE_KAL_FARBEN.erledigt : ONE_KAL_FARBEN[e.art]}"></span>
+      <span class="okal-strich" style="background:${oneKalBalkenFarbe(e)}"></span>
       <span style="flex:1; min-width:0;">
         <b${e.fertig ? ` class="okal-fertig"` : ""}>${e.ico} ${escapeHtml(e.titel)}</b>
         <span>${escapeHtml(e.sub)}${e.zeit ? " · " + escapeHtml(e.zeit) + " Uhr" : ""}</span>
