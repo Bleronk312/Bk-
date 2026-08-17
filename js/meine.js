@@ -89,6 +89,20 @@ async function oneEnsureLoggedIn() {
   try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
   if (!session) { oneRenderLogin(); return false; }
 
+  // Schnellstart: Ist das Profil vom letzten Mal da, geht es SOFORT los -
+  // ohne auf die Abfrage übers Netz zu warten. Geprüft wird trotzdem, nur
+  // im Hintergrund (siehe oneNachpruefen). Ohne das hing beim Öffnen jedes
+  // Mal ein leerer Moment davor.
+  if (stored && stored.id) {
+    oneUser = {
+      id: stored.id, name: stored.name || "", username: stored.username || "",
+      zugang_glas: stored.zugang_glas, zugang_checkin: stored.zugang_checkin,
+      zugang_graffiti: stored.zugang_graffiti, zugang_lager: stored.zugang_lager,
+    };
+    oneNachpruefen(session);
+    return true;
+  }
+
   try {
     const { data, error } = await oneLoadUser("auth_user_id", session.user.id);
     if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
@@ -116,6 +130,36 @@ async function oneEnsureLoggedIn() {
     oneRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
     return false;
   }
+}
+
+// Läuft nach dem Schnellstart, während die App schon benutzbar ist.
+// Gilt die Anmeldung nicht mehr (Büro hat das Passwort zurückgesetzt oder den
+// Zugang gesperrt), wird hier sauber abgemeldet. Ohne Netz bleibt alles, wie
+// es ist - am Objekt ohne Empfang darf niemand rausfliegen.
+async function oneNachpruefen(session) {
+  try {
+    const { data: konto, error: kontoFehler } = await sb.auth.getUser();
+    if (kontoFehler || !konto || !konto.user) {
+      // Anmeldung serverseitig ungültig - das ist der Fall nach einem
+      // Passwort-Zurücksetzen durchs Büro.
+      await oneLogout();
+      return;
+    }
+    const { data, error } = await oneLoadUser("auth_user_id", session.user.id);
+    if (error) return;                       // Netzproblem: nichts ändern
+    if (!data || data.login_aktiv === false) { await oneLogout(); return; }
+
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: ONE_PUSH_ROLE, fertig: () => location.reload() });
+      return;
+    }
+    // Freischaltungen könnten sich geändert haben -> Kacheln auffrischen
+    const vorher = JSON.stringify([oneUser.zugang_glas, oneUser.zugang_checkin, oneUser.zugang_graffiti, oneUser.zugang_lager]);
+    const nachher = JSON.stringify([data.zugang_glas, data.zugang_checkin, data.zugang_graffiti, data.zugang_lager]);
+    oneUser = data;
+    oneCacheZugaenge(data, null);
+    if (vorher !== nachher) renderOne();
+  } catch (e) { /* offline: unverändert weiterlaufen lassen */ }
 }
 
 // Freischaltungen + Name mit in die gespeicherte Sitzung schreiben, damit sie beim

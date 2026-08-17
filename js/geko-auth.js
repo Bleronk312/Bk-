@@ -34,6 +34,44 @@ function gekoZuMail(eingabe) {
 // Zwischenspeicher, damit nicht jede Seite die Mitarbeiterzeile neu lädt.
 let _gekoSitzung = null;
 
+// Dasselbe über den Seitenwechsel hinaus: Ohne diesen Speicher müsste jede
+// Seite erst eine Abfrage übers Netz beantwortet bekommen, bevor sie sich
+// zeigen darf - genau das war das kurze "Anmeldung wird geprüft" bei jedem
+// Öffnen.
+//
+// Sicherheitlich unbedenklich: Was jemand tatsächlich sehen darf, entscheidet
+// die Datenbank (siehe supabase_auth_4_rls.sql), nicht dieser Speicher. Er ist
+// an die Konto-Nummer der laufenden Anmeldung gebunden und wird bei jedem
+// Öffnen im Hintergrund gegen den Server geprüft. Wer ihn manipuliert, bekommt
+// eine Oberfläche ohne Daten - mehr nicht.
+const _GEKO_PROFIL_KEY = "geko_profil";
+const _GEKO_PROFIL_MAXALTER = 7 * 24 * 60 * 60 * 1000;   // eine Woche
+
+function _gekoProfilMerken(sitzung) {
+  try {
+    localStorage.setItem(_GEKO_PROFIL_KEY, JSON.stringify({
+      uid: sitzung.user.id,
+      rolle: sitzung.rolle,
+      istOberAdmin: sitzung.istOberAdmin,
+      ma: sitzung.ma,
+      zeit: Date.now(),
+    }));
+  } catch (e) {}
+}
+
+function _gekoProfilLesen(uid) {
+  try {
+    const p = JSON.parse(localStorage.getItem(_GEKO_PROFIL_KEY) || "null");
+    if (!p || p.uid !== uid) return null;
+    if (Date.now() - (p.zeit || 0) > _GEKO_PROFIL_MAXALTER) return null;
+    return p;
+  } catch (e) { return null; }
+}
+
+function _gekoProfilVergessen() {
+  try { localStorage.removeItem(_GEKO_PROFIL_KEY); } catch (e) {}
+}
+
 // ---------------------------------------------------------------------------
 // Anmelden
 // ---------------------------------------------------------------------------
@@ -57,6 +95,7 @@ async function gekoAnmelden(benutzername, passwort) {
 
 async function gekoAbmelden() {
   _gekoSitzung = null;
+  _gekoProfilVergessen();
   try { await sb.auth.signOut(); } catch (e) {}
 }
 
@@ -90,6 +129,7 @@ async function gekoSitzung(neuLaden) {
     // entschieden wird es in der Edge Function.
     istOberAdmin: session.user?.app_metadata?.geko_super === true,
   };
+  _gekoProfilMerken(_gekoSitzung);
   return _gekoSitzung;
 }
 
@@ -124,6 +164,41 @@ function gekoDarf(sitzung, bereich) {
 // Admin-PIN-Abfragen.
 async function gekoSchuetze(optionen) {
   const opt = optionen || {};
+
+  // --- Schnellstart -------------------------------------------------------
+  // getSession() liest nur den örtlichen Speicher, kostet also keine Wartezeit.
+  // Ist zusätzlich das Profil vom letzten Mal bekannt, kann die Seite SOFORT
+  // starten - ohne auf die Mitarbeiter-Abfrage übers Netz zu warten. Genau die
+  // war das kurze "Anmeldung wird geprüft" bei jedem Öffnen.
+  // Nachgeprüft wird trotzdem, nur eben im Hintergrund (siehe unten).
+  try {
+    const { data: { session: schnell } } = await sb.auth.getSession();
+    if (schnell) {
+      const gemerkt = _gekoProfilLesen(schnell.user.id);
+      if (gemerkt) {
+        const vorlaeufig = {
+          user: schnell.user,
+          ma: gemerkt.ma || null,
+          rolle: gemerkt.rolle,
+          istAdmin: gemerkt.rolle === "admin",
+          istOberAdmin: !!gemerkt.istOberAdmin,
+        };
+        const darfRein = !(opt.nurAdmin && !vorlaeufig.istAdmin)
+          && !(opt.bereich && !gekoDarf(vorlaeufig, opt.bereich))
+          && !(vorlaeufig.istAdmin && schnell.user?.user_metadata?.geko_neu === true)
+          && !(vorlaeufig.ma?.pw_muss_wechsel && !vorlaeufig.istAdmin);
+        if (darfRein) {
+          _gekoSitzung = vorlaeufig;
+          _gekoOverlayWeg();
+          if (typeof opt.weiter === "function") opt.weiter(vorlaeufig);
+          _gekoNachpruefen(opt);
+          return;
+        }
+      }
+    }
+  } catch (e) { /* im Zweifel den vollständigen Weg gehen */ }
+
+  // --- Vollständige Prüfung ----------------------------------------------
   const sitzung = await gekoSitzung(true);
 
   if (!sitzung) { gekoZeigeLogin(opt); return; }
@@ -146,6 +221,25 @@ async function gekoSchuetze(optionen) {
   }
   _gekoOverlayWeg();
   if (typeof opt.weiter === "function") opt.weiter(sitzung);
+}
+
+// Läuft NACH dem Schnellstart, während die Seite schon benutzbar ist. Hat sich
+// etwas Wesentliches geändert - Zugang gesperrt, Bereich entzogen, Passwort
+// vom Büro zurückgesetzt -, wird die Seite neu geladen und läuft dann durch
+// die vollständige Prüfung. Im Normalfall passiert hier nichts Sichtbares.
+async function _gekoNachpruefen(opt) {
+  let frisch = null;
+  try { frisch = await gekoSitzung(true); } catch (e) { return; }   // kein Netz: alles beim Alten lassen
+  if (!frisch) { location.reload(); return; }
+
+  const nichtMehrErlaubt =
+    (opt.nurAdmin && !frisch.istAdmin)
+    || (opt.bereich && !gekoDarf(frisch, opt.bereich))
+    || (frisch.ma && frisch.ma.login_aktiv === false)
+    || (frisch.ma && frisch.ma.pw_muss_wechsel && !frisch.istAdmin)
+    || (frisch.istAdmin && frisch.user?.user_metadata?.geko_neu === true);
+
+  if (nichtMehrErlaubt) location.reload();
 }
 
 // ---------------------------------------------------------------------------

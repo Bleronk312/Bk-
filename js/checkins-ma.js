@@ -170,6 +170,14 @@ async function ciEnsureLoggedIn() {
   try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
   if (!session) { ciRenderLogin(); return false; }
 
+  // Schnellstart mit dem Profil vom letzten Mal - geprueft wird im Hintergrund.
+  if (stored && stored.id) {
+    ciUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
+    ciSetHeaderWho();
+    ciNachpruefen(session);
+    return true;
+  }
+
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
       .select("id, name, username, login_aktiv, zugang_checkin, pw_muss_wechsel").eq("auth_user_id", session.user.id).maybeSingle();
@@ -194,6 +202,27 @@ async function ciEnsureLoggedIn() {
     ciRenderLogin(t("errVerbindung"));
     return false;
   }
+}
+
+// Laeuft nach dem Schnellstart im Hintergrund (siehe glasNachpruefen).
+async function ciNachpruefen(session) {
+  try {
+    const { data: konto, error: kontoFehler } = await sb.auth.getUser();
+    if (kontoFehler || !konto || !konto.user) { ciLogout(); return; }
+    const { data, error } = await sb.from("glas_mitarbeiter")
+      .select("id, name, username, login_aktiv, zugang_checkin, pw_muss_wechsel")
+      .eq("auth_user_id", session.user.id).maybeSingle();
+    if (error) return;                       // Netzproblem: nichts ändern
+    if (!data || data.login_aktiv === false) { ciLogout(); return; }
+    if (data.zugang_checkin !== true) { ciLogout(t("errNichtFrei")); return; }
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "checkin_ma", fertig: () => location.reload() });
+      return;
+    }
+    ciUser = { id: data.id, name: data.name, username: data.username };
+    try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(ciUser)); } catch (e) {}
+    ciSetHeaderWho();
+  } catch (e) { /* offline: unverändert weiterlaufen lassen */ }
 }
 
 function ciSetHeaderWho() {

@@ -99,6 +99,13 @@ async function glasEnsureLoggedIn() {
   try { session = (await sb.auth.getSession()).data.session; } catch (e) {}
   if (!session) { glasRenderLogin(); return false; }
 
+  // Schnellstart mit dem Profil vom letzten Mal - geprueft wird im Hintergrund.
+  if (stored && stored.id) {
+    glasCurrentUser = { id: stored.id, name: stored.name || "", username: stored.username || "" };
+    glasNachpruefen(session);
+    return true;
+  }
+
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
       .select("id, name, username, login_aktiv, zugang_glas, pw_muss_wechsel").eq("auth_user_id", session.user.id).maybeSingle();
@@ -125,6 +132,28 @@ async function glasEnsureLoggedIn() {
     glasRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
     return false;
   }
+}
+
+// Laeuft nach dem Schnellstart im Hintergrund. Nur bei nachweislich
+// ungueltiger Anmeldung oder gesperrtem Zugang wird abgemeldet - ohne Netz
+// nie, sonst blockiert das Unterschreiben am Objekt.
+async function glasNachpruefen(session) {
+  try {
+    const { data: konto, error: kontoFehler } = await sb.auth.getUser();
+    if (kontoFehler || !konto || !konto.user) { glasLogout(); return; }
+    const { data, error } = await sb.from("glas_mitarbeiter")
+      .select("id, name, username, login_aktiv, zugang_glas, pw_muss_wechsel")
+      .eq("auth_user_id", session.user.id).maybeSingle();
+    if (error) return;                       // Netzproblem: nichts ändern
+    if (!data || data.login_aktiv === false || data.zugang_glas === false) { glasLogout(); return; }
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "geko_one", fertig: () => location.reload() });
+      return;
+    }
+    glasCurrentUser = { id: data.id, name: data.name, username: data.username };
+    try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(glasCurrentUser)); } catch (e) {}
+    try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("geko_one", data.id); } catch (e) {}
+  } catch (e) { /* offline: unverändert weiterlaufen lassen */ }
 }
 
 function glasRenderLogin(fehler) {
