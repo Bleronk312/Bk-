@@ -381,6 +381,14 @@ function oneKalMonatName(m) {
 
 const ONE_KAL_MAX_BALKEN = 4; // mehr passt auf dem Handy nicht in eine Tageszelle
 
+// Beschriftung des Balkens. Beim Lager steht die UHRZEIT drin, nicht das Wort
+// "Lager": dass es ums Lager geht, sagt schon die Farbe (Legende) - wichtig ist
+// morgens einzig, um wann man da sein soll.
+function oneKalBalkenLabel(e) {
+  if (e.art === "lager") return e.zeit || "Lager";
+  return e.titel || "";
+}
+
 // Die geladenen Termine als Balken: Zeitraum, Farbe, Beschriftung.
 function oneKalBalken() {
   return (oneKalTermine || []).map((e, i) => ({
@@ -392,7 +400,7 @@ function oneKalBalken() {
     done: !!(e.fertig || e.abgelaufen),
     // Urlaub (auch beantragter) bewusst dezent/kursiv - klar anders als Arbeit
     urlaub: e.art === "urlaub",
-    label: e.titel || "",
+    label: oneKalBalkenLabel(e),
   }));
 }
 
@@ -469,7 +477,7 @@ function oneKalRasterZellen(weeks, heute) {
 
       return `
         <div class="glas-cal-cell${iso === oneKalTagGewaehlt ? " is-selected" : ""}${inMonth ? "" : " out-month"}${frei ? " okal-frei" : ""}${feiertag ? " okal-feiertag" : ""}"
-          onclick="oneKalTagWaehlen('${iso}')"${feiertag ? ` title="${escapeHtml(feiertag)}"` : ""}>
+          data-iso="${iso}" onclick="oneKalTagWaehlen('${iso}')"${feiertag ? ` title="${escapeHtml(feiertag)}"` : ""}>
           <span class="glas-cal-daynum${iso === heute ? " is-today" : ""}">${tag}</span>
           ${chips}${overflow ? `<div class="glas-cal-more">+${overflow}</div>` : ""}
         </div>`;
@@ -492,11 +500,7 @@ function renderOneKalender() {
   // Kommende Termine (ab heute). Wiederkehrende Rundgänge werden dabei zusammengefasst:
   // Sonst stünde derselbe Rundgang 20x untereinander und würde Touren, Graffiti-Termine
   // und Urlaub verdrängen. Im Monatsraster bleiben trotzdem ALLE Tage markiert, und beim
-  // Antippen eines Tages sieht man weiterhin alles, was an dem Tag ansteht.
-  const gewaehlterFeiertag = oneKalTagGewaehlt ? oneFeiertagName(oneKalTagGewaehlt) : "";
-  const feiertagHinweis = gewaehlterFeiertag
-    ? `<p class="okal-feiertag-hinweis">🎉 ${escapeHtml(gewaehlterFeiertag)}</p>` : "";
-
+  // Antippen eines Tages zeigt das Tages-Blatt alles, was an dem Tag ansteht.
   const gesehen = new Set();
   const kommend = (oneKalTermine || [])
     .filter((e) => (e.bis || e.von) >= heute)
@@ -520,7 +524,6 @@ function renderOneKalender() {
       <div class="glas-cal-grid okal-dow">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w, i) => `<div${i === 6 ? ` class="frei"` : ""}>${w}</div>`).join("")}</div>
       <div class="glas-cal-grid" id="okalRaster">${zellen}</div>
     </div>
-    ${feiertagHinweis}
 
     ${renderOneKalLegende()}
 
@@ -528,9 +531,8 @@ function renderOneKalender() {
     ${renderOneUrlaubForm()}
     ${renderOneMeineAntraege()}
 
-    <p class="one-label">${oneKalTagGewaehlt ? "AM " + oneLagerTagText(oneKalTagGewaehlt).toUpperCase() : "KOMMENDE TERMINE"}</p>
-    ${oneKalListe(oneKalTagGewaehlt ? oneKalAmTag(oneKalTagGewaehlt) : kommend, !oneKalTagGewaehlt)}
-    ${oneKalTagGewaehlt ? `<button class="btn btn-sm" style="margin-top:10px;" onclick="oneKalTagGewaehlt=null; renderOne();">Alle kommenden zeigen</button>` : ""}`;
+    <p class="one-label">KOMMENDE TERMINE</p>
+    ${oneKalListe(kommend, true)}`;
 }
 
 let oneKalTagGewaehlt = null;
@@ -984,9 +986,127 @@ async function oneEntscheidungBestaetigen(id) {
   } catch (e) {}
 }
 
+/* ---------------- Tages-Sheet ----------------
+   Ein Tag wird nicht mehr weiter unten auf der Seite aufgeklappt, sondern kommt
+   als Blatt von unten hoch - so wie man es von Handy-Kalendern kennt. Man bleibt
+   dabei mit dem Blick am angetippten Tag und muss nicht erst runterscrollen.
+   Es hängt bewusst am <body>: als Teil von #view würde es beim nächsten
+   renderOne() mitten in der Animation verschwinden. */
+
+let oneKalSheetIso = null;
+
+const ONE_MONATE_LANG = ["Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+// "Montag, 17. August" - im Sheet steht der Tag ausgeschrieben, dort ist Platz.
+function oneKalDatumLang(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return `${ONE_WOCHENTAGE[d.getDay()]}, ${d.getDate()}. ${ONE_MONATE_LANG[d.getMonth()]}`;
+}
+
 function oneKalTagWaehlen(iso) {
-  oneKalTagGewaehlt = oneKalTagGewaehlt === iso ? null : iso;
+  if (oneKalSheetIso === iso) { oneKalSheetZu(); return; }
+  oneKalTagGewaehlt = iso;
+  oneKalSheetOeffnen(iso);
+  // Nur die Markierung im Raster nachziehen - ein volles renderOne() würde den
+  // Inhalt unter dem Sheet neu aufbauen und flackern.
+  document.querySelectorAll("#okalRaster .glas-cal-cell.is-selected").forEach((c) => c.classList.remove("is-selected"));
+  const zelle = document.querySelector(`#okalRaster .glas-cal-cell[data-iso="${iso}"]`);
+  if (zelle) zelle.classList.add("is-selected");
+}
+
+function oneKalSheetOeffnen(iso) {
+  oneKalSheetZu(false);
+  oneKalSheetIso = iso;
+  const eintraege = oneKalAmTag(iso);
+  const feiertag = oneFeiertagName(iso);
+  const el = document.createElement("div");
+  el.id = "oneKalSheet";
+  el.className = "okal-sheet-ov";
+  el.onclick = (e) => { if (e.target === el) oneKalSheetZu(); };
+  el.innerHTML = `
+    <div class="okal-sheet" role="dialog" aria-modal="true">
+      <div class="okal-sheet-grip"></div>
+      <div class="okal-sheet-kopf">
+        <span class="ks-txt">
+          <b>${escapeHtml(oneKalDatumLang(iso))}</b>
+          <span>${feiertag ? "🎉 " + escapeHtml(feiertag)
+            : eintraege.length === 0 ? "Nichts eingetragen"
+            : eintraege.length === 1 ? "1 Termin" : eintraege.length + " Termine"}</span>
+        </span>
+        <button class="okal-sheet-zu" onclick="oneKalSheetZu()" aria-label="Schließen">✕</button>
+      </div>
+      <div class="okal-sheet-inhalt">
+        ${oneKalListe(eintraege, false)}
+        <button class="btn btn-sm" style="margin-top:6px;" onclick="oneKalUrlaubAbTag('${iso}')">🏖️ Urlaub ab diesem Tag beantragen</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  if (typeof window.gekoI18nApply === "function") window.gekoI18nApply(); // ggf. albanisch
+  requestAnimationFrame(() => el.classList.add("auf"));
+  oneKalSheetWischen(el);
+  // Zurück-Taste des Handys schließt erst das Blatt, statt die Seite zu verlassen
+  try { history.pushState({ oneKalSheet: 1 }, ""); } catch (e) {}
+  window.addEventListener("popstate", oneKalSheetPop);
+}
+
+function oneKalSheetPop() { oneKalSheetZu(true); }
+
+function oneKalSheetZu(vonPopstate) {
+  const el = document.getElementById("oneKalSheet");
+  window.removeEventListener("popstate", oneKalSheetPop);
+  oneKalSheetIso = null;
+  if (!el) return;
+  el.classList.remove("auf");
+  setTimeout(() => el.remove(), 220);
+  if (vonPopstate !== false && !vonPopstate) {
+    try { if (history.state && history.state.oneKalSheet) history.back(); } catch (e) {}
+  }
+}
+
+// Nach unten wischen schließt das Blatt - dieselbe Geste wie in nativen Apps.
+// Bewusst mit Richtungssperre und nur, wenn der Inhalt schon ganz oben steht,
+// damit ein normaler Scroll in der Terminliste nicht versehentlich schließt.
+function oneKalSheetWischen(ov) {
+  const blatt = ov.querySelector(".okal-sheet");
+  const inhalt = ov.querySelector(".okal-sheet-inhalt");
+  if (!blatt) return;
+  let y0 = null, x0 = null, richtung = null, dy = 0;
+  blatt.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || (inhalt && inhalt.scrollTop > 2)) { y0 = null; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; richtung = null; dy = 0;
+  }, { passive: true });
+  blatt.addEventListener("touchmove", (e) => {
+    if (y0 === null) return;
+    const d = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!richtung) {
+      if (Math.abs(d) < 8 && Math.abs(dx) < 8) return;
+      richtung = d > 0 && d > Math.abs(dx) * 1.4 ? "zu" : "aus";
+      if (richtung === "aus") { y0 = null; return; }
+    }
+    dy = Math.max(0, d);
+    blatt.style.transition = "none";
+    blatt.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  blatt.addEventListener("touchend", () => {
+    if (y0 === null) return;
+    blatt.style.transition = "";
+    blatt.style.transform = "";
+    if (dy > 90) oneKalSheetZu();
+    y0 = null; richtung = null;
+  }, { passive: true });
+}
+
+// Aus dem Tages-Blatt heraus Urlaub beantragen - mit diesem Tag vorbelegt.
+function oneKalUrlaubAbTag(iso) {
+  oneKalTagGewaehlt = iso;
+  oneUrlaubFormOffen = true;
+  oneKalSheetZu();
   renderOne();
+  setTimeout(() => {
+    const el = document.getElementById("url_von");
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 120);
 }
 
 // Wochentage eines wiederkehrenden Rundgangs kurz benennen ("Mo–Fr" bzw. "Mo, Mi, Fr")

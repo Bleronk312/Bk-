@@ -302,7 +302,7 @@
       const targets = [document.querySelector(".app-header"), document.getElementById("view"), document.getElementById("toast")];
       // Overlays (Menü-Dropdown, Sheets, Modale) hängen direkt am body und lägen
       // sonst außerhalb der festen Ziele - sie blieben deutsch.
-      document.body.querySelectorAll(":scope > .one-drop-ov, :scope > .modal-overlay, :scope > #glasModalHost")
+      document.body.querySelectorAll(":scope > .one-drop-ov, :scope > .okal-sheet-ov, :scope > .modal-overlay, :scope > #glasModalHost")
         .forEach((el) => targets.push(el));
       targets.forEach((t) => { if (t) { walkText(t); walkAttrs(t); } });
     } catch (e) { /* nie die App wegen Übersetzung crashen lassen */ }
