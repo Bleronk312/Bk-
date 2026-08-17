@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=185" />
+<link rel="stylesheet" href="css/style.css?v=186" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -59,12 +59,12 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=185"></script>
-  <script src="js/supabase-client.js?v=185"></script>
-  <script src="js/geko-auth.js?v=185"></script>
-  <script src="js/push.js?v=185"></script>
-  <script defer src="js/pdf-fonts.js?v=185"></script>
-  <script defer src="js/glas-lager-pdf.js?v=185"></script>
+  <script src="js/config.js?v=186"></script>
+  <script src="js/supabase-client.js?v=186"></script>
+  <script src="js/geko-auth.js?v=186"></script>
+  <script src="js/push.js?v=186"></script>
+  <script defer src="js/pdf-fonts.js?v=186"></script>
+  <script defer src="js/glas-lager-pdf.js?v=186"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -129,14 +129,28 @@
   }
 
   // ---- Laden -------------------------------------------------------------
+  // Bewusst mit Auffangnetz: Geht beim Laden etwas schief, muss eine Meldung
+  // erscheinen. Vorher blieb in so einem Fall einfach "Lade …" stehen, und man
+  // hatte keinen Anhaltspunkt, was los ist.
   async function allesLaden() {
+    try {
+      await allesLadenIntern();
+    } catch (e) {
+      document.getElementById("inhalt").innerHTML =
+        '<div class="card" style="margin-top:16px;"><b>Die Einstellungen konnten nicht geladen werden.</b>'
+        + '<p class="est-sub" style="margin:6px 0 12px;">' + sicher((e && e.message) || e) + '</p>'
+        + '<button class="btn btn-primary" onclick="location.reload()">Neu laden</button></div>';
+    }
+  }
+
+  async function allesLadenIntern() {
     const [liste, einst, ma, url, lager] = await Promise.all([
       ruf({ aktion: "liste" }),
       sb.from("glas_einstellungen").select("*").eq("id", "default").maybeSingle(),
       sb.from("glas_mitarbeiter").select("*").order("name"),
       sb.from("glas_urlaub").select("id, mitarbeiter_id, von, bis, notiz, status"),
       // Fuer den Einsatzplan als PDF - dieselbe Quelle wie in der Glas-App
-      sb.from("glas_lager_plan").select("*").order("datum").catch(() => ({ data: [] })),
+      sb.from("glas_lager_plan").select("*").order("datum"),
     ]);
     zugangsdaten = liste;
     binOberAdmin = !!(liste && liste.ich_bin_oberadmin);
