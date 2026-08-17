@@ -127,9 +127,11 @@ async function gekoSchuetze(optionen) {
     gekoZeigeSperre("Für diesen Bereich ist dein Zugang nicht freigeschaltet.", sitzung, opt);
     return;
   }
-  // Erstpasswort noch nicht geändert -> erst das, dann weiter.
+  // Erstanmeldung (oder nach einem Zuruecksetzen durchs Buero): erst den
+  // Willkommens-Ablauf - eigenes Passwort setzen UND Benachrichtigungen
+  // einschalten. Danach geht es in die App.
   if (sitzung.ma?.pw_muss_wechsel && !opt.nurAdmin) {
-    gekoZeigePasswortWechsel(opt, sitzung);
+    gekoWillkommen(opt, sitzung);
     return;
   }
   _gekoOverlayWeg();
@@ -221,23 +223,56 @@ function gekoZeigeSperre(text, sitzung, opt) {
     + '<p style="color:#6b7785;font-size:13px;margin:14px 0 0">Angemeldet als '
     + ((sitzung && (sitzung.ma?.name || sitzung.user?.email)) || "unbekannt") + '</p>'
     + '<button id="gekoRaus" style="' + _gekoKnopf + ';background:#58636e">Abmelden</button>', opt);
-  document.getElementById("gekoRaus").onclick = async () => { await gekoAbmelden(); location.reload(); };
+  document.getElementById("gekoRaus").onclick = async () => {
+    if (!confirm("Wirklich abmelden?\n\nDu musst dich danach mit Benutzername und Passwort neu anmelden.")) return;
+    await gekoAbmelden();
+    location.reload();
+  };
 }
 
-// Erstpasswort ändern. Das Passwort geht direkt an Supabase - es wird nirgends
-// in unseren Tabellen abgelegt, auch nicht verschlüsselt.
-function gekoZeigePasswortWechsel(opt, sitzung) {
+// ---------------------------------------------------------------------------
+// Willkommens-Ablauf bei der Erstanmeldung
+// ---------------------------------------------------------------------------
+// Zwei Pflichtschritte, damit ein neuer Zugang nicht halbfertig bleibt:
+//   1. eigenes Passwort setzen (das Einmal-Passwort vom Zettel gilt danach nicht mehr)
+//   2. Benachrichtigungen einschalten
+// Schritt 2 laesst sich technisch nicht erzwingen (die Erlaubnis gibt das
+// Betriebssystem, auf dem iPhone nur bei installierter App). Deshalb wird er
+// deutlich verlangt, aber mit einem Ausweg - sonst kaeme jemand ueberhaupt
+// nicht mehr in die App, und das waere schlimmer als eine fehlende Meldung.
+function gekoWillkommen(opt, sitzung) {
+  gekoWillkommenAblauf({
+    maId: sitzung.ma && sitzung.ma.id,
+    pushRolle: opt && opt.pushRolle,
+    overlay: opt && opt.overlay,
+    fertig: () => { _gekoSitzung = null; if (opt && opt.overlay) location.reload(); else gekoSchuetze(opt); },
+  });
+}
+
+// Oeffentlicher Einstieg fuer die Mitarbeiter-Apps:
+//   gekoWillkommenAblauf({ maId, pushRolle: "geko_one", fertig: () => location.reload() })
+function gekoWillkommenAblauf(kontext) {
+  const k = kontext || {};
+  if (k.overlay === undefined) k.overlay = true;   // vor die App legen, nicht ersetzen
+  _gekoSchrittPasswort(k);
+}
+
+// Schritt 1: eigenes Passwort. Es geht direkt an Supabase - in unseren
+// Tabellen wird es weder gespeichert noch gehasht.
+function _gekoSchrittPasswort(k) {
   _gekoRahmen(
-    '<h1 style="font-size:20px;margin:0 0 4px">Neues Passwort</h1>'
+    '<p style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
+    + 'color:#6b7785;margin:0 0 6px">Schritt 1 von 2</p>'
+    + '<h1 style="font-size:20px;margin:0 0 4px">Neues Passwort</h1>'
     + '<p style="color:#6b7785;font-size:14px;margin:0;line-height:1.5">Du hast ein Passwort vom '
     + 'Büro bekommen. Bitte setz dir jetzt dein eigenes - danach kennt es niemand außer dir.</p>'
     + '<label style="' + _gekoLabel + '">Neues Passwort (mind. 8 Zeichen)</label>'
     + '<input id="gekoNeu1" type="password" style="' + _gekoFeld + '" autocomplete="new-password">'
     + '<label style="' + _gekoLabel + '">Nochmal zur Sicherheit</label>'
     + '<input id="gekoNeu2" type="password" style="' + _gekoFeld + '" autocomplete="new-password">'
-    + '<button id="gekoSpeichern" style="' + _gekoKnopf + '">Speichern und weiter</button>'
+    + '<button id="gekoSpeichern" style="' + _gekoKnopf + '">Weiter</button>'
     + '<div id="gekoPwFehler" style="display:none;margin-top:13px;padding:11px;border-radius:9px;'
-    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>', opt);
+    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>', k);
 
   const knopf = document.getElementById("gekoSpeichern");
   const fehler = document.getElementById("gekoPwFehler");
@@ -250,11 +285,76 @@ function gekoZeigePasswortWechsel(opt, sitzung) {
 
     knopf.disabled = true; knopf.textContent = "Moment …";
     const { error } = await sb.auth.updateUser({ password: a });
-    if (error) { meckern(error.message); knopf.disabled = false; knopf.textContent = "Speichern und weiter"; return; }
+    if (error) { meckern(error.message); knopf.disabled = false; knopf.textContent = "Weiter"; return; }
 
-    await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", sitzung.ma.id);
+    if (k.maId) await sb.from("glas_mitarbeiter").update({ pw_muss_wechsel: false }).eq("id", k.maId);
     _gekoSitzung = null;
-    if (opt && opt.overlay) { location.reload(); return; }
-    gekoSchuetze(opt);
+    _gekoSchrittBenachrichtigungen(k);
   };
+}
+
+// Schritt 2: Benachrichtigungen einschalten.
+function _gekoSchrittBenachrichtigungen(k) {
+  const rolle = k.pushRolle || "geko_one";
+  const kannPush = typeof enablePushNotifications === "function"
+    && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
+
+  // iPhone/iPad meldet Push nur, wenn die Seite als App auf dem Home-Bildschirm
+  // liegt. Ohne das ist der Schritt hier sinnlos - dann lieber die Anleitung
+  // zeigen, statt einen Knopf anzubieten, der nichts tun kann.
+  const istApple = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const alsApp = window.navigator.standalone === true
+    || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  const appleOhneApp = istApple && !alsApp;
+
+  const weiter = () => { _gekoSitzung = null; if (typeof k.fertig === "function") k.fertig(); };
+
+  if (!kannPush || appleOhneApp) {
+    _gekoRahmen(
+      '<p style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
+      + 'color:#6b7785;margin:0 0 6px">Schritt 2 von 2</p>'
+      + '<h1 style="font-size:20px;margin:0 0 4px">Benachrichtigungen</h1>'
+      + (appleOhneApp
+        ? '<p style="color:#3a4652;font-size:14px;margin:0;line-height:1.6">Damit du Touren und '
+          + 'Nachrichten mitbekommst, muss GEKO auf dem Home-Bildschirm liegen:<br><br>'
+          + '1. unten auf <b>Teilen</b> tippen (Quadrat mit Pfeil)<br>'
+          + '2. <b>„Zum Home-Bildschirm"</b> wählen<br>'
+          + '3. GEKO von dort öffnen und hier <b>anmelden</b><br><br>'
+          + 'Dann kommt dieser Schritt automatisch wieder.</p>'
+        : '<p style="color:#3a4652;font-size:14px;margin:0;line-height:1.6">Auf diesem Gerät sind '
+          + 'Benachrichtigungen nicht möglich. Auf dem Handy solltest du sie einschalten, damit du '
+          + 'Touren und Nachrichten mitbekommst.</p>')
+      + '<button id="gekoFertig" style="' + _gekoKnopf + '">Weiter zur App</button>', k);
+    document.getElementById("gekoFertig").onclick = weiter;
+    return;
+  }
+
+  _gekoRahmen(
+    '<p style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
+    + 'color:#6b7785;margin:0 0 6px">Schritt 2 von 2</p>'
+    + '<h1 style="font-size:20px;margin:0 0 4px">Benachrichtigungen einschalten</h1>'
+    + '<p style="color:#3a4652;font-size:14px;margin:0;line-height:1.6">Damit du mitbekommst, wenn '
+    + 'eine neue Tour für dich da ist oder das Büro dir schreibt. Bitte im nächsten Fenster auf '
+    + '<b>„Erlauben"</b> tippen.</p>'
+    + '<button id="gekoPushAn" style="' + _gekoKnopf + '">🔔 Einschalten</button>'
+    + '<button id="gekoSpaeter" style="' + _gekoKnopf + ';background:transparent;color:#6b7785;'
+    + 'font-weight:500;font-size:14px;margin-top:8px">Später einschalten</button>'
+    + '<div id="gekoPushHinweis" style="display:none;margin-top:13px;padding:11px;border-radius:9px;'
+    + 'background:#fdeaea;border-left:4px solid #d13438;font-size:14px;color:#8a1c20"></div>', k);
+
+  const knopf = document.getElementById("gekoPushAn");
+  knopf.onclick = async () => {
+    knopf.disabled = true; knopf.textContent = "Moment …";
+    try {
+      await enablePushNotifications(rolle, k.maId);
+    } catch (e) { /* Meldung kommt aus push.js */ }
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") { weiter(); return; }
+    // Abgelehnt: nicht blockieren, aber ehrlich sagen, was das bedeutet.
+    const hinweis = document.getElementById("gekoPushHinweis");
+    hinweis.style.display = "block";
+    hinweis.innerHTML = "Die Erlaubnis wurde nicht erteilt. Du bekommst dann keine Benachrichtigungen. "
+      + "Einschalten kannst du sie später in den Einstellungen deines Handys.";
+    knopf.disabled = false; knopf.textContent = "🔔 Nochmal versuchen";
+  };
+  document.getElementById("gekoSpaeter").onclick = weiter;
 }

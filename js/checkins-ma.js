@@ -172,11 +172,15 @@ async function ciEnsureLoggedIn() {
 
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, login_aktiv, zugang_checkin").eq("auth_user_id", session.user.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_checkin, pw_muss_wechsel").eq("auth_user_id", session.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { ciRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet."); return false; }
     if (data.login_aktiv === false) { ciLogout(); return false; }
     if (data.zugang_checkin !== true) { ciLogout(t("errNichtFrei")); return false; }
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "checkin_ma", fertig: () => location.reload() });
+      return false;
+    }
     ciUser = { id: data.id, name: data.name, username: data.username };
     try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(ciUser)); } catch (e) {}
     ciSetHeaderWho();
@@ -196,7 +200,7 @@ function ciSetHeaderWho() {
   const el = document.getElementById("ci_who");
   if (!el) return;
   el.innerHTML = ciLangToggleHtml() + (ciUser
-    ? `<div class="who-line">${t("angemeldet")}<br><b>${escapeHtml(ciUser.name || ciUser.username)}</b> · <button onclick="ciLogout()">${t("abmelden")}</button></div>`
+    ? `<div class="who-line">${t("angemeldet")}<br><b>${escapeHtml(ciUser.name || ciUser.username)}</b> · <button onclick="ciAbmeldenFragen()">${t("abmelden")}</button></div>`
     : "");
 }
 
@@ -232,17 +236,26 @@ async function ciDoLogin() {
     const anm = await gekoAnmelden(user, pass);
     if (!anm.ok) { ciRenderLogin(anm.fehler); return; }
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, login_aktiv, zugang_checkin").eq("auth_user_id", anm.user.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_checkin, pw_muss_wechsel").eq("auth_user_id", anm.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { await gekoAbmelden(); ciRenderLogin(t("errFalsch")); return; }
     if (data.login_aktiv === false) { await gekoAbmelden(); ciRenderLogin(t("errGesperrt")); return; }
     if (data.zugang_checkin !== true) { await gekoAbmelden(); ciRenderLogin(t("errNichtFrei")); return; }
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "checkin_ma", fertig: () => location.reload() });
+      return;
+    }
     ciUser = { id: data.id, name: data.name, username: data.username };
     try { localStorage.setItem(CI_AUTH_KEY, JSON.stringify(ciUser)); } catch (e) {}
     ciInit();
   } catch (e) {
     ciRenderLogin(t("errVerbindung"));
   }
+}
+
+async function ciAbmeldenFragen() {
+  if (!confirm("Wirklich abmelden?\n\nDu musst dich danach mit Benutzername und Passwort neu anmelden.")) return;
+  ciLogout();
 }
 
 function ciLogout(msg) {

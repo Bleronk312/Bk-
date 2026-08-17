@@ -101,13 +101,19 @@ async function glasEnsureLoggedIn() {
 
   try {
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, login_aktiv, zugang_glas").eq("auth_user_id", session.user.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_glas, pw_muss_wechsel").eq("auth_user_id", session.user.id).maybeSingle();
     if (error) throw error; // Netz-/Serverfehler -> offline vertrauen (catch unten)
     if (!data) { glasRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet."); return false; }
     if (data.login_aktiv === false) { glasLogout(); return false; } // gesperrt
     if (data.zugang_glas === false) { glasLogout(); return false; } // fuer Glas gesperrt (nur wenn ausdruecklich)
     glasCurrentUser = { id: data.id, name: data.name, username: data.username };
     try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(glasCurrentUser)); } catch (e) {}
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "geko_one", fertig: () => location.reload() });
+      return false;
+    }
+    // Benachrichtigungen still erneuern, damit sie dauerhaft an bleiben.
+    try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription("geko_one", data.id); } catch (e) {}
     return true;
   } catch (e) {
     // Kein Netz (Objekt ohne Empfang): dem Zwischenspeicher vertrauen - NIE
@@ -153,17 +159,26 @@ async function glasDoLogin() {
     const anm = await gekoAnmelden(user, pass);
     if (!anm.ok) { glasRenderLogin(anm.fehler); return; }
     const { data, error } = await sb.from("glas_mitarbeiter")
-      .select("id, name, username, login_aktiv, zugang_glas").eq("auth_user_id", anm.user.id).maybeSingle();
+      .select("id, name, username, login_aktiv, zugang_glas, pw_muss_wechsel").eq("auth_user_id", anm.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { await gekoAbmelden(); glasRenderLogin("Dieses Konto ist keinem Mitarbeiter zugeordnet. Bitte im Büro melden."); return; }
     if (data.login_aktiv === false) { await gekoAbmelden(); glasRenderLogin("Dieser Zugang ist gesperrt. Bitte im Büro melden."); return; }
     if (data.zugang_glas === false) { await gekoAbmelden(); glasRenderLogin("Für diesen Zugang ist die Glas-App nicht freigeschaltet. Bitte im Büro melden."); return; }
     glasCurrentUser = { id: data.id, name: data.name, username: data.username };
     try { localStorage.setItem(GLAS_AUTH_KEY, JSON.stringify(glasCurrentUser)); } catch (e) {}
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: "geko_one", fertig: () => location.reload() });
+      return;
+    }
     glasMaInit();
   } catch (e) {
     glasRenderLogin("Keine Verbindung. Bitte Internet prüfen und erneut versuchen.");
   }
+}
+
+async function glasAbmeldenFragen() {
+  if (!confirm("Wirklich abmelden?\n\nDu musst dich danach mit Benutzername und Passwort neu anmelden.")) return;
+  glasLogout();
 }
 
 function glasLogout() {
@@ -431,7 +446,7 @@ function renderGlasMa() {
           </button>
         </div>
         ${glasAppLinkKarte()}
-        ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasLogout();">Abmelden</a></p>` : ""}
+        ${glasCurrentUser ? `<p class="glas-welcome-user">Angemeldet als <b>${escapeHtml(glasCurrentUser.name || glasCurrentUser.username || "")}</b> · <a href="#" onclick="event.preventDefault(); glasAbmeldenFragen();">Abmelden</a></p>` : ""}
       </div>`;
     return;
   }

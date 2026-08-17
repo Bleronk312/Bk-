@@ -96,7 +96,12 @@ async function oneEnsureLoggedIn() {
     if (data.login_aktiv === false) { await oneLogout(); return false; }
     oneUser = data;
     oneCacheZugaenge(data, stored);
-    if (data.pw_muss_wechsel) oneScreen = "pwZwang";
+    // Erstanmeldung / nach Zuruecksetzen: Passwort setzen UND Benachrichtigungen
+    // einschalten - zentral in geko-auth.js, damit alle Apps es gleich machen.
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: ONE_PUSH_ROLE, fertig: () => location.reload() });
+      return false;
+    }
     return true;
   } catch (e) {
     // Kein Netz: letzte bekannte Freischaltungen aus dem Zwischenspeicher (Kacheln bleiben)
@@ -170,7 +175,11 @@ async function oneDoLogin() {
     }
     await oneStoreSessions(data);
     oneUser = data;
-    oneScreen = data.pw_muss_wechsel ? "pwZwang" : "home";
+    if (data.pw_muss_wechsel) {
+      gekoWillkommenAblauf({ maId: data.id, pushRolle: ONE_PUSH_ROLE, fertig: () => location.reload() });
+      return;
+    }
+    oneScreen = "home";
     renderOne();
     try { if (typeof autoRenewPushSubscription === "function") autoRenewPushSubscription(ONE_PUSH_ROLE, oneUser.id); } catch (e) {}
   } catch (e) {
@@ -196,6 +205,14 @@ async function oneStoreSessions(data) {
     if (data.zugang_glas !== false) localStorage.setItem(ONE_GLAS_KEY, schlank);
     if (data.zugang_checkin === true) localStorage.setItem(ONE_CI_KEY, schlank);
   } catch (e) {}
+}
+
+// Vom Abmelden-Knopf: erst fragen. Rausfliegen mitten im Arbeitstag, weil man
+// den Knopf gestreift hat, ist besonders aergerlich - danach braucht man
+// Benutzername und Passwort.
+async function oneAbmeldenFragen() {
+  if (!confirm("Wirklich abmelden?\n\nDu musst dich danach mit Benutzername und Passwort neu anmelden.")) return;
+  await oneLogout();
 }
 
 async function oneLogout() {
@@ -361,7 +378,7 @@ function oneMenuDropdown() {
       <button class="one-drop-row" onclick="oneMenuGeh('menu')">
         <span class="d-ico">⚙️</span><span class="d-txt">Mehr Einstellungen</span><span class="d-pfeil">›</span>
       </button>
-      <button class="one-drop-row abmelden" onclick="oneMenuSchliessen(); oneLogout();">
+      <button class="one-drop-row abmelden" onclick="oneMenuSchliessen(); oneAbmeldenFragen();">
         <span class="d-ico">🚪</span><span class="d-txt">Abmelden</span>
       </button>
     </div>`;
@@ -439,7 +456,7 @@ function renderOneMenu() {
       </span>
     </div>
 
-    <button class="one-menu-row" onclick="oneLogout()">
+    <button class="one-menu-row" onclick="oneAbmeldenFragen()">
       <span class="m-ico">🚪</span>
       <span style="flex:1;"><b style="color:var(--danger);">Abmelden</b><span>Nur aus GEKO One auf diesem Gerät</span></span>
       <span class="m-pfeil">›</span>
