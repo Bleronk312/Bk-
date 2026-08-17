@@ -22,6 +22,7 @@
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 </head>
 <body class="glas-logo-left glas-shell">
+  <div id="gekoAuthOverlay" style="position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; background:linear-gradient(160deg,#1f5d92,#132d47); color:#fff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">Anmeldung wird gepr&uuml;ft &hellip;</div>
 
   <!-- Zugangsschutz: echte Anmeldung statt PIN. Das Overlay legt sich vor die
        App, bis ein angemeldeter Admin bestaetigt ist. Laeuft nach "load", weil
