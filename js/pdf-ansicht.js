@@ -21,6 +21,8 @@ const GEKO_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.17
 let _gekoPdfLib = null;      // Ladeversprechen der Bibliothek
 let _gekoPdfDoc = null;      // aktuell offenes Dokument
 let _gekoPdfZoom = 1;        // 1 = Seitenbreite
+let _gekoPdfUrl = "";        // Quelle des offenen PDFs (fuer Sichern/Teilen)
+let _gekoPdfTitel = "";      // Ueberschrift, wird zum Dateinamen
 
 function _gekoPdfBibliothek() {
   if (_gekoPdfLib) return _gekoPdfLib;
@@ -42,9 +44,11 @@ function _gekoPdfBibliothek() {
 }
 
 async function gekoPdfZeigen(url, titel) {
+  _gekoPdfUrl = url;
+  _gekoPdfTitel = titel || "Dokument";
   // Overlay sofort zeigen, damit der Tipp SPUERBAR etwas tut - gerendert
   // wird hinein, sobald Bibliothek und Datei da sind.
-  _gekoPdfOverlay(titel || "PDF");
+  _gekoPdfOverlay(_gekoPdfTitel);
   try {
     const lib = await _gekoPdfBibliothek();
     _gekoPdfDoc = await lib.getDocument({ url }).promise;
@@ -65,8 +69,9 @@ function _gekoPdfOverlay(titel) {
   o.innerHTML = `
     <div style="flex:none;display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;background:#141920;color:#fff;">
       <b style="flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${String(titel).replace(/[<>&]/g, "")}</b>
-      <button id="gekoPdfMinus" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 13px;font-size:16px;font-weight:700;cursor:pointer;">−</button>
-      <button id="gekoPdfPlus" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 13px;font-size:16px;font-weight:700;cursor:pointer;">＋</button>
+      <button id="gekoPdfMinus" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 13px;font-size:16px;font-weight:700;cursor:pointer;" aria-label="Kleiner">−</button>
+      <button id="gekoPdfPlus" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 13px;font-size:16px;font-weight:700;cursor:pointer;" aria-label="Größer">＋</button>
+      <button id="gekoPdfSichern" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 12px;font-size:15px;cursor:pointer;" aria-label="Sichern oder teilen">⤓</button>
       <button id="gekoPdfZu" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;padding:7px 12px;font-size:15px;cursor:pointer;">✕</button>
     </div>
     <div id="gekoPdfRolle" style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;">
@@ -77,6 +82,7 @@ function _gekoPdfOverlay(titel) {
     <style>@keyframes gekoPdfDreh { to { transform: rotate(360deg); } }</style>`;
   document.body.appendChild(o);
   document.getElementById("gekoPdfZu").onclick = gekoPdfSchliessen;
+  document.getElementById("gekoPdfSichern").onclick = gekoPdfSichern;
   document.getElementById("gekoPdfPlus").onclick = () => _gekoPdfZoomAendern(0.25);
   document.getElementById("gekoPdfMinus").onclick = () => _gekoPdfZoomAendern(-0.25);
 }
@@ -109,8 +115,51 @@ async function _gekoPdfRendern() {
   }
 }
 
+// Sichern bzw. teilen. Auf dem iPhone ist ein Download-Link der falsche
+// Weg: In der installierten App tut <a download> schlicht nichts. Richtig
+// ist dort das System-Teilen-Blatt ("In Dateien sichern", weiterleiten,
+// drucken). Am Rechner bleibt es beim gewohnten Download.
+async function gekoPdfSichern() {
+  const knopf = document.getElementById("gekoPdfSichern");
+  const zurueck = knopf ? knopf.textContent : "";
+  if (knopf) { knopf.disabled = true; knopf.textContent = "…"; }
+  // Dateiname aus der Überschrift - alles, was Dateisysteme stört, raus.
+  const name = (String(_gekoPdfTitel || "Dokument")
+    .replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Dokument") + ".pdf";
+  try {
+    const antwort = await fetch(_gekoPdfUrl);
+    if (!antwort.ok) throw new Error("Laden fehlgeschlagen");
+    const blob = await antwort.blob();
+    const datei = new File([blob], name, { type: "application/pdf" });
+
+    // 1. Wahl: System-Teilen-Blatt (iPhone, Android)
+    if (navigator.canShare && navigator.canShare({ files: [datei] }) && navigator.share) {
+      try {
+        await navigator.share({ files: [datei], title: _gekoPdfTitel });
+        return;                       // fertig - oder vom Nutzer abgebrochen
+      } catch (e) {
+        // Abbruch ist kein Fehler; bei allem anderen weiter zum Download
+        if (e && e.name === "AbortError") return;
+      }
+    }
+    // 2. Wahl: klassischer Download (Rechner, Android-Browser)
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) {
+    // 3. Wahl: im Browser oeffnen, dort kann man ueber Teilen sichern
+    try { window.open(_gekoPdfUrl, "_blank"); } catch (e2) {}
+  } finally {
+    if (knopf) { knopf.disabled = false; knopf.textContent = zurueck || "⤓"; }
+  }
+}
+
 function gekoPdfSchliessen() {
   const o = document.getElementById("gekoPdfOverlay");
   if (o) o.remove();
   _gekoPdfDoc = null;
+  _gekoPdfUrl = "";
+  _gekoPdfTitel = "";
 }
