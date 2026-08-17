@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=192" />
+<link rel="stylesheet" href="css/style.css?v=193" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,12 +76,12 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=192"></script>
-  <script src="js/supabase-client.js?v=192"></script>
-  <script src="js/geko-auth.js?v=192"></script>
-  <script src="js/push.js?v=192"></script>
-  <script defer src="js/pdf-fonts.js?v=192"></script>
-  <script defer src="js/glas-lager-pdf.js?v=192"></script>
+  <script src="js/config.js?v=193"></script>
+  <script src="js/supabase-client.js?v=193"></script>
+  <script src="js/geko-auth.js?v=193"></script>
+  <script src="js/push.js?v=193"></script>
+  <script defer src="js/pdf-fonts.js?v=193"></script>
+  <script defer src="js/glas-lager-pdf.js?v=193"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -348,7 +348,11 @@
   // ==== Mitarbeiter-Seite ==================================================
   // Eine eigene Seite statt eines Aufklappers: Urlaub, Einsatzplan und Zugang
   // gehoeren zusammen und brauchen Platz - im Aufklapper war das gequetscht.
-  function maDetailOeffnen(id) { detailMa = id; pdfMonat = ""; render(); window.scrollTo(0, 0); }
+  function maDetailOeffnen(id) {
+    detailMa = id; pdfMonat = "";
+    render(); window.scrollTo(0, 0);
+    if (binOberAdmin) lohnListeLaden(id);
+  }
   function maDetailSchliessen() { detailMa = null; render(); }
 
   function renderMaDetail() {
@@ -410,6 +414,19 @@
         </div>
       </div>
 
+      <p class="est-sec-title">Lohnabrechnungen</p>
+      <div class="card">
+        ${binOberAdmin ? `
+        <p class="est-sub" style="margin:0 0 10px;">PDF hochladen – ${sicher(m.name)} sieht in GEKO One nur die eigenen Abrechnungen. Eine Datei je Monat; erneutes Hochladen ersetzt sie.</p>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <select id="lohnMonat" style="flex:1; min-width:140px;">${lohnMonate()}</select>
+          <input type="file" id="lohnDatei" accept="application/pdf" style="display:none;" onchange="lohnHochladen('${m.id}')" />
+          <button class="btn btn-primary" id="lohnKnopf" onclick="document.getElementById('lohnDatei').click()">📄 PDF wählen</button>
+        </div>
+        <div id="lohnListe"><p class="est-sub" style="margin:0;">Lade …</p></div>`
+        : '<p class="est-sub" style="margin:0;">Lohnabrechnungen verwaltet der Ober-Admin.</p>'}
+      </div>
+
       <p class="est-sec-title">Stammdaten</p>
       <div class="card">
         <p class="est-sub" style="margin:0 0 10px;">Name, Arbeitswoche, Urlaubsanspruch und Bausteine.</p>
@@ -418,6 +435,93 @@
           ${binOberAdmin ? `<button class="btn" style="color:var(--danger);" onclick="maLoeschen('${m.id}')">Löschen</button>` : ""}
         </div>
       </div>`;
+  }
+
+  // ==== Lohnabrechnungen (privater Datei-Speicher, Regeln in
+  //      supabase_add_lohn.sql: Ober-Admin alles, Mitarbeiter nur eigene) ====
+  const LOHN_MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+
+  function lohnMonate() {
+    let aus = "";
+    for (let i = 0; i < 18; i++) {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+      const wert = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      aus += `<option value="${wert}">${LOHN_MON[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+    return aus;
+  }
+
+  function lohnLabel(name) {
+    const m = String(name || "").match(/^(\d{4})-(\d{2})\.pdf$/);
+    if (!m) return name;
+    return `${LOHN_MON[parseInt(m[2], 10) - 1] || m[2]} ${m[1]}`;
+  }
+
+  async function lohnListeLaden(maId) {
+    const ziel = document.getElementById("lohnListe");
+    if (!ziel) return;
+    const { data, error } = await sb.storage.from("lohn")
+      .list(maId, { limit: 100, sortBy: { column: "name", order: "desc" } });
+    if (!document.getElementById("lohnListe")) return;   // Seite inzwischen gewechselt
+    if (error) {
+      ziel.innerHTML = `<p class="est-sub" style="margin:0; color:var(--danger);">${
+        /bucket/i.test(error.message || "") ? "Bitte supabase_add_lohn.sql ausführen." : sicher(error.message)}</p>`;
+      return;
+    }
+    const dateien = (data || []).filter((f) => f.name.endsWith(".pdf"));
+    ziel.innerHTML = dateien.length ? dateien.map((f) => `
+      <div class="est-zeile">
+        <div style="flex:1; min-width:0;">
+          <div class="est-name">💶 ${sicher(lohnLabel(f.name))}</div>
+        </div>
+        <div class="est-btns">
+          <button class="btn" onclick="lohnOeffnen('${maId}', '${sicher(f.name)}')">Ansehen</button>
+          <button class="btn" style="color:var(--danger);" onclick="lohnLoeschen('${maId}', '${sicher(f.name)}')">Löschen</button>
+        </div>
+      </div>`).join("")
+      : '<p class="est-sub" style="margin:0;">Noch keine Abrechnungen hochgeladen.</p>';
+  }
+
+  async function lohnHochladen(maId) {
+    const eingabe = document.getElementById("lohnDatei");
+    const datei = eingabe && eingabe.files && eingabe.files[0];
+    if (!datei) return;
+    if (datei.type !== "application/pdf") { showToast("Bitte eine PDF-Datei wählen"); return; }
+    const monat = document.getElementById("lohnMonat").value;
+    const knopf = document.getElementById("lohnKnopf");
+    if (knopf) { knopf.disabled = true; knopf.textContent = "Lade hoch …"; }
+
+    const { error } = await sb.storage.from("lohn")
+      .upload(`${maId}/${monat}.pdf`, datei, { upsert: true, contentType: "application/pdf" });
+    if (knopf) { knopf.disabled = false; knopf.textContent = "📄 PDF wählen"; }
+    eingabe.value = "";
+    if (error) { showToast("Hochladen fehlgeschlagen: " + error.message); return; }
+
+    showToast("Hochgeladen ✓");
+    lohnListeLaden(maId);
+    // Dem Mitarbeiter Bescheid geben - gezielt nur an seine Geräte.
+    try {
+      sb.functions.invoke("send-push", { body: {
+        role: "geko_one", mitarbeiter_id: maId,
+        title: "💶 Neue Lohnabrechnung",
+        body: `Deine Abrechnung für ${lohnLabel(monat + ".pdf")} liegt in GEKO One bereit.`,
+        url: "/meine.html",
+      } }).catch(() => {});
+    } catch (e) {}
+  }
+
+  async function lohnOeffnen(maId, name) {
+    const { data, error } = await sb.storage.from("lohn").createSignedUrl(`${maId}/${name}`, 300);
+    if (error || !data) { showToast("Konnte die Datei nicht öffnen"); return; }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function lohnLoeschen(maId, name) {
+    if (!confirm(`${lohnLabel(name)} löschen?`)) return;
+    const { error } = await sb.storage.from("lohn").remove([`${maId}/${name}`]);
+    if (error) { showToast("Löschen fehlgeschlagen: " + error.message); return; }
+    showToast("Gelöscht");
+    lohnListeLaden(maId);
   }
 
   async function einsatzplanPdf(maId) {

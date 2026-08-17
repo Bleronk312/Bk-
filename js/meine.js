@@ -343,6 +343,7 @@ function renderOne() {
   }
   if (oneScreen === "urlaub") { oneSetGreeting("Meine Urlaubsanträge"); view.innerHTML = renderOneUrlaubHistorie(); return; }
   if (oneScreen === "lager") { oneSetGreeting("Lager-Plan"); view.innerHTML = renderOneLager(); return; }
+  if (oneScreen === "lohn") { oneSetGreeting("Lohnabrechnungen"); view.innerHTML = renderOneLohn(); oneLohnLaden(); return; }
   if (oneScreen === "menu") { oneSetGreeting("Menü"); view.innerHTML = renderOneMenu(); return; }
   if (oneScreen === "pw" || oneScreen === "pwZwang") { oneSetGreeting(oneScreen === "pwZwang" ? "Passwort festlegen" : "Passwort ändern"); view.innerHTML = renderOnePwForm(oneScreen === "pwZwang"); return; }
 
@@ -370,6 +371,13 @@ function renderOne() {
       <b>Lager</b><span>${escapeHtml(typeof oneLagerKachelSub === "function" ? oneLagerKachelSub() : "Wann du im Lager sein sollst")}</span>
     </button>`);
   }
+  // Lohnabrechnungen: fuer jeden da. Die Zugriffsregeln des Datei-Speichers
+  // geben ohnehin nur die eigenen Dateien her - die Kachel zeigt also
+  // hoechstens eine leere Liste, nie fremde Abrechnungen.
+  kacheln.push(`<button class="one-kachel" style="animation-delay:${(d += 0.07)}s;" onclick="oneScreen='lohn'; renderOne();">
+    <span class="k-ico" style="background:#0f8a6d;">💶</span>
+    <b>Lohn</b><span>Deine Abrechnungen als PDF</span>
+  </button>`);
 
   view.innerHTML = `
     <div class="one-welcome">
@@ -453,6 +461,66 @@ function oneMenuGeh(ziel) {
 }
 
 /* ---------------- Mehr Einstellungen (ganze Seite) ---------------- */
+
+/* ---------------- Lohnabrechnungen ----------------
+   Die PDFs liegen im privaten Datei-Speicher; die Regeln dort geben einem
+   Mitarbeiter ausschliesslich den eigenen Ordner her (supabase_add_lohn.sql).
+   Diese Seite listet und oeffnet also nur, was ohnehin ihm gehoert. */
+let oneLohnListe = null;   // null = noch nicht geladen
+let oneLohnFehler = "";
+
+const ONE_LOHN_MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+function oneLohnLabel(name) {
+  const m = String(name || "").match(/^(\d{4})-(\d{2})\.pdf$/);
+  if (!m) return name;
+  return `${ONE_LOHN_MON[parseInt(m[2], 10) - 1] || m[2]} ${m[1]}`;
+}
+
+async function oneLohnLaden() {
+  if (oneLohnListe !== null) return;
+  try {
+    const { data, error } = await sb.storage.from("lohn")
+      .list(oneUser.id, { limit: 100, sortBy: { column: "name", order: "desc" } });
+    if (error) throw error;
+    oneLohnListe = (data || []).filter((f) => f.name.endsWith(".pdf"));
+    oneLohnFehler = "";
+  } catch (e) {
+    oneLohnListe = [];
+    oneLohnFehler = "Die Liste konnte nicht geladen werden. Bitte später erneut versuchen.";
+  }
+  if (oneScreen === "lohn") renderOne();
+}
+
+function renderOneLohn() {
+  if (oneLohnListe === null) {
+    return `<p class="muted" style="margin-top:20px;"><span class="spinner"></span> Lade deine Abrechnungen…</p>`;
+  }
+  if (oneLohnFehler) return `<div class="card"><p class="muted" style="margin:0;">${escapeHtml(oneLohnFehler)}</p></div>`;
+  if (!oneLohnListe.length) {
+    return `<div class="card" style="text-align:center; padding:26px 16px;">
+      <div style="font-size:30px; margin-bottom:8px;">💶</div>
+      <p class="muted" style="margin:0;">Noch keine Abrechnung da.<br>Sobald das Büro eine hochlädt, findest du sie hier – du bekommst dann eine Benachrichtigung.</p>
+    </div>`;
+  }
+  return oneLohnListe.map((f) => `
+    <button class="one-menu-row" onclick="oneLohnOeffnen('${escapeHtml(f.name)}')">
+      <span style="font-size:20px;">💶</span>
+      <span style="flex:1; text-align:left;"><b>${escapeHtml(oneLohnLabel(f.name))}</b>
+        <span class="muted" style="display:block; font-size:12px;">PDF ansehen</span></span>
+      <span class="muted">›</span>
+    </button>`).join("");
+}
+
+async function oneLohnOeffnen(name) {
+  try {
+    const { data, error } = await sb.storage.from("lohn")
+      .createSignedUrl(`${oneUser.id}/${name}`, 300);
+    if (error || !data) throw error;
+    window.open(data.signedUrl, "_blank");
+  } catch (e) {
+    showToast("Konnte die Abrechnung nicht öffnen – bitte erneut versuchen.");
+  }
+}
 
 function renderOneMenu() {
   setTimeout(oneUpdatePushStatus, 60);
