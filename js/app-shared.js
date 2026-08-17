@@ -68,8 +68,40 @@ function gekoRenderAnhaenge(s, openFnName) {
 // und darf beim Öffnen nichts blockieren.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      // Nach einem Deploy laeuft die GEOFFNETE Seite noch mit den alten Dateien -
+      // bei einer App auf dem Home-Bildschirm faellt das tagelang nicht auf (genau
+      // so entstand der Eindruck, ein Fix sei nicht angekommen). Deshalb ein
+      // dezenter Hinweis, sobald eine neue Version bereitliegt.
+      // BEWUSST kein automatisches Neuladen: waehrend einer Unterschrift oder eines
+      // halb ausgefuellten Formulars waere das ein Datenverlust.
+      reg.addEventListener("updatefound", () => {
+        const neu = reg.installing;
+        if (!neu) return;
+        neu.addEventListener("statechange", () => {
+          if (neu.state === "installed" && navigator.serviceWorker.controller) gekoZeigeUpdateHinweis();
+        });
+      });
+      // Bei jedem Oeffnen einmal nachsehen, ob es etwas Neues gibt
+      try { reg.update(); } catch (e) {}
+    }).catch(() => {});
   });
+}
+
+function gekoZeigeUpdateHinweis() {
+  if (document.getElementById("gekoUpdateBar")) return;
+  // Nicht stoeren, solange ein Blatt offen ist (Unterschrift, Tages-Sheet, Modal)
+  if (document.querySelector(".glas-sign-sheet, .glas-day-sheet, .modal-overlay")) {
+    setTimeout(gekoZeigeUpdateHinweis, 8000);
+    return;
+  }
+  const bar = document.createElement("button");
+  bar.id = "gekoUpdateBar";
+  bar.className = "geko-updatebar";
+  bar.innerHTML = `<span>Neue Version verfügbar</span><b>Jetzt laden</b>`;
+  bar.onclick = () => location.reload();
+  document.body.appendChild(bar);
+  requestAnimationFrame(() => bar.classList.add("auf"));
 }
 
 /* ---------------- UI-Basics ---------------- */

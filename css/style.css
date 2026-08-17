@@ -2874,3 +2874,22 @@ html.dark .glas-skelett-karte{
   background-size:220% 100%; }
 @keyframes gekoSchimmer{ from{ background-position:120% 0; } to{ background-position:-40% 0; } }
 @media (prefers-reduced-motion:reduce){ .glas-skelett-karte{ animation:none; } }
+
+/* ---- Hinweis nach einem Deploy ----
+   Die geöffnete Seite läuft noch mit den alten Dateien, bis sie neu geladen wird.
+   Bei einer App auf dem Home-Bildschirm passiert das von allein kaum - deshalb
+   dieser Balken. Bewusst unten und antippbar, nie automatisch neu laden. */
+.geko-updatebar {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  transform: translate(-50%, 24px); opacity: 0; z-index: 950;
+  display: inline-flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px; border-radius: 999px; border: none;
+  background: #1f5d92; color: #fff; font-family: inherit; font-size: 14px;
+  cursor: pointer; white-space: nowrap;
+  box-shadow: 0 8px 26px rgba(8, 26, 45, .35);
+  transition: transform .25s cubic-bezier(.2,.9,.3,1), opacity .25s ease;
+}
+.geko-updatebar.auf { transform: translate(-50%, 0); opacity: 1; }
+.geko-updatebar b { font-weight: 800; text-decoration: underline; }
+.geko-updatebar:active { transform: translate(-50%, 0) scale(.96); }
