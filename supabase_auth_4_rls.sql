@@ -140,12 +140,15 @@ create trigger geko_schutz_mitarbeiter before update on glas_mitarbeiter
 
 -- === glas_urlaub: eigenen Urlaub sehen, Antrag stellen, Antwort quittieren,
 --     nicht genehmigte Antraege zurueckziehen. Genehmigen kann nur die
---     Verwaltung - ein selbst eingetragener Antrag MUSS als 'beantragt' rein ==
+--     Verwaltung - ein selbst eingetragener Antrag MUSS als 'offen' rein.
+--     ('offen' ist der Wert, den GEKO One tatsaechlich schreibt; die Stufen
+--     sind 'offen' -> 'genehmigt' / 'abgelehnt'. Steht hier ein anderer Wert,
+--     kann kein Mitarbeiter mehr Urlaub beantragen.) ========================
 create policy "geko_ma_urlaub_lesen" on glas_urlaub
   for select to authenticated using (mitarbeiter_id = geko_ma_id());
 create policy "geko_ma_urlaub_beantragen" on glas_urlaub
   for insert to authenticated
-  with check (mitarbeiter_id = geko_ma_id() and status = 'beantragt');
+  with check (mitarbeiter_id = geko_ma_id() and status = 'offen');
 create policy "geko_ma_urlaub_quittieren" on glas_urlaub
   for update to authenticated
   using (mitarbeiter_id = geko_ma_id()) with check (mitarbeiter_id = geko_ma_id());
@@ -168,6 +171,20 @@ drop trigger if exists geko_schutz_stopps on glas_stopps;
 create trigger geko_schutz_stopps before update on glas_stopps
   for each row execute function
   geko_nur_spalten('name', 'datum', 'unterschrift', 'zusatz', 'status', 'signed_at', 'positionen', 'erfasst_von');
+
+-- === Objekt-Positionen: beim Unterschreiben setzt die Mitarbeiter-App
+--     "zuletzt gereinigt" auf den Positionen des Scheins zurueck (glasSignStop
+--     in glas-shared.js). Ohne diese Regel liefe das ins Leere - und zwar
+--     STILL: die Unterschrift saesse, nur die Faelligkeiten wuerden nie wieder
+--     weiterwandern. Der Fehler waere erst Wochen spaeter aufgefallen.
+--     Absichtlich KEINE Leseregel: gebraucht wird nur das Schreiben, und der
+--     Waechter nagelt es auf genau diese zwei Spalten fest. ==================
+create policy "geko_ma_positionen_reinigung" on glas_objekt_positionen
+  for update to authenticated
+  using (geko_darf('glas')) with check (geko_darf('glas'));
+drop trigger if exists geko_schutz_positionen on glas_objekt_positionen;
+create trigger geko_schutz_positionen before update on glas_objekt_positionen
+  for each row execute function geko_nur_spalten('letzte_reinigung', 'faelligkeit_override');
 
 -- === Einstellungen (Firmenname usw.): jeder Angemeldete darf lesen =========
 create policy "geko_einstellungen_lesen" on glas_einstellungen
