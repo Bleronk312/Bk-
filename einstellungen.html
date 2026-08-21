@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=207" />
+<link rel="stylesheet" href="css/style.css?v=208" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=207"></script>
-  <script src="js/supabase-client.js?v=207"></script>
-  <script src="js/geko-auth.js?v=207"></script>
-  <script src="js/pdf-ansicht.js?v=207"></script>
-  <script src="js/push.js?v=207"></script>
-  <script defer src="js/pdf-fonts.js?v=207"></script>
-  <script defer src="js/glas-lager-pdf.js?v=207"></script>
+  <script src="js/config.js?v=208"></script>
+  <script src="js/supabase-client.js?v=208"></script>
+  <script src="js/geko-auth.js?v=208"></script>
+  <script src="js/pdf-ansicht.js?v=208"></script>
+  <script src="js/push.js?v=208"></script>
+  <script defer src="js/pdf-fonts.js?v=208"></script>
+  <script defer src="js/glas-lager-pdf.js?v=208"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -220,7 +220,6 @@
     el.innerHTML = bearbeiten ? renderMaFormular()
       : detailMa ? renderMaDetail()
       : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten()
-        + renderAngemeldet()
         + renderPush() + renderErinnerungen() + renderDarstellung();
   }
 
@@ -401,6 +400,14 @@
 
       <p class="est-sec-title" style="margin-top:0;">Anmeldung</p>
       <div class="card">${zugangKarte}</div>
+
+      ${k.hat_konto ? `
+      <p class="est-sec-title">Zuletzt aktiv</p>
+      <div class="card">${renderAnmeldestand(
+        // Der App-Stempel ist genauer als die Anmeldung: die bleibt monatelang
+        // stehen, weil sich niemand abmeldet. Der jüngere der beiden gewinnt.
+        [k.zuletzt_gesehen, k.zuletzt_angemeldet].filter(Boolean).sort().slice(-1)[0] || null,
+        k.geraete_namen, k.geraete)}</div>` : ""}
 
       <p class="est-sec-title">Urlaub</p>
       <div class="card">${renderUrlaubUebersicht(m, b)}</div>
@@ -605,14 +612,32 @@
           <span class="est-marke m-admin">${a.oberadmin ? "Ober-Admin" : "Verwaltung"}</span>
           ${a.gesperrt ? '<span class="est-marke m-rot">gesperrt</span>' : ""}</div>
         <div class="est-sub">${sicher(a.email)}${a.user_id === meineSitzung?.user?.id ? " · das bist du" : ""}</div>
+        <div class="est-sub" style="margin-top:2px;">${
+          a.zuletzt_angemeldet
+            ? "🕐 zuletzt angemeldet " + sicher(zeitHer(a.zuletzt_angemeldet))
+            : "🕐 noch nie angemeldet"}</div>
       </div><div class="est-btns">${(!binOberAdmin || a.user_id === meineSitzung?.user?.id) ? "" : `
         <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
         <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
         <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${sicher(a.name || a.email)}')">Löschen</button>`}</div></div>`;
+    // Wie viele Konten haben insgesamt Verwaltungsrechte? Bewusst hier und
+    // nicht als eigener Block: Es ist die Zahl, auf die es ankommt, wenn man
+    // wissen will, ob sich jemand nach oben geschlichen hat. Mitgezählt werden
+    // auch Mitarbeiter, die zusätzlich die Verwaltungs-Rolle tragen - die
+    // stehen oben in der Liste und fallen sonst leicht durchs Raster.
+    const maAdmins = ((zugangsdaten && zugangsdaten.mitarbeiter) || [])
+      .filter((m) => m.rolle === "admin" && m.login_aktiv !== false);
+    const gesamtAdmins = maAdmins.length + freie.filter((a) => !a.gesperrt).length;
+
     return `
       <p class="est-sec-title">Weitere Verwaltungs-Zugänge</p>
       <div class="card">
-        ${freie.length ? freie.map(zeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine.</p>'}
+        <p style="margin:0 0 4px; font-weight:600;">${gesamtAdmins} ${gesamtAdmins === 1 ? "Zugang hat" : "Zugänge haben"} Verwaltungs-Rechte</p>
+        <p class="muted" style="margin:0 0 12px; font-size:12.5px;">
+          ${maAdmins.length ? `Davon ${maAdmins.length} bei den Mitarbeitern oben: ${maAdmins.map((m) => sicher(m.name)).join(", ")}. ` : ""}
+          <b>Steht hier jemand, der da nicht hingehört, sperre ihn sofort.</b>
+          Verwaltungs-Rechte heißen Zugriff auf alle Kunden, Löhne und Zugänge.</p>
+        ${freie.length ? freie.map(zeile).join("") : '<p class="muted" style="margin:0 0 10px;">Keine weiteren.</p>'}
         ${binOberAdmin
           ? `<button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
              <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind – sie tauchen in Touren, Urlaub und Lager nicht auf.</p>`
@@ -620,15 +645,15 @@
       </div>`;
   }
 
-  // ==== Wer ist angemeldet? ================================================
-  // Zweck ist NICHT zu sehen, wer wie lange am Handy hängt - dafür ist das viel
+  // ==== Anmeldestand ========================================================
+  // Steht NICHT als eigener Block auf der Startseite, sondern dort, wo die
+  // Person ohnehin schon steht: im Profil des Mitarbeiters bzw. in der Zeile
+  // des Verwaltungs-Zugangs. Alles zu einem Menschen an einem Ort.
+  //
+  // Zweck ist nicht zu sehen, wer wie lange am Handy hängt - dafür ist das viel
   // zu grob. Zweck ist, dass ein Konto AUFFÄLLT, das sich rührt, obwohl es das
   // nicht sollte: der gekündigte Kollege, das verlorene Handy, ein Zugang, den
-  // jemand weitergegeben hat. Deshalb stehen Verwaltungs-Zugänge oben und die
-  // zuletzt aktiven zuerst.
-  //
-  // "Geräte" kommt aus den Benachrichtigungs-Anmeldungen. Mehr Geräte als
-  // Menschen ist das eigentliche Warnzeichen.
+  // jemand weitergegeben hat.
   function zeitHer(iso) {
     if (!iso) return null;
     const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -642,76 +667,42 @@
     return new Date(iso).toLocaleDateString("de-DE");
   }
 
-  function renderAngemeldet() {
-    const d = zugangsdaten || {};
-    const ma = (d.mitarbeiter || []).filter((m) => m.hat_konto).map((m) => ({
-      name: m.name || m.username || m.id,
-      unter: m.username ? "@" + m.username : "",
-      rolle: m.rolle === "admin" ? "Verwaltung" : "Mitarbeiter",
-      istAdmin: m.rolle === "admin",
-      gesperrt: m.login_aktiv === false,
-      // Der App-Stempel ist genauer als die Anmeldung (die bleibt monatelang
-      // stehen, weil niemand sich abmeldet). Deshalb: der jüngere gewinnt.
-      aktiv: [m.zuletzt_gesehen, m.zuletzt_angemeldet].filter(Boolean)
-        .sort().slice(-1)[0] || null,
-      geraete: m.geraete || 0,
-    }));
-    const admins = (d.admins_ohne_mitarbeiter || []).map((a) => ({
-      name: a.name || a.email,
-      unter: a.email || "",
-      rolle: a.oberadmin ? "Ober-Admin" : "Verwaltung",
-      istAdmin: true,
-      gesperrt: !!a.gesperrt,
-      aktiv: a.zuletzt_angemeldet || null,
-      geraete: null,
-    }));
+  // Anmeldestand einer Person - als Baustein, damit ihn sowohl das
+  // Mitarbeiter-Profil als auch die Verwaltungs-Zugaenge verwenden koennen.
+  //   aktiv    = Zeitpunkt (ISO) oder null
+  //   geraete  = Liste von Namen, z.B. ["iPhone · App"]
+  //   anzahl   = Anzahl Geraete (auch wenn die Namen noch fehlen)
+  // "Aktiv" heisst: in den letzten 15 Minuten in der App gewesen. Genauer geht
+  // es ohne Dauerverbindung nicht, und die waere den Akku nicht wert.
+  const AKTIV_FENSTER = 15 * 60 * 1000;
 
-    const alle = [...admins, ...ma].sort((a, b) => {
-      if (a.istAdmin !== b.istAdmin) return a.istAdmin ? -1 : 1;   // Verwaltung zuerst
-      return String(b.aktiv || "").localeCompare(String(a.aktiv || ""));
-    });
+  function renderAnmeldestand(aktiv, geraete, anzahl) {
+    const frisch = aktiv && (Date.now() - new Date(aktiv).getTime()) < AKTIV_FENSTER;
+    const punkt = frisch ? "#12a150" : "#c9ced6";
+    const namen = (geraete || []).filter(Boolean);
+    const n = anzahl || namen.length;
 
-    if (!alle.length) {
-      return `<p class="est-sec-title">Wer ist angemeldet</p>
-        <div class="card"><p class="muted" style="margin:0;">Noch keine Konten.</p></div>`;
+    let geraeteText;
+    if (!n) geraeteText = "Noch kein Gerät angemeldet";
+    else if (namen.length) {
+      geraeteText = namen.map(sicher).join(" · ");
+      // Namenlose Alt-Anmeldungen ehrlich mitzaehlen, statt sie zu verschweigen.
+      if (namen.length < n) geraeteText += ` · ${n - namen.length} weiteres Gerät (noch unbekannt)`;
+    } else {
+      geraeteText = n === 1 ? "1 Gerät (Name noch unbekannt)" : `${n} Geräte (Namen noch unbekannt)`;
     }
 
-    // "Aktiv" = in den letzten 15 Minuten gesehen. Genauer geht es ohne
-    // Dauerverbindung nicht, und die wäre den Akku nicht wert.
-    const grenze = Date.now() - 15 * 60 * 1000;
-    const jetztAktiv = alle.filter((x) => x.aktiv && new Date(x.aktiv).getTime() >= grenze).length;
-    const verwaltung = alle.filter((x) => x.istAdmin && !x.gesperrt).length;
-
-    const zeile = (x) => {
-      const frisch = x.aktiv && new Date(x.aktiv).getTime() >= grenze;
-      const punkt = x.gesperrt ? "#8e99a6" : frisch ? "#12a150" : "#c9ced6";
-      return `
-      <div class="est-zeile"><div style="flex:1; min-width:150px; display:flex; gap:10px; align-items:flex-start;">
+    return `
+      <div style="display:flex; gap:10px; align-items:flex-start;">
         <span style="flex:none; width:9px; height:9px; border-radius:50%; background:${punkt}; margin-top:6px;"></span>
         <div style="min-width:0;">
-          <div class="est-name">${sicher(x.name)}
-            ${x.istAdmin ? `<span class="est-marke m-admin">${sicher(x.rolle)}</span>` : ""}
-            ${x.gesperrt ? '<span class="est-marke m-rot">gesperrt</span>' : ""}</div>
-          <div class="est-sub">${x.aktiv ? sicher(zeitHer(x.aktiv)) : "noch nie angemeldet"}${
-            x.unter ? " · " + sicher(x.unter) : ""}${
-            x.geraete ? " · " + x.geraete + (x.geraete === 1 ? " Gerät" : " Geräte") : ""}</div>
+          <p style="margin:0; font-weight:600;">${aktiv ? sicher(zeitHer(aktiv)) : "Noch nie angemeldet"}</p>
+          <p class="est-sub" style="margin:2px 0 0;">📱 ${geraeteText}</p>
         </div>
-      </div></div>`;
-    };
-
-    return `
-      <p class="est-sec-title">Wer ist angemeldet</p>
-      <div class="card">
-        <p style="margin:0 0 4px; font-weight:600;">${jetztAktiv} gerade aktiv · ${verwaltung} mit Verwaltungs-Rechten</p>
-        <p class="muted" style="margin:0 0 12px; font-size:12.5px;">
-          Grüner Punkt = in den letzten 15 Minuten in der App gewesen.
-          <b>Steht hier jemand mit „Verwaltung", der da nicht hingehört, sperre ihn sofort</b> –
-          oben bei den Mitarbeitern bzw. den Verwaltungs-Zugängen.</p>
-        ${alle.map(zeile).join("")}
-        <p class="muted" style="margin:12px 0 0; font-size:12px;">
-          Mehr Geräte als Personen heißt meistens: ein Zugang wurde weitergegeben.
-          Passwort zurücksetzen beendet alle fremden Anmeldungen.</p>
-      </div>`;
+      </div>
+      ${n > 1 ? `<p class="est-sub" style="margin:10px 0 0;">Mehr als ein Gerät ist normal (Handy und Büro-Rechner).
+        Steht hier ein Gerät, das nicht zu dieser Person passt, wurde der Zugang vermutlich weitergegeben –
+        ein neues Einmal-Passwort beendet alle fremden Anmeldungen.</p>` : ""}`;
   }
 
   // ---- Mitarbeiter-Aktionen ----------------------------------------------

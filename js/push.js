@@ -60,11 +60,43 @@ async function enablePushNotifications(role, mitarbeiterId) {
 // (Früher überschrieb der Wechsel zwischen den Seiten die Rolle - dadurch "gingen
 // Benachrichtigungen immer wieder aus".) Fallback auf das alte Verhalten, solange die
 // SQL-Migration noch nicht ausgeführt wurde.
+// Kurzbeschreibung des Geräts - "iPhone · App", "Mac · Browser".
+// Zweck: In der Verwaltung soll man erkennen, WELCHES Gerät an einem Zugang
+// hängt. Taucht bei einem Mitarbeiter plötzlich ein Windows-PC auf, obwohl er
+// nur ein Diensthandy hat, ist das die Frage wert.
+//
+// Bewusst grob: Hersteller und "App oder Browser", mehr nicht. Es geht darum,
+// Geräte auseinanderzuhalten, nicht darum, jemanden zu vermessen. Eine genaue
+// Kennung wäre ein Personendatensatz, den hier niemand braucht.
+function gekoGeraeteName() {
+  try {
+    const ua = navigator.userAgent || "";
+    const alsApp = window.navigator.standalone === true
+      || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    let art = "Unbekannt";
+    if (/iPhone/i.test(ua)) art = "iPhone";
+    else if (/iPad/i.test(ua)) art = "iPad";
+    // iPadOS gibt sich als Mac aus, verrät sich aber über die Touch-Punkte.
+    else if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) art = "iPad";
+    else if (/Android/i.test(ua)) art = /Mobile/i.test(ua) ? "Android-Handy" : "Android-Tablet";
+    else if (/Macintosh|Mac OS X/i.test(ua)) art = "Mac";
+    else if (/Windows/i.test(ua)) art = "Windows-PC";
+    else if (/Linux/i.test(ua)) art = "Linux-PC";
+    return art + (alsApp ? " · App" : " · Browser");
+  } catch (e) { return "Unbekannt"; }
+}
+
 async function pushUpsertSubscription(role, subJson, mitarbeiterId) {
   const row = { role, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth };
   if (mitarbeiterId) row.mitarbeiter_id = mitarbeiterId; // für gezielte MA-Erinnerungen
+  row.geraet = gekoGeraeteName();
   // ERST die neue Rolle sicher speichern ...
   let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" });
+  // Spalte geraet fehlt evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut versuchen
+  if (error && /geraet/i.test(error.message || "")) {
+    delete row.geraet;
+    ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));
+  }
   // Spalte mitarbeiter_id fehlt evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut versuchen
   if (error && /mitarbeiter_id/i.test(error.message || "")) {
     delete row.mitarbeiter_id;

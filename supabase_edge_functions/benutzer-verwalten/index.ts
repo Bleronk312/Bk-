@@ -271,12 +271,21 @@ Deno.serve(async (req) => {
         );
         // Angemeldete Geraete je Mitarbeiter (aus den Push-Abos). Mehr Geraete
         // als Menschen ist das Warnzeichen: ein weitergegebener Zugang.
-        const { data: abos } = await admin.from("push_subscriptions").select("mitarbeiter_id, endpoint");
-        const geraete = new Map<string, Set<string>>();
-        for (const a of (abos || []) as { mitarbeiter_id: string | null; endpoint: string }[]) {
-          if (!a.mitarbeiter_id) continue;
-          if (!geraete.has(a.mitarbeiter_id)) geraete.set(a.mitarbeiter_id, new Set());
-          geraete.get(a.mitarbeiter_id)!.add(a.endpoint);
+        // "*" statt fester Spalten: die Spalte "geraet" gibt es erst nach
+        // supabase_sicherheit_3_geraete.sql. Ohne sie fehlt nur der Name,
+        // die Zählung stimmt trotzdem.
+        const { data: abos } = await admin.from("push_subscriptions").select("*");
+        // Ein Gerät kann für mehrere Kanäle angemeldet sein (Touren, Lager, …) -
+        // das ist EIN Gerät, nicht drei. Deshalb wird über den endpoint
+        // zusammengefasst, der die Anmeldung des Browsers eindeutig macht.
+        const geraete = new Map<string, Map<string, string>>();
+        for (const a of (abos || []) as Record<string, string | null>[]) {
+          const maId = a.mitarbeiter_id;
+          if (!maId || !a.endpoint) continue;
+          if (!geraete.has(maId)) geraete.set(maId, new Map());
+          const vorhanden = geraete.get(maId)!.get(a.endpoint);
+          // Ein bereits bekannter Name gewinnt gegen einen leeren Eintrag.
+          if (!vorhanden) geraete.get(maId)!.set(a.endpoint, a.geraet || "");
         }
         const liste = (data || []) as Record<string, unknown>[];
         // Konten, die zu KEINEM Mitarbeiter gehoeren (reine Verwaltungskonten,
@@ -311,6 +320,9 @@ Deno.serve(async (req) => {
             zuletzt_angemeldet: m.auth_user_id ? anmeldung.get(m.auth_user_id as string)?.zuletzt || null : null,
             zuletzt_gesehen: m.zuletzt_gesehen ?? null,
             geraete: geraete.get(String(m.id))?.size || 0,
+            // Namen der Geräte, z.B. ["iPhone · App", "Mac · Browser"].
+            // Leer, solange ein Gerät seinen Namen noch nicht nachgetragen hat.
+            geraete_namen: [...(geraete.get(String(m.id))?.values() || [])].filter(Boolean),
           })),
         });
       }
