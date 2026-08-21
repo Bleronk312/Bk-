@@ -151,24 +151,8 @@ async function gekoSitzung(neuLaden) {
   // Dank der neuen Zugriffsregeln liefert diese Abfrage einem Mitarbeiter nur
   // seine eigene Zeile - die Einschränkung steht in der Datenbank, nicht hier.
   const { data: ma } = await sb.from("glas_mitarbeiter")
-    .select("id, name, username, login_aktiv, pw_muss_wechsel, abmelden_ab, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager")
+    .select("id, name, username, login_aktiv, pw_muss_wechsel, zugang_glas, zugang_checkin, zugang_graffiti, zugang_lager")
     .eq("auth_user_id", session.user.id).maybeSingle();
-
-  // Hat das Büro dieses Konto zwischenzeitlich von allen Geräten abgemeldet?
-  // Verglichen wird der Zeitpunkt der eigenen Anmeldung mit dem Stempel aus
-  // der Datenbank. Ist die Anmeldung älter, ist sie hiermit erledigt.
-  //
-  // Warum an dieser Stelle: gekoSitzung() läuft bei jedem App-Start und bei
-  // jeder Nachprüfung im Hintergrund. Damit greift die Abmeldung spätestens
-  // beim nächsten Öffnen - ohne dass die App dauernd nachfragen müsste.
-  if (ma && ma.abmelden_ab) {
-    const angemeldetSeit = Date.parse(session.user?.last_sign_in_at || "") || 0;
-    const abgemeldetAb = Date.parse(ma.abmelden_ab) || 0;
-    if (angemeldetSeit && abgemeldetAb && angemeldetSeit < abgemeldetAb) {
-      await gekoAbmelden();
-      return null;                      // ruft beim Aufrufer das Anmeldefenster
-    }
-  }
 
   _gekoSitzung = {
     user: session.user,

@@ -233,45 +233,6 @@ Deno.serve(async (req) => {
         return antwort({ ok: true, rolle });
       }
 
-      // ---- Abmelden --------------------------------------------------------
-      // Wirft eine Person aus der App: alle bestehenden Anmeldungen werden
-      // ungültig, beim nächsten Öffnen verlangt die App eine neue Anmeldung.
-      // Das Passwort bleibt gültig - wer es kennt, kommt wieder rein. Für den
-      // Fall, dass das PASSWORT das Problem ist, gibt es "passwort_neu".
-      //
-      // Umgesetzt über einen Zeitstempel (glas_mitarbeiter.abmelden_ab). Die
-      // App vergleicht bei jedem Start, wann sie sich angemeldet hat, und
-      // meldet sich selbst ab, wenn das davor liegt.
-      //
-      // EHRLICH DAZU, und die Oberfläche sagt es auch:
-      //   * Es gilt IMMER für alle Geräte einer Person. Eine einzelne
-      //     Anmeldung gezielt zu beenden, geht mit Supabase nicht - der Server
-      //     führt keine Liste "welches Handy hat welche Anmeldung".
-      //   * Es greift, sobald das Gerät wieder online ist. Ein Handy, das aus
-      //     bleibt, merkt nichts davon.
-      //   * Der harte Weg bleibt "sperren": das entscheidet der Server bei
-      //     jeder Anfrage neu.
-      //
-      // "kennung" (optional): entfernt zusätzlich dieses eine Gerät aus der
-      // Geräteliste - damit ein verkauftes Handy nicht ewig dort steht.
-      case "abmelden": {
-        const z = await ziel();
-        if (!z.ma) return antwort({ error: "Nur für Mitarbeiter-Zugänge." }, 400);
-        const kennung = String(eingabe.kennung || "");
-        if (kennung) {
-          await admin.from("push_subscriptions").delete().eq("endpoint", kennung);
-        }
-        const { error } = await admin.from("glas_mitarbeiter")
-          .update({ abmelden_ab: new Date().toISOString() }).eq("id", maId);
-        if (error) {
-          const fehltSpalte = /abmelden_ab/i.test(error.message || "");
-          return antwort({ error: fehltSpalte
-            ? "Bitte supabase_sicherheit_4_abmelden.sql in Supabase ausführen."
-            : error.message }, 400);
-        }
-        return antwort({ ok: true });
-      }
-
       // ---- Konto löschen (Mitarbeiter-Datensatz bleibt!) -------------------
       case "konto_loeschen": {
         const z = await ziel();
@@ -317,15 +278,36 @@ Deno.serve(async (req) => {
         // Ein Gerät kann für mehrere Kanäle angemeldet sein (Touren, Lager, …) -
         // das ist EIN Gerät, nicht drei. Deshalb wird über den endpoint
         // zusammengefasst, der die Anmeldung des Browsers eindeutig macht.
+        //
+        // Einsortiert wird nach KONTO (auth_user_id). Damit bekommen auch
+        // Bürokräfte und der Ober-Admin ihre Geräte zu sehen - die haben keinen
+        // Mitarbeiter-Datensatz. Für Altbestand, der die Konto-Nummer noch nicht
+        // kennt, wird ersatzweise über die Mitarbeiter-Nummer zugeordnet.
         const geraete = new Map<string, Map<string, string>>();
-        for (const a of (abos || []) as Record<string, string | null>[]) {
-          const maId = a.mitarbeiter_id;
-          if (!maId || !a.endpoint) continue;
-          if (!geraete.has(maId)) geraete.set(maId, new Map());
-          const vorhanden = geraete.get(maId)!.get(a.endpoint);
+        const einsortieren = (schluessel: string | null, endpoint: string, name: string) => {
+          if (!schluessel || !endpoint) return;
+          if (!geraete.has(schluessel)) geraete.set(schluessel, new Map());
+          const topf = geraete.get(schluessel)!;
           // Ein bereits bekannter Name gewinnt gegen einen leeren Eintrag.
-          if (!vorhanden) geraete.get(maId)!.set(a.endpoint, a.geraet || "");
+          if (!topf.get(endpoint)) topf.set(endpoint, name || "");
+        };
+        for (const a of (abos || []) as Record<string, string | null>[]) {
+          if (!a.endpoint) continue;
+          if (a.auth_user_id) einsortieren(a.auth_user_id, a.endpoint, a.geraet || "");
+          // Altbestand ohne Konto-Nummer: unter der Mitarbeiter-Nummer ablegen,
+          // damit die Zählung bis zum nächsten App-Start nicht einbricht.
+          else if (a.mitarbeiter_id) einsortieren("ma:" + a.mitarbeiter_id, a.endpoint, a.geraet || "");
         }
+        // Geräte eines Kontos = die über die Konto-Nummer plus der Altbestand
+        // unter der Mitarbeiter-Nummer. Doppelte fallen über den endpoint weg.
+        const geraeteVon = (uid: string | null, mId: string | null) => {
+          const zusammen = new Map<string, string>();
+          for (const [e, n] of geraete.get(String(uid)) || []) zusammen.set(e, n);
+          for (const [e, n] of geraete.get("ma:" + String(mId)) || []) {
+            if (!zusammen.get(e)) zusammen.set(e, n);
+          }
+          return [...zusammen.entries()].map(([kennung, name]) => ({ kennung, name }));
+        };
         const liste = (data || []) as Record<string, unknown>[];
         // Konten, die zu KEINEM Mitarbeiter gehoeren (reine Verwaltungskonten,
         // z.B. das erste Admin-Konto oder Buerokraefte).
@@ -342,6 +324,10 @@ Deno.serve(async (req) => {
               && new Date((u as unknown as { banned_until: string }).banned_until) > new Date(),
             zuletzt_angemeldet: anmeldung.get(u.id)?.zuletzt || null,
             angelegt: anmeldung.get(u.id)?.angelegt || null,
+            // Auch Verwaltungs-Zugaenge haben jetzt Geraete - moeglich, seit
+            // die Anmeldung am Konto und nicht mehr an der Mitarbeiter-Nummer
+            // haengt.
+            geraete_liste: geraeteVon(u.id, null),
           }));
         return antwort({
           ok: true,
@@ -358,13 +344,9 @@ Deno.serve(async (req) => {
             rolle: m.auth_user_id ? rollen.get(m.auth_user_id as string) || "mitarbeiter" : null,
             zuletzt_angemeldet: m.auth_user_id ? anmeldung.get(m.auth_user_id as string)?.zuletzt || null : null,
             zuletzt_gesehen: m.zuletzt_gesehen ?? null,
-            geraete: geraete.get(String(m.id))?.size || 0,
-            // Ein Eintrag je Gerät: { kennung, name }. Die Kennung ist die
-            // Geräte-Adresse der Browser-Anmeldung - sie braucht die Oberfläche,
-            // um genau dieses Gerät wieder abmelden zu können. Der Name kann
-            // leer sein, solange ein Altbestand ihn noch nicht nachgetragen hat.
-            geraete_liste: [...(geraete.get(String(m.id))?.entries() || [])]
-              .map(([kennung, name]) => ({ kennung, name })),
+            // Ein Eintrag je Gerät: { kennung, name }. Der Name kann leer sein,
+            // solange ein Altbestand ihn noch nicht nachgetragen hat.
+            geraete_liste: geraeteVon(m.auth_user_id as string | null, m.id as string),
           })),
         });
       }

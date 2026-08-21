@@ -68,12 +68,20 @@ async function enablePushNotifications(role, mitarbeiterId) {
 // Bewusst grob: Hersteller und "App oder Browser", mehr nicht. Es geht darum,
 // Geräte auseinanderzuhalten, nicht darum, jemanden zu vermessen. Eine genaue
 // Kennung wäre ein Personendatensatz, den hier niemand braucht.
+// Was genau geht - und was nicht:
+// Das genaue Modell ("iPhone 15 Pro") gibt kein Handy heraus. Apple und Google
+// haben das absichtlich abgeschaltet, weil man Leute damit quer durchs Netz
+// wiedererkennen koennte. Was zu holen ist: Geraeteart, Browser und ob die App
+// vom Home-Bildschirm laeuft. Das reicht, um Geraete auseinanderzuhalten -
+// "iPhone · Safari · App" ist eindeutig genug, um zu sehen, ob da eines zu viel
+// steht.
 function gekoGeraeteName() {
   try {
     const ua = navigator.userAgent || "";
     const alsApp = window.navigator.standalone === true
       || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
-    let art = "Unbekannt";
+
+    let art = "Unbekanntes Gerät";
     if (/iPhone/i.test(ua)) art = "iPhone";
     else if (/iPad/i.test(ua)) art = "iPad";
     // iPadOS gibt sich als Mac aus, verrät sich aber über die Touch-Punkte.
@@ -81,18 +89,45 @@ function gekoGeraeteName() {
     else if (/Android/i.test(ua)) art = /Mobile/i.test(ua) ? "Android-Handy" : "Android-Tablet";
     else if (/Macintosh|Mac OS X/i.test(ua)) art = "Mac";
     else if (/Windows/i.test(ua)) art = "Windows-PC";
+    else if (/CrOS/i.test(ua)) art = "Chromebook";
     else if (/Linux/i.test(ua)) art = "Linux-PC";
-    return art + (alsApp ? " · App" : " · Browser");
-  } catch (e) { return "Unbekannt"; }
+
+    // Reihenfolge zaehlt: Edge und Chrome tragen beide "Safari" im Kennzeichen,
+    // Chrome zusaetzlich "Edg" - von hinten nach vorne geprueft.
+    let browser = "";
+    if (/Edg\//i.test(ua)) browser = "Edge";
+    else if (/OPR\/|Opera/i.test(ua)) browser = "Opera";
+    else if (/CriOS|Chrome\//i.test(ua)) browser = "Chrome";
+    else if (/FxiOS|Firefox\//i.test(ua)) browser = "Firefox";
+    else if (/Safari\//i.test(ua)) browser = "Safari";
+
+    // In der installierten App ist der Browser uninteressant - da zaehlt, DASS
+    // sie installiert ist. Im Browser dagegen hilft der Name beim Unterscheiden.
+    return alsApp ? art + " · App" : art + (browser ? " · " + browser : "");
+  } catch (e) { return "Unbekanntes Gerät"; }
 }
 
 async function pushUpsertSubscription(role, subJson, mitarbeiterId) {
   const row = { role, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth };
   if (mitarbeiterId) row.mitarbeiter_id = mitarbeiterId; // für gezielte MA-Erinnerungen
   row.geraet = gekoGeraeteName();
+  // Das Geraet zusaetzlich am KONTO festmachen. mitarbeiter_id reicht nicht:
+  // Buerokraefte und der Ober-Admin haben gar keinen Mitarbeiter-Datensatz,
+  // ihre Geraete waeren also nirgends zuzuordnen gewesen. Ueber die Konto-Nummer
+  // klappt es fuer beide Arten von Zugang gleichermassen.
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session && session.user) row.auth_user_id = session.user.id;
+  } catch (e) { /* nicht angemeldet: dann eben ohne */ }
   // ERST die neue Rolle sicher speichern ...
   let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" });
-  // Spalte geraet fehlt evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut versuchen
+  // Neue Spalten fehlen evtl. noch (SQL nicht ausgeführt) -> ohne sie erneut
+  // versuchen. Die Anmeldung selbst darf daran nie scheitern, sonst gehen die
+  // Benachrichtigungen aus, nur weil ein Zusatz-Skript nicht gelaufen ist.
+  if (error && /auth_user_id/i.test(error.message || "")) {
+    delete row.auth_user_id;
+    ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));
+  }
   if (error && /geraet/i.test(error.message || "")) {
     delete row.geraet;
     ({ error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint,role" }));

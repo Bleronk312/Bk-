@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=210" />
+<link rel="stylesheet" href="css/style.css?v=211" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=210"></script>
-  <script src="js/supabase-client.js?v=210"></script>
-  <script src="js/geko-auth.js?v=210"></script>
-  <script src="js/pdf-ansicht.js?v=210"></script>
-  <script src="js/push.js?v=210"></script>
-  <script defer src="js/pdf-fonts.js?v=210"></script>
-  <script defer src="js/glas-lager-pdf.js?v=210"></script>
+  <script src="js/config.js?v=211"></script>
+  <script src="js/supabase-client.js?v=211"></script>
+  <script src="js/geko-auth.js?v=211"></script>
+  <script src="js/pdf-ansicht.js?v=211"></script>
+  <script src="js/push.js?v=211"></script>
+  <script defer src="js/pdf-fonts.js?v=211"></script>
+  <script defer src="js/glas-lager-pdf.js?v=211"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -407,7 +407,7 @@
         // Der App-Stempel ist genauer als die Anmeldung: die bleibt monatelang
         // stehen, weil sich niemand abmeldet. Der jüngere der beiden gewinnt.
         [k.zuletzt_gesehen, k.zuletzt_angemeldet].filter(Boolean).sort().slice(-1)[0] || null,
-        k.geraete_liste, k.geraete, m.id, m.name)}</div>` : ""}
+        k.geraete_liste)}</div>` : ""}
 
       <p class="est-sec-title">Urlaub</p>
       <div class="card">${renderUrlaubUebersicht(m, b)}</div>
@@ -616,6 +616,8 @@
           a.zuletzt_angemeldet
             ? "🕐 zuletzt angemeldet " + sicher(zeitHer(a.zuletzt_angemeldet))
             : "🕐 noch nie angemeldet"}</div>
+        ${(a.geraete_liste || []).length ? `<div class="est-sub" style="margin-top:2px;">📱 ${
+          a.geraete_liste.map((g) => sicher(g.name || "Gerät noch unbekannt")).join(" · ")}</div>` : ""}
       </div><div class="est-btns">${(!binOberAdmin || a.user_id === meineSitzung?.user?.id) ? "" : `
         <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
         <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
@@ -676,18 +678,22 @@
   // es ohne Dauerverbindung nicht, und die waere den Akku nicht wert.
   const AKTIV_FENSTER = 15 * 60 * 1000;
 
-  function renderAnmeldestand(aktiv, liste, anzahl, maId, name) {
+  // Reine Anzeige. Bewusst OHNE Knopf zum Abmelden: Eine einzelne Anmeldung
+  // gezielt zu beenden, geht mit Supabase nicht - der Server fuehrt keine Liste,
+  // welches Handy welche Anmeldung hat. Ein Knopf, der so aussieht, als koenne
+  // er das, waere schlimmer als keiner. Wer jemanden aussperren muss, nimmt
+  // "Sperren" (wirkt sofort und serverseitig) oder ein neues Einmal-Passwort.
+  function renderAnmeldestand(aktiv, liste) {
     const frisch = aktiv && (Date.now() - new Date(aktiv).getTime()) < AKTIV_FENSTER;
     const punkt = frisch ? "#12a150" : "#c9ced6";
     const geraete = liste || [];
-    const n = anzahl || geraete.length;
 
-    const zeilen = geraete.map((g) => `
-      <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
-        <span style="flex:1; min-width:0;">📱 ${g.name ? sicher(g.name) : "<i>Gerät noch unbekannt</i>"}</span>
-        ${binOberAdmin ? `<button class="btn" style="flex:none;"
-          onclick="geraetAbmelden('${maId}', '${sicher(name)}', '${sicher(g.kennung)}')">Abmelden</button>` : ""}
-      </div>`).join("");
+    const zeilen = geraete.length
+      ? geraete.map((g) => `
+          <div style="padding:7px 0; border-top:1px solid var(--border);">
+            📱 ${g.name ? sicher(g.name) : "<i>wird beim nächsten Öffnen der App ergänzt</i>"}
+          </div>`).join("")
+      : "";
 
     return `
       <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -695,38 +701,16 @@
         <div style="min-width:0;">
           <p style="margin:0; font-weight:600;">${aktiv ? sicher(zeitHer(aktiv)) : "Noch nie angemeldet"}</p>
           <p class="est-sub" style="margin:2px 0 0;">${
-            n ? (n === 1 ? "1 Gerät angemeldet" : n + " Geräte angemeldet") : "Noch kein Gerät angemeldet"}</p>
+            geraete.length === 0 ? "Kein Gerät angemeldet"
+            : geraete.length === 1 ? "Läuft auf 1 Gerät"
+            : "Läuft auf " + geraete.length + " Geräten"}</p>
         </div>
       </div>
       ${zeilen}
-      ${binOberAdmin ? `
-      <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
-        <button class="btn" style="color:var(--danger);"
-          onclick="geraetAbmelden('${maId}', '${sicher(name)}', '')">🚪 Von allen Geräten abmelden</button>
-        <p class="est-sub" style="margin:8px 0 0;">
-          Beendet die Anmeldung auf <b>allen</b> Geräten – beim nächsten Öffnen muss sich
-          ${sicher(name)} neu anmelden. Das Passwort bleibt gültig.<br>
-          Ist das <b>Passwort</b> in falsche Hände geraten, nimm oben „Einmal-Passwort".
-          Bei einem gestohlenen Handy: <b>Sperren</b> – das wirkt sofort, auch ohne dass
-          das Gerät online geht.</p>
-      </div>` : ""}`;
-  }
-
-  // Abmelden. Gilt technisch immer fuer ALLE Geraete einer Person - eine
-  // einzelne Anmeldung gezielt zu beenden, geht mit Supabase nicht. Das steht
-  // so in der Rueckfrage, damit niemand glaubt, er habe nur ein Handy
-  // ausgesperrt und die anderen liefen weiter.
-  async function geraetAbmelden(maId, name, kennung) {
-    const frage = kennung
-      ? `${name} abmelden?\n\nAchtung: Das gilt für ALLE Geräte von ${name}, nicht nur für dieses. Eine einzelne Anmeldung lässt sich technisch nicht gezielt beenden.\n\nDas Gerät verschwindet zusätzlich aus der Liste. Das Passwort bleibt gültig.`
-      : `${name} von allen Geräten abmelden?\n\nBeim nächsten Öffnen ist eine neue Anmeldung nötig. Das Passwort bleibt gültig.`;
-    if (!confirm(frage)) return;
-    const erg = await ruf({ aktion: "abmelden", mitarbeiter_id: maId, kennung: kennung || "" });
-    if (erg.error) { showToast("Fehler: " + erg.error); return; }
-    showToast(`${name} wurde abgemeldet`);
-    const liste = await ruf({ aktion: "liste" });
-    if (!liste.error) zugangsdaten = liste;
-    render();
+      ${geraete.length > 1 ? `<p class="est-sub" style="margin:10px 0 0;">
+        Mehrere Geräte sind normal (Handy und Büro-Rechner). Passt eines davon nicht zu
+        dieser Person, wurde der Zugang vermutlich weitergegeben – dann oben
+        <b>Sperren</b> oder ein neues Einmal-Passwort.</p>` : ""}`;
   }
 
   // ---- Mitarbeiter-Aktionen ----------------------------------------------
