@@ -3,9 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>GEKO Touren aufs Handy</title>
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-glas.png" />
-<link rel="manifest" href="manifest-glas-ma.json" />
+<title>GEKO One aufs Handy</title>
+<!-- Diese Seite ist der Einstieg fuer ALLE Mitarbeiter, nicht mehr nur fuer die
+     Glasreinigung. Sie muss deshalb GEKO One installieren (meine.html) - von dort
+     aus kommt jeder in seine Bereiche. Vorher stand hier manifest-glas-ma.json:
+     die installierte App sprang dann direkt in die Glas-Touren, egal wer sie
+     installiert hatte. -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="manifest" href="manifest-meine.json" />
 <meta name="theme-color" content="#1f5d92" />
 <style>
   :root{ --blau:#1f5d92; --tief:#143c5e; --tinte:#1c242e; --grau:#6b7480; --linie:#e4eaf0; }
@@ -51,13 +56,13 @@
 
 <div class="kopf">
   <img id="logo" alt="GEKO Clean" />
-  <h1>GEKO Touren aufs Handy</h1>
+  <h1>GEKO One aufs Handy</h1>
   <p id="kopfSub">Einmal einrichten – danach hast du die App wie jede andere auf dem Startbildschirm.</p>
 </div>
 
 <div class="wrap" id="inhalt"></div>
 
-<script src="js/logo-asset.js?v=200"></script>
+<script src="js/logo-asset.js?v=201"></script>
 <script>
 (function () {
   var logo = document.getElementById("logo");
@@ -76,7 +81,7 @@
     '<svg viewBox="0 0 320 92" role="img" aria-label="Untere Safari-Leiste mit Teilen-Symbol">' +
       '<rect x="0" y="0" width="320" height="92" fill="#f2f2f4"/>' +
       '<rect x="14" y="14" width="292" height="30" rx="9" fill="#fff" stroke="#dcdce0"/>' +
-      '<text x="160" y="34" font-size="13" fill="#8b8b90" text-anchor="middle" font-family="-apple-system,Arial">sunny-platypus-bce4eb.netlify.app</text>' +
+      '<text x="160" y="34" font-size="13" fill="#8b8b90" text-anchor="middle" font-family="-apple-system,Arial">' + location.host + '</text>' +
       '<g fill="none" stroke="#9a9aa0" stroke-width="2" stroke-linecap="round"><path d="M28 68l-8 -6 8 -6"/><path d="M70 62h12"/></g>' +
       '<g transform="translate(150 52)">' +
         '<circle cx="10" cy="10" r="19" fill="#1f5d92" opacity=".14"/>' +
@@ -124,7 +129,7 @@
     box.innerHTML =
       '<div class="karte fertig"><div class="hak">✓</div><b>Alles erledigt!</b>' +
       '<span>Du benutzt die App bereits vom Startbildschirm.</span></div>' +
-      '<a class="btn" href="glas-mitarbeiter.html">Zu meinen Touren</a>';
+      '<a class="btn" href="meine.html">Zu GEKO One</a>';
     return;
   }
 
@@ -148,8 +153,8 @@
         schritt(3, "Oben rechts auf „Hinzufügen“", "Fertig – die App liegt jetzt auf deinem Startbildschirm.", dialog) +
       '</div>' +
       '<div class="hinweis"><b>Wichtig</b><span>Bitte danach immer das <b>GEKO-Symbol</b> vom Startbildschirm benutzen und nicht mehr den Browser – ' +
-      'nur so bekommst du Benachrichtigungen über neue Touren.</span></div>' +
-      '<a class="btn hell" href="glas-mitarbeiter.html">Erstmal ohne App weiter</a>';
+      'nur so bekommst du Benachrichtigungen über Touren, Rundgänge und Nachrichten vom Büro.</span></div>' +
+      '<a class="btn hell" href="meine.html">Erstmal ohne App weiter</a>';
     return;
   }
 
@@ -159,7 +164,7 @@
       '<div class="karte fertig" id="andBox"><div class="hak" style="background:#eaf2fb;color:#1f5d92;">📲</div>' +
       '<b>Mit einem Tipp installieren</b><span id="andSub">Einen Moment – die Installation wird vorbereitet…</span></div>' +
       '<button class="btn" id="andBtn" style="display:none">Jetzt installieren</button>' +
-      '<a class="btn hell" href="glas-mitarbeiter.html">Erstmal ohne App weiter</a>';
+      '<a class="btn hell" href="meine.html">Erstmal ohne App weiter</a>';
     var ereignis = null, btn = document.getElementById("andBtn"), sub = document.getElementById("andSub");
     window.addEventListener("beforeinstallprompt", function (e) {
       e.preventDefault(); ereignis = e;
@@ -192,7 +197,7 @@
     '(z. B. per WhatsApp) – er führt ihn Schritt für Schritt durch die Einrichtung:</p>' +
     '<p style="margin-top:12px;"><code style="background:#e3e9ef;border-radius:8px;padding:9px 12px;display:inline-block;font-size:14px;user-select:all;">' +
     location.host + '/app</code></p></div>' +
-    '<a class="btn hell" href="glas-mitarbeiter.html">Zu den Touren</a>';
+    '<a class="btn hell" href="meine.html">Zu GEKO One</a>';
 })();
 </script>
 </body>
