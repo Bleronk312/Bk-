@@ -282,7 +282,7 @@ async function _gekoNachpruefen(opt) {
 // ---------------------------------------------------------------------------
 // Zwei Darstellungen:
 //  - normal:  ersetzt die ganze Seite (für reine Verwaltungsseiten wie benutzer.html)
-//  - overlay: legt sich VOR eine fertige App (admin.html & Co.) - deren Aufbau
+//  - overlay: legt sich VOR eine fertige App (graffiti.html & Co.) - deren Aufbau
 //    bleibt unangetastet, bis die Anmeldung steht. Danach wird das Overlay entfernt.
 function _gekoRahmen(inhalt, opt) {
   const karte =

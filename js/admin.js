@@ -137,7 +137,7 @@ function fromDatetimeLocalValue(value) {
 
 // ---------- Login ----------
 
-// Deep-Link aus dem Kalender: admin.html#/schein/<id> öffnet den Schein.
+// Deep-Link aus dem Kalender: graffiti.html#/schein/<id> öffnet den Schein.
 // Angehängtes "/kal" heißt: der Aufruf kam aus dem Kalender - dann führt der
 // Zurück-Knopf auch dorthin zurück und nicht in die Scheine-Liste.
 // Gezeigt wird die ANSICHT, nicht das Bearbeiten-Formular: aus dem Kalender

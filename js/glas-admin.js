@@ -6705,7 +6705,7 @@ function renderKalenderMonat() {
 // Fotos und PDF. Das "/kal" am Ende sagt der Graffiti-App, dass sie mit
 // "‹ Kalender" zurückführen soll statt in die Scheine-Liste.
 function glasOpenGraffitiInApp(id) {
-  window.location.href = "admin.html#/schein/" + encodeURIComponent(id) + "/kal";
+  window.location.href = "graffiti.html#/schein/" + encodeURIComponent(id) + "/kal";
 }
 
 // Aufklappender "Tages-Reiter" unter dem Kalender: alle Touren + freien Termine des Tages,

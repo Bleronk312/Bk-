@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v205";
+const GEKO_CACHE = "geko-cache-v206";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -22,7 +22,7 @@ const GEKO_CORE = [
   // beim ersten Besuch im Speicher, aber genau der erste Besuch ist der, bei
   // dem jemand im Objekt ohne Empfang steht.
   "index.html", "meine.html",
-  "hub.html", "einstellungen.html", "glas-admin.html", "kalender.html", "glas-mitarbeiter.html", "admin.html", "mitarbeiter.html", "schein.html",
+  "hub.html", "einstellungen.html", "glas-admin.html", "kalender.html", "glas-mitarbeiter.html", "graffiti.html", "mitarbeiter.html", "schein.html",
   "checkins-admin.html", "checkins-ma.html", "diagnose.html",
   "manifest.json", "manifest-hub.json", "manifest-glas.json", "manifest-kalender.json",
   "manifest-meine.json", "manifest-glas-ma.json", "manifest-checkins.json", "manifest-checkins-ma.json",

@@ -587,7 +587,7 @@ async function saveSignature() {
         role: "graffiti",
         title: "✅ Schein unterschrieben!",
         body: `${firstLine(currentScheine.adresse) || "Ein Abnahmeschein"} wurde gerade von ${name} unterschrieben.`,
-        url: "/admin.html",
+        url: "/graffiti.html",
       },
     });
   } catch (e) {}
