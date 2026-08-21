@@ -1,6 +1,28 @@
-# Kurzer Link zum Weitergeben an Mitarbeiter (z. B. per WhatsApp):
-# sunny-platypus-bce4eb.netlify.app/app  ->  Installations-Anleitung
-/app   /install.html   200
+# ============================================================================
+# Kurz-Adressen. Reihenfolge zaehlt: die erste passende Regel gewinnt.
+# ============================================================================
+# Das "!" am Ende erzwingt die Regel auch dann, wenn es eine Datei gleichen
+# Namens gibt. Ohne das wuerde /admin bei Netlify von selbst auf admin.html
+# zeigen - und das ist die Graffiti-App, nicht die Verwaltung.
 
-# GEKO One - die Mitarbeiter-Übersicht (ein Login für alles)
-/start   /meine.html   200
+# Die nackte Adresse gehoert den Mitarbeitern. Sie ist die, die man am Telefon
+# durchgibt und auf einen Zettel schreibt, deshalb muss sie ohne Zusatz dort
+# landen, wo gearbeitet wird. 200 statt 301: die Adresse bleibt gekoapp.com
+# stehen, es wird nur GEKO One ausgeliefert.
+/           /meine.html     200!
+
+# Verwaltung: der Hub mit allen Abteilungen.
+/admin      /hub.html       200!
+
+# Die Graffiti-Abteilung hiess frueher selbst "/admin" - dieses Projekt war
+# einmal nur sie. Sie hat jetzt einen eigenen, sprechenden Weg; aus dem Hub
+# heraus wird sie ohnehin ueber admin.html verlinkt.
+/graffiti   /admin.html     200!
+
+# Installations-Anleitung fuers Handy (Schritt fuer Schritt, mit Bildern).
+# Das ist der Link fuer alle, die zum ersten Mal dabei sind.
+/app        /install.html   200
+
+# Alter Kurzlink auf GEKO One - bleibt bestehen, damit schon verschickte
+# Nachrichten weiter funktionieren.
+/start      /meine.html     200

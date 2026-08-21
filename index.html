@@ -3,71 +3,33 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>GEKO Clean</title>
+<title>GEKO One</title>
 <meta name="theme-color" content="#1f5d92" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta http-equiv="refresh" content="0; url=meine.html" />
 <!--
-  Die nackte Adresse (gekoapp.com) ist der Eingang fuer ALLE - Verwaltung wie
-  Mitarbeiter. Vorher stand hier eine feste Weiterleitung auf admin.html, also
-  auf die Graffiti-App: ein Ueberbleibsel aus der Zeit, als dieses Projekt NUR
-  die Graffiti-Abteilung war. Wer gekoapp.com eintippte, landete deshalb bei
-  "Graffiti & Sonderreinigung", egal wer er war.
+  Die nackte Adresse gehoert den Mitarbeitern - sie ist die, die man am Telefon
+  durchgibt. Die Verwaltung erreicht ihren Hub ueber /admin.
 
-  Jetzt entscheidet die letzte Anmeldung auf diesem Geraet:
-    Verwaltung  -> Hub
-    Mitarbeiter -> GEKO One
-  Ist hier noch niemand angemeldet gewesen, kommt die Auswahl unten. Sie ist
-  bewusst ohne Bibliotheken gebaut und traegt ihr Aussehen selbst, damit sie
-  auch bei schlechtem Empfang sofort dasteht.
+  Normalerweise kommt diese Datei gar nicht zum Zug: die Regel "/ -> /meine.html"
+  in _redirects liefert GEKO One direkt aus, ohne dass die Adresse sich aendert.
+  Diese Seite ist das Netz darunter - fuer den Fall, dass jemand /index.html
+  ausdruecklich aufruft oder die Regel einmal nicht greift. Deshalb sowohl
+  meta-refresh (ohne JavaScript) als auch location.replace (kein Eintrag in der
+  Zurueck-Liste, sonst haengt man beim Zurueckgehen in einer Schleife).
 
-  Zugangsschutz steckt NICHT hier, sondern auf den Zielseiten - hier wird nur
-  gezeigt, wo es langgeht. Wer auf den Hub tippt, ohne Admin zu sein, kommt
-  dort trotzdem nicht rein.
+  Frueher stand hier eine feste Weiterleitung auf admin.html, also auf die
+  Graffiti-App - ein Ueberbleibsel aus der Zeit, als dieses Projekt nur die
+  Graffiti-Abteilung war.
 -->
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:linear-gradient(160deg,#1f5d92,#132d47);color:#fff;min-height:100svh;
-    display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased}
-  .karte{width:100%;max-width:420px;text-align:center}
-  h1{font-size:26px;font-weight:800;letter-spacing:-.3px}
-  .sub{margin-top:6px;font-size:15px;color:#bcd4e8;line-height:1.5}
-  .wahl{margin-top:26px;display:flex;flex-direction:column;gap:12px}
-  a.knopf{display:block;text-decoration:none;background:#fff;color:#16283a;border-radius:16px;
-    padding:17px 18px;text-align:left;box-shadow:0 6px 20px rgba(0,0,0,.18)}
-  a.knopf b{display:block;font-size:17px;font-weight:800}
-  a.knopf span{display:block;font-size:13.5px;color:#5d6b7a;margin-top:3px;line-height:1.4}
-  a.knopf:active{transform:scale(.985)}
-  .fuss{margin-top:22px;font-size:13px;color:#9fbdd6;line-height:1.6}
-  .fuss a{color:#fff}
+  body{margin:0;min-height:100svh;background:#1f5d92;color:#cfe0ee;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;font-size:15px}
 </style>
 </head>
 <body>
-<div class="karte" id="karte" style="visibility:hidden">
-  <h1>GEKO Clean</h1>
-  <p class="sub">Wo m&ouml;chtest du hin?</p>
-  <div class="wahl">
-    <a class="knopf" href="meine.html"><b>Ich bin Mitarbeiter</b><span>Touren, Rundg&auml;nge, Lager, Urlaub &amp; Dokumente</span></a>
-    <a class="knopf" href="hub.html"><b>Verwaltung</b><span>Alle Abteilungen und Einstellungen</span></a>
-  </div>
-  <p class="fuss">Zum ersten Mal hier? <a href="app">App aufs Handy legen</a></p>
-</div>
-<script>
-(function () {
-  // Nur weiterleiten, wenn die gemerkte Rolle auch zur aktuell gespeicherten
-  // Anmeldung gehoert - sonst schickt ein alter Eintrag jemanden an die
-  // falsche Stelle. Faellt irgendetwas davon aus, bleibt die Auswahl stehen;
-  // das ist der harmlose Fall.
-  var ziel = null;
-  try {
-    var s = JSON.parse(localStorage.getItem("geko_auth") || "null");
-    var p = JSON.parse(localStorage.getItem("geko_profil") || "null");
-    var u = s && (s.user || (s.currentSession && s.currentSession.user));
-    if (u && p && p.uid === u.id) ziel = p.rolle === "admin" ? "hub.html" : "meine.html";
-  } catch (e) {}
-  if (ziel) { location.replace(ziel); return; }
-  document.getElementById("karte").style.visibility = "visible";
-})();
-</script>
+<p>GEKO One wird geöffnet … <a href="meine.html" style="color:#fff">weiter</a></p>
+<script>location.replace("meine.html");</script>
 </body>
 </html>
