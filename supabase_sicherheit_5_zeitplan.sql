@@ -32,10 +32,18 @@
 --
 -- Erst nach Schritt 3 ist die Tür wirklich zu.
 --
--- ⚠️  UNTEN DREI PLATZHALTER ERSETZEN, bevor du es ausführst:
---       tjeheehmaefrqutbjmxn       -> deine Projekt-Kennung (steht in js/config.js)
---       eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZWhlZWhtYWVmcnF1dGJqbXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNjI5NDcsImV4cCI6MjA5NzgzODk0N30.MqRoBOAI480n6nH4z_tF5aLPp8v8ZEa0Q-ekcNgw-bM      -> der öffentliche Schlüssel (steht dort ebenfalls)
---       DEIN-CRON-GEHEIMNIS-> genau der Wert aus Schritt 2
+-- ⚠️  ES IST NUR NOCH EIN PLATZHALTER ZU ERSETZEN:
+--
+--       DEIN-CRON-GEHEIMNIS   ->   genau der Wert aus Schritt 2
+--
+--     Er kommt unten DREIMAL vor, einmal je Zeitplan. Am besten die
+--     Ersetzen-Funktion des Editors benutzen ("Alle ersetzen") - von Hand
+--     wird leicht einer vergessen, und dann laeuft genau diese eine
+--     Erinnerung nicht mehr, ohne dass es jemandem auffaellt.
+--
+--     Projekt-Kennung und oeffentlicher Schluessel sind schon eingetragen.
+--     Beide stehen ohnehin in js/config.js - sie sind kein Geheimnis. Das
+--     Geheimnis ist allein GEKO_CRON_SECRET.
 -- ============================================================================
 
 
