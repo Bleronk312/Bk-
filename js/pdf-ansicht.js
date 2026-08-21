@@ -15,8 +15,23 @@
 // Fallback: schlägt das Laden der Bibliothek fehl, geht es wie bisher über
 // window.open - besser draußen angezeigt als gar nicht.
 
-const GEKO_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-const GEKO_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+// AUS DEM EIGENEN HAUS, nicht vom CDN.
+//
+// Vorher stand hier eine cdnjs-Adresse - obwohl dieselbe Bibliothek längst
+// unter vendor/pdfjs/ im Projekt liegt (sie kam mit der PDF-Foto-Funktion
+// dazu). Das war gleich dreifach schlecht:
+//
+//   * Wer das CDN kontrolliert, führt Code IN der angemeldeten App aus. Bei
+//     einem Werkzeug, mit dem der Chef Lohnabrechnungen ansieht, ist das die
+//     unangenehmste Stelle, die man sich aussuchen kann.
+//   * Ohne Empfang ging der Viewer nicht auf - genau im Objekt, wo man ihn
+//     braucht.
+//   * Die Datei lag doppelt im Projekt, einmal genutzt, einmal nicht.
+//
+// Lokal heißt außerdem: der Dienst im Hintergrund legt sie mit in den
+// Zwischenspeicher, der Viewer öffnet ab dem zweiten Mal sofort.
+const GEKO_PDFJS = "vendor/pdfjs/pdf.min.js";
+const GEKO_PDFJS_WORKER = "vendor/pdfjs/pdf.worker.min.js";
 
 let _gekoPdfLib = null;      // Ladeversprechen der Bibliothek
 let _gekoPdfDoc = null;      // aktuell offenes Dokument

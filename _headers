@@ -1,0 +1,45 @@
+# ============================================================================
+# Sicherheits-Kopfzeilen (Netlify liest diese Datei automatisch)
+# ============================================================================
+# Das sind Anweisungen an den Browser, die auf jeder Seite mitgeliefert werden.
+# Sie kosten nichts und schliessen Angriffe, gegen die man sich im Code selbst
+# kaum wehren kann.
+#
+# Bewusst OHNE Content-Security-Policy: Die App arbeitet durchgehend mit
+# onclick-Attributen und eingebetteten Skripten. Eine strenge Regel wuerde die
+# halbe Oberflaeche lahmlegen, eine lasche waere Selbstbetrug. Das gehoert
+# sauber vorbereitet und getestet - nicht am Abend vor der Inbetriebnahme
+# blind eingeschaltet.
+# ============================================================================
+
+/*
+  # Kein Einbetten in fremde Seiten.
+  # Ohne das kann jemand die GEKO-Verwaltung unsichtbar ueber seine eigene
+  # Seite legen und Klicks abfangen ("Clickjacking"): Der Angemeldete glaubt,
+  # er tippt auf einen harmlosen Knopf, trifft aber in Wahrheit "Loeschen" in
+  # der darunterliegenden GEKO-Seite. Die App bettet sich nirgends selbst ein,
+  # DENY kostet also nichts.
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+
+  # Der Browser soll Dateien nehmen wie deklariert und nicht selbst raten.
+  # Sonst kann ein hochgeladenes "Bild" als Skript ausgefuehrt werden.
+  X-Content-Type-Options: nosniff
+
+  # Beim Wechsel auf fremde Seiten (Google Maps, Waze) nur die Domain
+  # mitgeben, nicht die volle Adresse. Sonst stuende in deren Protokoll,
+  # welchen Abnahmeschein gerade jemand offen hatte.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Geraeterechte auf das begrenzen, was die App wirklich braucht:
+  # Standort ja (Check-ins vor Ort), Mikrofon und Kamera-Uebernahme nein.
+  # Fotos laufen ueber die normale Dateiauswahl und brauchen kein Kamerarecht.
+  Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=(), usb=()
+
+  # Verhindert, dass die Seite die Adresse eines Aufrufers erbt oder umgekehrt.
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+# Der Dienst im Hintergrund darf nicht zwischengespeichert werden - sonst
+# haengt ein Geraet nach einem Deploy an der alten Fassung fest.
+/sw.js
+  Cache-Control: no-cache
