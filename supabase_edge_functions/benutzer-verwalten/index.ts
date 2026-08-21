@@ -233,25 +233,43 @@ Deno.serve(async (req) => {
         return antwort({ ok: true, rolle });
       }
 
-      // ---- Ein Gerät abmelden ---------------------------------------------
-      // Entfernt alle Benachrichtigungs-Anmeldungen dieses einen Geräts.
-      // Danach ist es aus der Übersicht verschwunden und bekommt nichts mehr.
+      // ---- Abmelden --------------------------------------------------------
+      // Wirft eine Person aus der App: alle bestehenden Anmeldungen werden
+      // ungültig, beim nächsten Öffnen verlangt die App eine neue Anmeldung.
+      // Das Passwort bleibt gültig - wer es kennt, kommt wieder rein. Für den
+      // Fall, dass das PASSWORT das Problem ist, gibt es "passwort_neu".
       //
-      // WICHTIG, und die Oberfläche sagt es auch so: Das ist KEIN Rauswurf.
-      // Wer auf dem Gerät noch angemeldet ist, meldet es beim nächsten Öffnen
-      // von selbst wieder an (autoRenewPushSubscription). Gedacht ist das zum
-      // Aufräumen - verkauftes Handy, altes Büro-Notebook.
+      // Umgesetzt über einen Zeitstempel (glas_mitarbeiter.abmelden_ab). Die
+      // App vergleicht bei jedem Start, wann sie sich angemeldet hat, und
+      // meldet sich selbst ab, wenn das davor liegt.
       //
-      // Wer jemanden wirklich hinauswerfen will, setzt ein neues
-      // Einmal-Passwort ("passwort_neu"): das macht die Anmeldungen auf allen
-      // Geräten ungültig.
-      case "geraet_entfernen": {
+      // EHRLICH DAZU, und die Oberfläche sagt es auch:
+      //   * Es gilt IMMER für alle Geräte einer Person. Eine einzelne
+      //     Anmeldung gezielt zu beenden, geht mit Supabase nicht - der Server
+      //     führt keine Liste "welches Handy hat welche Anmeldung".
+      //   * Es greift, sobald das Gerät wieder online ist. Ein Handy, das aus
+      //     bleibt, merkt nichts davon.
+      //   * Der harte Weg bleibt "sperren": das entscheidet der Server bei
+      //     jeder Anfrage neu.
+      //
+      // "kennung" (optional): entfernt zusätzlich dieses eine Gerät aus der
+      // Geräteliste - damit ein verkauftes Handy nicht ewig dort steht.
+      case "abmelden": {
+        const z = await ziel();
+        if (!z.ma) return antwort({ error: "Nur für Mitarbeiter-Zugänge." }, 400);
         const kennung = String(eingabe.kennung || "");
-        if (!kennung) return antwort({ error: "Kein Gerät angegeben." }, 400);
-        const { error, count } = await admin.from("push_subscriptions")
-          .delete({ count: "exact" }).eq("endpoint", kennung);
-        if (error) return antwort({ error: error.message }, 400);
-        return antwort({ ok: true, entfernt: count ?? 0 });
+        if (kennung) {
+          await admin.from("push_subscriptions").delete().eq("endpoint", kennung);
+        }
+        const { error } = await admin.from("glas_mitarbeiter")
+          .update({ abmelden_ab: new Date().toISOString() }).eq("id", maId);
+        if (error) {
+          const fehltSpalte = /abmelden_ab/i.test(error.message || "");
+          return antwort({ error: fehltSpalte
+            ? "Bitte supabase_sicherheit_4_abmelden.sql in Supabase ausführen."
+            : error.message }, 400);
+        }
+        return antwort({ ok: true });
       }
 
       // ---- Konto löschen (Mitarbeiter-Datensatz bleibt!) -------------------
