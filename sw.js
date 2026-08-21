@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v214";
+const GEKO_CACHE = "geko-cache-v215";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -38,7 +38,7 @@ const GEKO_CORE = [
   "vendor/lib/supabase-js@2.min.js",
   "vendor/lib/jspdf.umd.min.js",
   "vendor/lib/signature_pad.umd.min.js",
-  "vendor/lib/leaflet.min.js",
+  "vendor/lib/leaflet.min.js", "vendor/lib/leaflet.min.css",
 ];
 
 self.addEventListener("install", (event) => {
