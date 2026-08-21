@@ -705,7 +705,10 @@ async function oneChangePw(zwang) {
     }
 
     // Merker in der Mitarbeiter-Tabelle nachziehen (fuers Buero sichtbar).
-    const payload = { pw_selbst_gesetzt: true, pw_muss_wechsel: false, pass_klar: null };
+    // pass_klar wird hier nicht mehr geleert - die Spalte gibt es nicht mehr
+    // (supabase_sicherheit_2_haerten.sql). Passwörter liegen ausschliesslich
+    // bei der Anmeldung, gehasht, und sind fuer niemanden einsehbar.
+    const payload = { pw_selbst_gesetzt: true, pw_muss_wechsel: false };
     let { error: e3 } = await sb.from("glas_mitarbeiter").update(payload).eq("id", oneUser.id);
     if (e3) {
       // Aeltere Datenbank ohne diese Spalten: nicht schlimm, Passwort ist geaendert.

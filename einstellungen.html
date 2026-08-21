@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=206" />
+<link rel="stylesheet" href="css/style.css?v=207" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=206"></script>
-  <script src="js/supabase-client.js?v=206"></script>
-  <script src="js/geko-auth.js?v=206"></script>
-  <script src="js/pdf-ansicht.js?v=206"></script>
-  <script src="js/push.js?v=206"></script>
-  <script defer src="js/pdf-fonts.js?v=206"></script>
-  <script defer src="js/glas-lager-pdf.js?v=206"></script>
+  <script src="js/config.js?v=207"></script>
+  <script src="js/supabase-client.js?v=207"></script>
+  <script src="js/geko-auth.js?v=207"></script>
+  <script src="js/pdf-ansicht.js?v=207"></script>
+  <script src="js/push.js?v=207"></script>
+  <script defer src="js/pdf-fonts.js?v=207"></script>
+  <script defer src="js/glas-lager-pdf.js?v=207"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -220,6 +220,7 @@
     el.innerHTML = bearbeiten ? renderMaFormular()
       : detailMa ? renderMaDetail()
       : renderMitarbeiter() + renderMeinKonto() + renderVerwaltungsKonten()
+        + renderAngemeldet()
         + renderPush() + renderErinnerungen() + renderDarstellung();
   }
 
@@ -616,6 +617,100 @@
           ? `<button class="btn btn-primary" style="margin-top:10px;" onclick="dlgAdminAnlegen()">➕ Verwaltungs-Zugang anlegen</button>
              <p class="muted" style="margin:8px 0 0; font-size:12px;">Für Bürokräfte, die kein Mitarbeiter in den Apps sind – sie tauchen in Touren, Urlaub und Lager nicht auf.</p>`
           : `<p class="muted" style="margin:8px 0 0; font-size:12px;">Zugänge anlegen, Passwörter zurücksetzen und sperren darf nur der Ober-Admin. Grund: Wer ein Passwort zurücksetzen kann, kann sich anschließend als der Betreffende anmelden.</p>`}
+      </div>`;
+  }
+
+  // ==== Wer ist angemeldet? ================================================
+  // Zweck ist NICHT zu sehen, wer wie lange am Handy hängt - dafür ist das viel
+  // zu grob. Zweck ist, dass ein Konto AUFFÄLLT, das sich rührt, obwohl es das
+  // nicht sollte: der gekündigte Kollege, das verlorene Handy, ein Zugang, den
+  // jemand weitergegeben hat. Deshalb stehen Verwaltungs-Zugänge oben und die
+  // zuletzt aktiven zuerst.
+  //
+  // "Geräte" kommt aus den Benachrichtigungs-Anmeldungen. Mehr Geräte als
+  // Menschen ist das eigentliche Warnzeichen.
+  function zeitHer(iso) {
+    if (!iso) return null;
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 0) return "gerade eben";
+    if (min < 60) return min <= 1 ? "gerade eben" : `vor ${min} Min.`;
+    const std = Math.floor(min / 60);
+    if (std < 24) return `vor ${std} Std.`;
+    const tage = Math.floor(std / 24);
+    if (tage === 1) return "gestern";
+    if (tage < 30) return `vor ${tage} Tagen`;
+    return new Date(iso).toLocaleDateString("de-DE");
+  }
+
+  function renderAngemeldet() {
+    const d = zugangsdaten || {};
+    const ma = (d.mitarbeiter || []).filter((m) => m.hat_konto).map((m) => ({
+      name: m.name || m.username || m.id,
+      unter: m.username ? "@" + m.username : "",
+      rolle: m.rolle === "admin" ? "Verwaltung" : "Mitarbeiter",
+      istAdmin: m.rolle === "admin",
+      gesperrt: m.login_aktiv === false,
+      // Der App-Stempel ist genauer als die Anmeldung (die bleibt monatelang
+      // stehen, weil niemand sich abmeldet). Deshalb: der jüngere gewinnt.
+      aktiv: [m.zuletzt_gesehen, m.zuletzt_angemeldet].filter(Boolean)
+        .sort().slice(-1)[0] || null,
+      geraete: m.geraete || 0,
+    }));
+    const admins = (d.admins_ohne_mitarbeiter || []).map((a) => ({
+      name: a.name || a.email,
+      unter: a.email || "",
+      rolle: a.oberadmin ? "Ober-Admin" : "Verwaltung",
+      istAdmin: true,
+      gesperrt: !!a.gesperrt,
+      aktiv: a.zuletzt_angemeldet || null,
+      geraete: null,
+    }));
+
+    const alle = [...admins, ...ma].sort((a, b) => {
+      if (a.istAdmin !== b.istAdmin) return a.istAdmin ? -1 : 1;   // Verwaltung zuerst
+      return String(b.aktiv || "").localeCompare(String(a.aktiv || ""));
+    });
+
+    if (!alle.length) {
+      return `<p class="est-sec-title">Wer ist angemeldet</p>
+        <div class="card"><p class="muted" style="margin:0;">Noch keine Konten.</p></div>`;
+    }
+
+    // "Aktiv" = in den letzten 15 Minuten gesehen. Genauer geht es ohne
+    // Dauerverbindung nicht, und die wäre den Akku nicht wert.
+    const grenze = Date.now() - 15 * 60 * 1000;
+    const jetztAktiv = alle.filter((x) => x.aktiv && new Date(x.aktiv).getTime() >= grenze).length;
+    const verwaltung = alle.filter((x) => x.istAdmin && !x.gesperrt).length;
+
+    const zeile = (x) => {
+      const frisch = x.aktiv && new Date(x.aktiv).getTime() >= grenze;
+      const punkt = x.gesperrt ? "#8e99a6" : frisch ? "#12a150" : "#c9ced6";
+      return `
+      <div class="est-zeile"><div style="flex:1; min-width:150px; display:flex; gap:10px; align-items:flex-start;">
+        <span style="flex:none; width:9px; height:9px; border-radius:50%; background:${punkt}; margin-top:6px;"></span>
+        <div style="min-width:0;">
+          <div class="est-name">${sicher(x.name)}
+            ${x.istAdmin ? `<span class="est-marke m-admin">${sicher(x.rolle)}</span>` : ""}
+            ${x.gesperrt ? '<span class="est-marke m-rot">gesperrt</span>' : ""}</div>
+          <div class="est-sub">${x.aktiv ? sicher(zeitHer(x.aktiv)) : "noch nie angemeldet"}${
+            x.unter ? " · " + sicher(x.unter) : ""}${
+            x.geraete ? " · " + x.geraete + (x.geraete === 1 ? " Gerät" : " Geräte") : ""}</div>
+        </div>
+      </div></div>`;
+    };
+
+    return `
+      <p class="est-sec-title">Wer ist angemeldet</p>
+      <div class="card">
+        <p style="margin:0 0 4px; font-weight:600;">${jetztAktiv} gerade aktiv · ${verwaltung} mit Verwaltungs-Rechten</p>
+        <p class="muted" style="margin:0 0 12px; font-size:12.5px;">
+          Grüner Punkt = in den letzten 15 Minuten in der App gewesen.
+          <b>Steht hier jemand mit „Verwaltung", der da nicht hingehört, sperre ihn sofort</b> –
+          oben bei den Mitarbeitern bzw. den Verwaltungs-Zugängen.</p>
+        ${alle.map(zeile).join("")}
+        <p class="muted" style="margin:12px 0 0; font-size:12px;">
+          Mehr Geräte als Personen heißt meistens: ein Zugang wurde weitergegeben.
+          Passwort zurücksetzen beendet alle fremden Anmeldungen.</p>
       </div>`;
   }
 

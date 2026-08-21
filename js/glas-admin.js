@@ -5811,13 +5811,11 @@ async function saveGlasMa() {
     showToast("Per-App-Zugang nicht gespeichert – bitte supabase_add_checkins.sql in Supabase ausführen");
     ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
   }
-  if (error && /(username|pass_hash|pass_salt|pass_klar|login_aktiv)/i.test(error.message || "")) {
-    // Login-Spalten fehlen noch -> ohne sie speichern und Hinweis geben
-    delete payload.username; delete payload.pass_hash; delete payload.pass_salt; delete payload.pass_klar; delete payload.login_aktiv;
-    delete payload.zugang_glas; delete payload.zugang_graffiti; delete payload.zugang_checkin; delete payload.zugang_lager;
-    showToast("App-Zugang nicht gespeichert – bitte supabase_add_ma_login.sql in Supabase ausführen");
-    ({ error } = await sb.from("glas_mitarbeiter").upsert(payload));
-  }
+  // Die frueher hier stehende Notloesung fuer fehlende pass_hash/pass_salt/
+  // pass_klar-Spalten ist entfallen: dieses Formular schreibt sie laengst nicht
+  // mehr, und die Spalten wurden entfernt
+  // (supabase_sicherheit_2_haerten.sql). Sie war sogar schaedlich - sie hat im
+  // Fehlerfall stillschweigend auch die zugang_*-Haken mit weggeworfen.
   if (error && /urlaubsanspruch/.test(error.message || "")) {
     // Spalte fehlt noch (neueste SQL-Datei nicht ausgeführt) - ohne Anspruch speichern
     delete payload.urlaubsanspruch;

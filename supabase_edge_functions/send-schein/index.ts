@@ -12,6 +12,27 @@
 //   MAIL_BCC        - optional: Adresse, die von jedem Versand eine Blindkopie bekommt
 //                     (z.B. euer Büro-Postfach als automatische Ablage)
 
+// ============================================================================
+// SICHERHEIT
+// ============================================================================
+// Diese Function war bis v206 OHNE Anmeldepruefung erreichbar. Supabase laesst
+// jeden durch, der irgendeinen gueltigen Schluessel mitschickt - und der
+// anon-Schluessel steht in js/config.js, ist also oeffentlich. Damit konnte
+// jeder, der die Adresse kannte, ueber EUREN verifizierten Absender
+// (gekoclean.de) Mails mit beliebigem Text und beliebigem PDF-Anhang an
+// beliebige Empfaenger schicken. Das ist nicht nur Spam auf eure Kosten - es
+// ist ein fertiger Weg, eure eigenen Kunden in eurem Namen zu betruegen, und
+// es verbrennt den Ruf der Absender-Domain.
+//
+// Deshalb: es muss ein echtes KONTO-Token dabei sein. Unterschrieben und
+// verschickt wird ohnehin nur aus einer angemeldeten App heraus.
+// ============================================================================
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const MAIL_FROM = Deno.env.get("MAIL_FROM") || "GEKO Clean <onboarding@resend.dev>";
 const MAIL_BCC = Deno.env.get("MAIL_BCC") || "";
@@ -44,6 +65,20 @@ Deno.serve(async (req) => {
     if (!RESEND_API_KEY) {
       console.error("RESEND_API_KEY fehlt als Secret");
       return jsonResponse(500, { error: "RESEND_API_KEY ist nicht als Secret hinterlegt" });
+    }
+
+    // ---- Anmeldung pruefen (siehe Kopf der Datei) -------------------------
+    const kopf = req.headers.get("Authorization") || "";
+    const token = kopf.replace(/^Bearer\s+/i, "").trim();
+    if (!token || token === SUPABASE_ANON_KEY) {
+      return jsonResponse(403, { error: "Nur für angemeldete Konten." });
+    }
+    const pruefer = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: konto, error: kontoFehler } = await pruefer.auth.getUser(token);
+    if (kontoFehler || !konto?.user) {
+      return jsonResponse(403, { error: "Nur für angemeldete Konten." });
     }
 
     const { to, subject, text, filename, pdfBase64 } = await req.json();

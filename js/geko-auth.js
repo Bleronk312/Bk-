@@ -165,7 +165,38 @@ async function gekoSitzung(neuLaden) {
     istOberAdmin: session.user?.app_metadata?.geko_super === true,
   };
   _gekoProfilMerken(_gekoSitzung);
+  _gekoLebenszeichen(_gekoSitzung);
   return _gekoSitzung;
+}
+
+// ---------------------------------------------------------------------------
+// Lebenszeichen ("zuletzt gesehen")
+// ---------------------------------------------------------------------------
+// Setzt bei jedem App-Start einen Zeitstempel auf der eigenen Mitarbeiterzeile.
+// Daraus baut die Verwaltung unter Einstellungen die Übersicht, wer gerade
+// angemeldet ist.
+//
+// Der Sinn ist nicht Kontrolle darüber, wer wie lange am Handy hängt - dafür
+// ist die Anzeige viel zu grob. Der Sinn ist, dass ein Konto AUFFÄLLT, das
+// sich rührt, obwohl es das nicht sollte: der gekündigte Kollege, das verlorene
+// Handy, ein Zugang, den jemand weitergegeben hat.
+//
+// Höchstens alle 10 Minuten, und Fehler sind egal: Das hier darf den Start der
+// App unter keinen Umständen aufhalten oder abbrechen.
+const _GEKO_LEBEN_KEY = "geko_leben";
+const _GEKO_LEBEN_ABSTAND = 10 * 60 * 1000;
+
+function _gekoLebenszeichen(sitzung) {
+  try {
+    if (!sitzung || !sitzung.ma || !sitzung.ma.id) return;
+    const zuletzt = parseInt(localStorage.getItem(_GEKO_LEBEN_KEY) || "0", 10);
+    if (Date.now() - zuletzt < _GEKO_LEBEN_ABSTAND) return;
+    localStorage.setItem(_GEKO_LEBEN_KEY, String(Date.now()));
+    sb.from("glas_mitarbeiter")
+      .update({ zuletzt_gesehen: new Date().toISOString() })
+      .eq("id", sitzung.ma.id)
+      .then(() => {}, () => {});   // Spalte fehlt noch / kein Netz: still ignorieren
+  } catch (e) { /* niemals den Start blockieren */ }
 }
 
 // Darf der Angemeldete diesen Bereich sehen?

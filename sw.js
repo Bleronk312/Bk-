@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v206";
+const GEKO_CACHE = "geko-cache-v207";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -165,9 +165,20 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// Ziel einer Benachrichtigung: NUR ein Pfad im eigenen Haus. Der Text einer
+// Benachrichtigung kommt vom Server, und wenn dort je wieder etwas durchrutscht,
+// darf ein Antippen trotzdem nicht auf einer fremden Seite landen - das waere
+// eine nachgebaute Anmeldeseite, einen Fingertipp entfernt. "//fremd.de" ist
+// fuer den Browser eine vollwertige fremde Adresse, deshalb faellt das zweite
+// "/" ausdruecklich mit raus.
+function gekoSicheresZiel(roh) {
+  if (typeof roh !== "string" || !roh.startsWith("/") || roh.startsWith("//")) return "/meine.html";
+  return roh;
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/meine.html";
+  const url = gekoSicheresZiel(event.notification.data && event.notification.data.url);
   event.waitUntil(
     clients.matchAll({ type: "window" }).then((clientList) => {
       for (const client of clientList) {

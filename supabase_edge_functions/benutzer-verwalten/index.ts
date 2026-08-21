@@ -259,6 +259,25 @@ Deno.serve(async (req) => {
         const rollen = new Map(
           (konten?.users || []).map((u) => [u.id, String((u.app_metadata as Record<string, unknown>)?.geko_rolle || "mitarbeiter")]),
         );
+        // Anmeldestand je Konto: wann zuletzt angemeldet, wann angelegt.
+        // Damit sieht die Verwaltung auf einen Blick, ob sich ein Konto rührt,
+        // das sich nicht ruehren duerfte - und ob irgendwo ein Zugang
+        // aufgetaucht ist, den niemand angelegt hat.
+        const anmeldung = new Map(
+          (konten?.users || []).map((u) => [u.id, {
+            zuletzt: (u as unknown as { last_sign_in_at?: string }).last_sign_in_at || null,
+            angelegt: (u as unknown as { created_at?: string }).created_at || null,
+          }]),
+        );
+        // Angemeldete Geraete je Mitarbeiter (aus den Push-Abos). Mehr Geraete
+        // als Menschen ist das Warnzeichen: ein weitergegebener Zugang.
+        const { data: abos } = await admin.from("push_subscriptions").select("mitarbeiter_id, endpoint");
+        const geraete = new Map<string, Set<string>>();
+        for (const a of (abos || []) as { mitarbeiter_id: string | null; endpoint: string }[]) {
+          if (!a.mitarbeiter_id) continue;
+          if (!geraete.has(a.mitarbeiter_id)) geraete.set(a.mitarbeiter_id, new Set());
+          geraete.get(a.mitarbeiter_id)!.add(a.endpoint);
+        }
         const liste = (data || []) as Record<string, unknown>[];
         // Konten, die zu KEINEM Mitarbeiter gehoeren (reine Verwaltungskonten,
         // z.B. das erste Admin-Konto oder Buerokraefte).
@@ -273,6 +292,8 @@ Deno.serve(async (req) => {
             oberadmin: (u.app_metadata as Record<string, unknown>)?.geko_super === true,
             gesperrt: !!(u as unknown as { banned_until?: string }).banned_until
               && new Date((u as unknown as { banned_until: string }).banned_until) > new Date(),
+            zuletzt_angemeldet: anmeldung.get(u.id)?.zuletzt || null,
+            angelegt: anmeldung.get(u.id)?.angelegt || null,
           }));
         return antwort({
           ok: true,
@@ -287,6 +308,9 @@ Deno.serve(async (req) => {
             pw_muss_wechsel: m.pw_muss_wechsel ?? false,
             hat_konto: !!m.auth_user_id,
             rolle: m.auth_user_id ? rollen.get(m.auth_user_id as string) || "mitarbeiter" : null,
+            zuletzt_angemeldet: m.auth_user_id ? anmeldung.get(m.auth_user_id as string)?.zuletzt || null : null,
+            zuletzt_gesehen: m.zuletzt_gesehen ?? null,
+            geraete: geraete.get(String(m.id))?.size || 0,
           })),
         });
       }
