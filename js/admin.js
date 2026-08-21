@@ -159,7 +159,14 @@ function zurueckZumKalender() {
 }
 
 async function showApp() {
-  await Promise.all([loadKundenData(), loadKategorienData()]);
+  // Kunden und Kategorien werden im HINTERGRUND geholt, nicht abgewartet.
+  // Vorher stand hier ein await davor: haengt oder verzoegert sich eine der
+  // beiden Abfragen, wurde danach nie etwas gezeichnet - die Seite blieb leer
+  // und es sah aus, als sei beim Tippen auf die Graffiti-Kachel gar nichts
+  // passiert. Beide Listen starten als [] und werden nur in Formularen
+  // gebraucht, die man erst spaeter oeffnet; die Scheine-Liste braucht sie
+  // ueberhaupt nicht.
+  Promise.all([loadKundenData(), loadKategorienData()]).catch(() => {});
   const ziel = scheinDeepLink();
   if (ziel) {
     // Adresse säubern (ohne hashchange auszulösen), damit ein späteres Neuladen
