@@ -14,10 +14,11 @@
 # Verwaltung: der Hub mit allen Abteilungen.
 /admin      /hub.html       200!
 
-# Die Graffiti-Abteilung hiess frueher selbst "/admin" - dieses Projekt war
-# einmal nur sie. Sie hat jetzt einen eigenen, sprechenden Weg; aus dem Hub
-# heraus wird sie ohnehin ueber admin.html verlinkt.
-/graffiti   /admin.html     200!
+# Bewusst KEINE eigene Kurz-Adresse fuer die einzelnen Abteilungen (Graffiti,
+# Glas, Lager, Check-ins). Es gibt genau zwei Eingaenge - GEKO One fuer die
+# Mitarbeiter, den Hub fuer die Verwaltung -, alles andere ist ein Baustein
+# dahinter. Jeder zusaetzliche Einstieg bedeutet nur, dass jemand irgendwo
+# landet, wo er nicht hinwollte.
 
 # Installations-Anleitung fuers Handy (Schritt fuer Schritt, mit Bildern).
 # Das ist der Link fuer alle, die zum ersten Mal dabei sind.

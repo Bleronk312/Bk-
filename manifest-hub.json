@@ -2,7 +2,7 @@
   "name": "GEKO Hub",
   "short_name": "GEKO",
   "display": "standalone",
-  "start_url": "hub.html",
+  "start_url": "/admin",
   "scope": "/",
   "background_color": "#f6f7f9",
   "theme_color": "#1f5d92",
