@@ -12,7 +12,7 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v213";
+const GEKO_CACHE = "geko-cache-v214";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
@@ -35,9 +35,10 @@ const GEKO_CORE = [
   // pdf.js aus dem eigenen Haus (siehe js/pdf-ansicht.js). Mit im Vorrat,
   // damit der Dokumenten-Viewer auch ohne Empfang aufgeht.
   "vendor/pdfjs/pdf.min.js", "vendor/pdfjs/pdf.worker.min.js",
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
-  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js",
+  "vendor/lib/supabase-js@2.min.js",
+  "vendor/lib/jspdf.umd.min.js",
+  "vendor/lib/signature_pad.umd.min.js",
+  "vendor/lib/leaflet.min.js",
 ];
 
 self.addEventListener("install", (event) => {
