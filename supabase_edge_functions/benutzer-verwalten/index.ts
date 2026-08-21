@@ -233,6 +233,27 @@ Deno.serve(async (req) => {
         return antwort({ ok: true, rolle });
       }
 
+      // ---- Ein Gerät abmelden ---------------------------------------------
+      // Entfernt alle Benachrichtigungs-Anmeldungen dieses einen Geräts.
+      // Danach ist es aus der Übersicht verschwunden und bekommt nichts mehr.
+      //
+      // WICHTIG, und die Oberfläche sagt es auch so: Das ist KEIN Rauswurf.
+      // Wer auf dem Gerät noch angemeldet ist, meldet es beim nächsten Öffnen
+      // von selbst wieder an (autoRenewPushSubscription). Gedacht ist das zum
+      // Aufräumen - verkauftes Handy, altes Büro-Notebook.
+      //
+      // Wer jemanden wirklich hinauswerfen will, setzt ein neues
+      // Einmal-Passwort ("passwort_neu"): das macht die Anmeldungen auf allen
+      // Geräten ungültig.
+      case "geraet_entfernen": {
+        const kennung = String(eingabe.kennung || "");
+        if (!kennung) return antwort({ error: "Kein Gerät angegeben." }, 400);
+        const { error, count } = await admin.from("push_subscriptions")
+          .delete({ count: "exact" }).eq("endpoint", kennung);
+        if (error) return antwort({ error: error.message }, 400);
+        return antwort({ ok: true, entfernt: count ?? 0 });
+      }
+
       // ---- Konto löschen (Mitarbeiter-Datensatz bleibt!) -------------------
       case "konto_loeschen": {
         const z = await ziel();
@@ -320,9 +341,12 @@ Deno.serve(async (req) => {
             zuletzt_angemeldet: m.auth_user_id ? anmeldung.get(m.auth_user_id as string)?.zuletzt || null : null,
             zuletzt_gesehen: m.zuletzt_gesehen ?? null,
             geraete: geraete.get(String(m.id))?.size || 0,
-            // Namen der Geräte, z.B. ["iPhone · App", "Mac · Browser"].
-            // Leer, solange ein Gerät seinen Namen noch nicht nachgetragen hat.
-            geraete_namen: [...(geraete.get(String(m.id))?.values() || [])].filter(Boolean),
+            // Ein Eintrag je Gerät: { kennung, name }. Die Kennung ist die
+            // Geräte-Adresse der Browser-Anmeldung - sie braucht die Oberfläche,
+            // um genau dieses Gerät wieder abmelden zu können. Der Name kann
+            // leer sein, solange ein Altbestand ihn noch nicht nachgetragen hat.
+            geraete_liste: [...(geraete.get(String(m.id))?.entries() || [])]
+              .map(([kennung, name]) => ({ kennung, name })),
           })),
         });
       }

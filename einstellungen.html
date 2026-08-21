@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=208" />
+<link rel="stylesheet" href="css/style.css?v=209" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=208"></script>
-  <script src="js/supabase-client.js?v=208"></script>
-  <script src="js/geko-auth.js?v=208"></script>
-  <script src="js/pdf-ansicht.js?v=208"></script>
-  <script src="js/push.js?v=208"></script>
-  <script defer src="js/pdf-fonts.js?v=208"></script>
-  <script defer src="js/glas-lager-pdf.js?v=208"></script>
+  <script src="js/config.js?v=209"></script>
+  <script src="js/supabase-client.js?v=209"></script>
+  <script src="js/geko-auth.js?v=209"></script>
+  <script src="js/pdf-ansicht.js?v=209"></script>
+  <script src="js/push.js?v=209"></script>
+  <script defer src="js/pdf-fonts.js?v=209"></script>
+  <script defer src="js/glas-lager-pdf.js?v=209"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -407,7 +407,7 @@
         // Der App-Stempel ist genauer als die Anmeldung: die bleibt monatelang
         // stehen, weil sich niemand abmeldet. Der jüngere der beiden gewinnt.
         [k.zuletzt_gesehen, k.zuletzt_angemeldet].filter(Boolean).sort().slice(-1)[0] || null,
-        k.geraete_namen, k.geraete)}</div>` : ""}
+        k.geraete_liste, k.geraete, m.id, m.name)}</div>` : ""}
 
       <p class="est-sec-title">Urlaub</p>
       <div class="card">${renderUrlaubUebersicht(m, b)}</div>
@@ -676,33 +676,56 @@
   // es ohne Dauerverbindung nicht, und die waere den Akku nicht wert.
   const AKTIV_FENSTER = 15 * 60 * 1000;
 
-  function renderAnmeldestand(aktiv, geraete, anzahl) {
+  function renderAnmeldestand(aktiv, liste, anzahl, maId, name) {
     const frisch = aktiv && (Date.now() - new Date(aktiv).getTime()) < AKTIV_FENSTER;
     const punkt = frisch ? "#12a150" : "#c9ced6";
-    const namen = (geraete || []).filter(Boolean);
-    const n = anzahl || namen.length;
+    const geraete = liste || [];
+    const n = anzahl || geraete.length;
 
-    let geraeteText;
-    if (!n) geraeteText = "Noch kein Gerät angemeldet";
-    else if (namen.length) {
-      geraeteText = namen.map(sicher).join(" · ");
-      // Namenlose Alt-Anmeldungen ehrlich mitzaehlen, statt sie zu verschweigen.
-      if (namen.length < n) geraeteText += ` · ${n - namen.length} weiteres Gerät (noch unbekannt)`;
-    } else {
-      geraeteText = n === 1 ? "1 Gerät (Name noch unbekannt)" : `${n} Geräte (Namen noch unbekannt)`;
-    }
+    const zeilen = geraete.map((g) => `
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+        <span style="flex:1; min-width:0;">📱 ${g.name ? sicher(g.name) : "<i>Gerät noch unbekannt</i>"}</span>
+        ${binOberAdmin ? `<button class="btn" style="flex:none;"
+          onclick="geraetEntfernen('${sicher(g.kennung)}', '${sicher(g.name || "dieses Gerät")}')">Abmelden</button>` : ""}
+      </div>`).join("");
 
     return `
       <div style="display:flex; gap:10px; align-items:flex-start;">
         <span style="flex:none; width:9px; height:9px; border-radius:50%; background:${punkt}; margin-top:6px;"></span>
         <div style="min-width:0;">
           <p style="margin:0; font-weight:600;">${aktiv ? sicher(zeitHer(aktiv)) : "Noch nie angemeldet"}</p>
-          <p class="est-sub" style="margin:2px 0 0;">📱 ${geraeteText}</p>
+          <p class="est-sub" style="margin:2px 0 0;">${
+            n ? (n === 1 ? "1 Gerät angemeldet" : n + " Geräte angemeldet") : "Noch kein Gerät angemeldet"}</p>
         </div>
       </div>
-      ${n > 1 ? `<p class="est-sub" style="margin:10px 0 0;">Mehr als ein Gerät ist normal (Handy und Büro-Rechner).
-        Steht hier ein Gerät, das nicht zu dieser Person passt, wurde der Zugang vermutlich weitergegeben –
-        ein neues Einmal-Passwort beendet alle fremden Anmeldungen.</p>` : ""}`;
+      ${zeilen}
+      ${n ? `<p class="est-sub" style="margin:10px 0 0;">
+        <b>„Abmelden" räumt nur auf</b> – für ein verkauftes Handy oder ein altes Notebook.
+        Wer auf dem Gerät noch angemeldet ist, taucht beim nächsten Öffnen wieder auf.</p>` : ""}
+      ${binOberAdmin && n ? `
+      <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+        <p style="margin:0 0 4px; font-weight:600;">Jemand soll wirklich raus?</p>
+        <p class="est-sub" style="margin:0 0 10px;">Ein neues Einmal-Passwort wirft ${sicher(name)} von
+          <b>allen</b> Geräten und verlangt eine neue Anmeldung. Das ist der Weg bei einem verlorenen
+          Handy oder einem weitergegebenen Zugang. Wirkt spätestens nach einer Stunde überall.</p>
+        <button class="btn" style="color:var(--danger);"
+          onclick="aktionPasswort('${maId}', null, '${sicher(name)}')">🚪 Von allen Geräten abmelden</button>
+      </div>` : ""}`;
+  }
+
+  // Ein einzelnes Geraet abmelden. Bewusst mit Rueckfrage: der Knopf steht
+  // direkt neben harmlosen Angaben, und ein Fehlgriff kostet den Betreffenden
+  // seine Benachrichtigungen, bis er die App das naechste Mal oeffnet.
+  async function geraetEntfernen(kennung, name) {
+    if (!confirm(`${name} abmelden?\n\nDas Gerät bekommt dann keine Benachrichtigungen mehr. Ist dort noch jemand angemeldet, taucht es beim nächsten Öffnen der App wieder auf.`)) return;
+    const erg = await ruf({ aktion: "geraet_entfernen", kennung });
+    if (erg.error) { showToast("Fehler: " + erg.error); return; }
+    showToast("Gerät abgemeldet");
+    // Nur die Zugangsdaten neu holen - der Rest der Seite muss dafuer nicht
+    // noch einmal geladen werden.
+    const liste = await ruf({ aktion: "liste" });
+    if (!liste.error) zugangsdaten = liste;
+    render();
   }
 
   // ---- Mitarbeiter-Aktionen ----------------------------------------------
