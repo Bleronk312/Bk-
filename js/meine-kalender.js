@@ -420,7 +420,11 @@ function oneKalMonatName(m) {
    eigenen Termine (siehe oneKalLaden) - vom Kalender der Kollegen ist nichts zu
    sehen. Kopiert wurde nur das Aussehen, nicht der Inhalt. */
 
-const ONE_KAL_MAX_BALKEN = 4; // mehr passt auf dem Handy nicht in eine Tageszelle
+// Gleiche Zahl wie im Büro-Kalender (maxChips). Die Balkenzeilen sind über den
+// ganzen Monat fest vergeben: eine mehrwöchige Tour oder ein Urlaub belegt seine
+// Zeile durchgehend, alles Spätere rückt darunter. Bei 4 landete deshalb selbst
+// ein einzelner Termin im stummen "+1", nur weil die unteren Zeilen belegt waren.
+const ONE_KAL_MAX_BALKEN = 6;
 
 // Beschriftung des Balkens. Beim Lager steht die UHRZEIT drin, nicht das Wort
 // "Lager": dass es ums Lager geht, sagt schon die Farbe (Legende) - wichtig ist
