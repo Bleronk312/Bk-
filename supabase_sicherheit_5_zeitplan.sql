@@ -33,8 +33,8 @@
 -- Erst nach Schritt 3 ist die Tür wirklich zu.
 --
 -- ⚠️  UNTEN DREI PLATZHALTER ERSETZEN, bevor du es ausführst:
---       DEIN-PROJEKT       -> deine Projekt-Kennung (steht in js/config.js)
---       DEIN-ANON-KEY      -> der öffentliche Schlüssel (steht dort ebenfalls)
+--       tjeheehmaefrqutbjmxn       -> deine Projekt-Kennung (steht in js/config.js)
+--       eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZWhlZWhtYWVmcnF1dGJqbXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNjI5NDcsImV4cCI6MjA5NzgzODk0N30.MqRoBOAI480n6nH4z_tF5aLPp8v8ZEa0Q-ekcNgw-bM      -> der öffentliche Schlüssel (steht dort ebenfalls)
 --       DEIN-CRON-GEHEIMNIS-> genau der Wert aus Schritt 2
 -- ============================================================================
 
@@ -71,10 +71,10 @@ select cron.schedule(
   '0 6 * * *',
   $$
   select net.http_post(
-    url := 'https://DEIN-PROJEKT.supabase.co/functions/v1/daily-reminders',
+    url := 'https://tjeheehmaefrqutbjmxn.supabase.co/functions/v1/daily-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer DEIN-ANON-KEY',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZWhlZWhtYWVmcnF1dGJqbXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNjI5NDcsImV4cCI6MjA5NzgzODk0N30.MqRoBOAI480n6nH4z_tF5aLPp8v8ZEa0Q-ekcNgw-bM',
       'x-geko-cron', 'DEIN-CRON-GEHEIMNIS'
     ),
     body := '{}'::jsonb
@@ -88,10 +88,10 @@ select cron.schedule(
   '*/5 * * * *',
   $$
   select net.http_post(
-    url := 'https://DEIN-PROJEKT.supabase.co/functions/v1/checkin-reminders',
+    url := 'https://tjeheehmaefrqutbjmxn.supabase.co/functions/v1/checkin-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer DEIN-ANON-KEY',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZWhlZWhtYWVmcnF1dGJqbXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNjI5NDcsImV4cCI6MjA5NzgzODk0N30.MqRoBOAI480n6nH4z_tF5aLPp8v8ZEa0Q-ekcNgw-bM',
       'x-geko-cron', 'DEIN-CRON-GEHEIMNIS'
     ),
     body := '{}'::jsonb
@@ -106,10 +106,10 @@ select cron.schedule(
   '5 * * * *',
   $$
   select net.http_post(
-    url := 'https://DEIN-PROJEKT.supabase.co/functions/v1/lager-erinnerung',
+    url := 'https://tjeheehmaefrqutbjmxn.supabase.co/functions/v1/lager-erinnerung',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer DEIN-ANON-KEY',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZWhlZWhtYWVmcnF1dGJqbXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNjI5NDcsImV4cCI6MjA5NzgzODk0N30.MqRoBOAI480n6nH4z_tF5aLPp8v8ZEa0Q-ekcNgw-bM',
       'x-geko-cron', 'DEIN-CRON-GEHEIMNIS'
     ),
     body := '{}'::jsonb
