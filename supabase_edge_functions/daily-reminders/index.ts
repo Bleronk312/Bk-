@@ -47,7 +47,35 @@ async function sendToRole(supabase, role, title, body, url) {
   );
 }
 
-Deno.serve(async (_req) => {
+// ---------------------------------------------------------------------------
+// Wer darf diese Function starten?
+// ---------------------------------------------------------------------------
+// Sie laeuft nach Zeitplan und verschickt Benachrichtigungen an die Belegschaft.
+// Supabase laesst aber JEDEN durch, der irgendeinen gueltigen Schluessel
+// mitschickt - und der anon-Schluessel steht oeffentlich in js/config.js. Ohne
+// die Pruefung hier koennte jeder die Handys aller Mitarbeiter im Sekundentakt
+// klingeln lassen. Kein Datenverlust, aber die App waere nach einem Tag
+// unbenutzbar, weil jeder die Benachrichtigungen abschaltet.
+//
+// Der Zeitplan schickt GEKO_CRON_SECRET im Kopf "x-geko-cron" mit.
+//
+// Bewusst nachsichtig, solange das Geheimnis NICHT gesetzt ist: dann laeuft
+// alles wie bisher. So laesst sich diese Fassung einspielen, ohne dass die
+// Erinnerungen in der Zwischenzeit ausfallen - erst wenn Geheimnis UND
+// Zeitplan stehen, ist die Tuer zu.
+function gekoCronErlaubt(req: Request): boolean {
+  const geheim = Deno.env.get("GEKO_CRON_SECRET");
+  if (!geheim) return true;                       // noch nicht eingerichtet
+  if (req.headers.get("x-geko-cron") === geheim) return true;
+  // Aufruf von Hand aus dem Dashboard: der Service-Schluessel gilt auch.
+  const kopf = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return !!kopf && kopf === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+}
+
+Deno.serve(async (req) => {
+  if (!gekoCronErlaubt(req)) {
+    return new Response(JSON.stringify({ error: "Nicht erlaubt." }), { status: 403 });
+  }
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const today = berlinDateString(new Date());

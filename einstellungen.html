@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=211" />
+<link rel="stylesheet" href="css/style.css?v=212" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=211"></script>
-  <script src="js/supabase-client.js?v=211"></script>
-  <script src="js/geko-auth.js?v=211"></script>
-  <script src="js/pdf-ansicht.js?v=211"></script>
-  <script src="js/push.js?v=211"></script>
-  <script defer src="js/pdf-fonts.js?v=211"></script>
-  <script defer src="js/glas-lager-pdf.js?v=211"></script>
+  <script src="js/config.js?v=212"></script>
+  <script src="js/supabase-client.js?v=212"></script>
+  <script src="js/geko-auth.js?v=212"></script>
+  <script src="js/pdf-ansicht.js?v=212"></script>
+  <script src="js/push.js?v=212"></script>
+  <script defer src="js/pdf-fonts.js?v=212"></script>
+  <script defer src="js/glas-lager-pdf.js?v=212"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -112,8 +112,17 @@
     setTimeout(() => t.classList.remove("show"), 2600);
   }
 
-  const sicher = (t) => String(t == null ? "" : t).replace(/[<>&"]/g,
-    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  const sicher = (t) => String(t == null ? "" : t).replace(/[<>&"']/g,
+    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // Text fuer ein onclick="..." - siehe gekoJsText in js/app-shared.js.
+  // escapeHtml/sicher reichen dort NICHT: der Browser loest &#39; im Attribut
+  // wieder zu einem echten Anfuehrungszeichen auf, BEVOR er das JavaScript
+  // uebersetzt. Ein Name mit ' koennte damit aus der Zeichenkette ausbrechen.
+  // Deshalb wird hier alles ausser Buchstaben, Ziffern und Leerzeichen als
+  // \uXXXX geschrieben.
+  const jsText = (t) => String(t == null ? "" : t).replace(/[^A-Za-z0-9 ]/g,
+    (z) => "\\u" + z.charCodeAt(0).toString(16).padStart(4, "0"));
 
   async function ruf(nutzlast, zweiterVersuch) {
     // gekoToken() erneuert das Token vorher, wenn es gleich ablaeuft.
@@ -385,9 +394,9 @@
         ${k.pw_muss_wechsel ? '<span class="est-marke m-gelb">Einmal-Passwort aktiv</span>' : ""}</p>
       <p class="est-sub" style="margin:0 0 12px;">Das Passwort setzt sich ${sicher(m.name)} beim ersten Anmelden selbst – es ist für niemanden einsehbar.</p>
       ${binOberAdmin ? `<div class="est-btns">
-        <button class="btn" onclick="aktionPasswort('${m.id}', null, '${sicher(m.name)}')">🔄 Einmal-Passwort</button>
-        <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${sicher(m.name)}')">Rolle ändern</button>
-        <button class="btn" ${k.login_aktiv === false ? "" : 'style="color:var(--danger);"'} onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${sicher(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>
+        <button class="btn" onclick="aktionPasswort('${m.id}', null, '${jsText(m.name)}')">🔄 Einmal-Passwort</button>
+        <button class="btn" onclick="aktionRolle('${m.id}', '${k.rolle}', '${jsText(m.name)}')">Rolle ändern</button>
+        <button class="btn" ${k.login_aktiv === false ? "" : 'style="color:var(--danger);"'} onclick="aktionSperre('${m.id}', null, ${k.login_aktiv === false}, '${jsText(m.name)}')">${k.login_aktiv === false ? "🔓 Entsperren" : "🔒 Sperren"}</button>
       </div>` : '<p class="est-sub" style="margin:0;">Passwörter und Sperren verwaltet der Ober-Admin.</p>'}`
       : `<p class="est-sub" style="margin:0 0 10px;">Noch kein Zugang – ohne Zugang kann sich ${sicher(m.name)} nirgends anmelden.</p>
          ${binOberAdmin ? `<button class="btn btn-primary" onclick="dlgAnlegen('${m.id}')">🔑 Zugang anlegen</button>`
@@ -496,8 +505,8 @@
           <div class="est-name">📄 ${sicher(lohnLabel(f.name))}</div>
         </div>
         <div class="est-btns">
-          <button class="btn" onclick="lohnOeffnen('${maId}', '${sicher(f.name)}')">Ansehen</button>
-          <button class="btn" style="color:var(--danger);" onclick="lohnLoeschen('${maId}', '${sicher(f.name)}')">Löschen</button>
+          <button class="btn" onclick="lohnOeffnen('${maId}', '${jsText(f.name)}')">Ansehen</button>
+          <button class="btn" style="color:var(--danger);" onclick="lohnLoeschen('${maId}', '${jsText(f.name)}')">Löschen</button>
         </div>
       </div>`).join("")
       : '<p class="est-sub" style="margin:0;">Noch keine Dokumente hochgeladen.</p>';
@@ -619,9 +628,9 @@
         ${(a.geraete_liste || []).length ? `<div class="est-sub" style="margin-top:2px;">📱 ${
           a.geraete_liste.map((g) => sicher(g.name || "Gerät noch unbekannt")).join(" · ")}</div>` : ""}
       </div><div class="est-btns">${(!binOberAdmin || a.user_id === meineSitzung?.user?.id) ? "" : `
-        <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${sicher(a.name || a.email)}')">🔄 Passwort</button>
-        <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${sicher(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
-        <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${sicher(a.name || a.email)}')">Löschen</button>`}</div></div>`;
+        <button class="btn" onclick="aktionPasswort(null, '${a.user_id}', '${jsText(a.name || a.email)}')">🔄 Passwort</button>
+        <button class="btn" onclick="aktionSperre(null, '${a.user_id}', ${!!a.gesperrt}, '${jsText(a.name || a.email)}')">${a.gesperrt ? "🔓 Entsperren" : "🔒 Sperren"}</button>
+        <button class="btn" style="color:var(--danger);" onclick="aktionLoeschen('${a.user_id}', '${jsText(a.name || a.email)}')">Löschen</button>`}</div></div>`;
     // Wie viele Konten haben insgesamt Verwaltungsrechte? Bewusst hier und
     // nicht als eigener Block: Es ist die Zahl, auf die es ankommt, wenn man
     // wissen will, ob sich jemand nach oben geschlichen hat. Mitgezählt werden
@@ -1006,7 +1015,7 @@
       <h3 style="margin:0 0 4px;">Zugangsdaten für ${sicher(name)}</h3>
       <p class="muted" style="margin:0; font-size:13px;"><b>Das Passwort siehst du nur jetzt.</b> Beim ersten Anmelden wird ein eigenes gesetzt.</p>
       <div class="est-zettel">Benutzername: <code>${sicher(benutzername)}</code><br>Passwort: <code>${sicher(passwort)}</code></div>
-      <button class="btn" style="width:100%; margin-top:12px;" onclick="navigator.clipboard.writeText('Benutzername: ${sicher(benutzername)}\\nPasswort: ${sicher(passwort)}').then(()=>showToast('Kopiert ✓')).catch(()=>showToast('Bitte abschreiben'))">Zum Kopieren</button>
+      <button class="btn" style="width:100%; margin-top:12px;" onclick="navigator.clipboard.writeText('Benutzername: ${jsText(benutzername)}\\nPasswort: ${jsText(passwort)}').then(()=>showToast('Kopiert ✓')).catch(()=>showToast('Bitte abschreiben'))">Zum Kopieren</button>
       <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="dlg.close(); allesLaden();">Fertig</button>`);
   }
 

@@ -1308,7 +1308,7 @@ function renderLagerPlan() {
   const auswahlHtml = leute.length ? leute.map((m) => {
     if (schon.has(m.id)) {
       return `
-        <button class="glas-lager-chip schon" onclick="showToast('${escapeHtml(m.name)} ist an diesem Tag schon eingeteilt')">
+        <button class="glas-lager-chip schon" onclick="showToast('${gekoJsText(m.name)} ist an diesem Tag schon eingeteilt')">
           <span class="glas-lager-avatar" style="background:${glasMaFarbe(m.id)};">${glasLagerInitialen(m.name)}</span>
           ${escapeHtml(m.name)}
         </button>`;
@@ -3823,7 +3823,7 @@ function renderSammelBereich() {
     proKunde.get(k).anzahl++;
   });
   const kundenChips = [...proKunde.entries()].filter(([, v]) => v.anzahl > 1)
-    .map(([k, v]) => `<button class="btn btn-sm" onclick="glasSammelKunde('${escapeHtml(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} (${v.anzahl})</button>`).join("");
+    .map(([k, v]) => `<button class="btn btn-sm" onclick="glasSammelKunde('${gekoJsText(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} (${v.anzahl})</button>`).join("");
 
   return `
     <div class="card glas-sammel-box">

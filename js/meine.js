@@ -510,7 +510,7 @@ function renderOneLohn() {
     </div>`;
   }
   return oneLohnListe.map((f) => `
-    <button class="one-menu-row" onclick="oneLohnOeffnen('${escapeHtml(f.name)}')">
+    <button class="one-menu-row" onclick="oneLohnOeffnen('${gekoJsText(f.name)}')">
       <span style="font-size:20px;">📄</span>
       <span style="flex:1; text-align:left;"><b>${escapeHtml(oneLohnLabel(f.name))}</b>
         <span class="muted" style="display:block; font-size:12px;">PDF ansehen</span></span>

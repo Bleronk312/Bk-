@@ -743,7 +743,7 @@ function renderGlasSammelKopf(t) {
     proKunde.get(k).n++;
   });
   const chips = [...proKunde.entries()].filter(([, v]) => v.n > 1)
-    .map(([k, v]) => `<button class="gsm-sammel-chip" onclick="glasSammelKunde('${escapeHtml(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} · ${v.n}</button>`).join("");
+    .map(([k, v]) => `<button class="gsm-sammel-chip" onclick="glasSammelKunde('${gekoJsText(k).replace(/'/g, "&#39;")}')">${escapeHtml(v.label)} · ${v.n}</button>`).join("");
   return `
     <div class="gsm-sammel-kopf">
       <div class="gsk-z1">

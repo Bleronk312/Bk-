@@ -120,6 +120,28 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// Text, der in ein onclick="..." hinein soll - also in JavaScript, das in einem
+// HTML-Attribut steht.
+//
+// WARUM NICHT escapeHtml: Das reicht hier NICHT, und zwar aus einem Grund, den
+// man leicht übersieht. escapeHtml macht aus ' ein &#39;. Der Browser löst
+// Zeichen-Kürzel im Attribut aber AUF, BEVOR er den Inhalt als JavaScript
+// übersetzt. Aus &#39; wird also wieder ein echtes ' - und damit kann ein Name
+// wie
+//     x',alert(document.cookie),'
+// aus der Zeichenkette ausbrechen und eigenen Code ausführen. Im Browser
+// nachgestellt und bestätigt, nicht vermutet.
+//
+// Deshalb hier der harte Weg: alles außer Buchstaben, Ziffern und Leerzeichen
+// wird als \uXXXX geschrieben. Danach steht im Attribut nur noch Harmloses -
+// kein Anführungszeichen, kein spitzes Zeichen, kein &, das sich zurück-
+// verwandeln könnte. JavaScript setzt die Zeichen beim Ausführen selbst wieder
+// zusammen, der Text kommt also unverändert an.
+function gekoJsText(wert) {
+  return String(wert == null ? "" : wert).replace(/[^A-Za-z0-9 ]/g, (z) =>
+    "\\u" + z.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
 function firstLine(text) {
   return (text || "").split("\n")[0];
 }
