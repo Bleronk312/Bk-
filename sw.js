@@ -12,17 +12,23 @@
 // Wichtig: Supabase-Anfragen (Daten) werden NIE aus dem Cache bedient, die gehen
 // immer direkt ins Netz. Offline-Daten regelt die App selbst (Touren-Zwischenspeicher
 // und Unterschriften-Warteschlange).
-const GEKO_CACHE = "geko-cache-v201";
+const GEKO_CACHE = "geko-cache-v202";
 
 // Beim Installieren die Kern-Dateien schon mal einsammeln (Fehler einzelner Dateien
 // dürfen die Installation nicht abbrechen -> allSettled statt addAll).
 const GEKO_CORE = [
+  // index.html und meine.html fehlten hier - ausgerechnet der Eingang und die
+  // Startseite jedes Mitarbeiters. Ueber den Fetch-Horcher landeten sie zwar
+  // beim ersten Besuch im Speicher, aber genau der erste Besuch ist der, bei
+  // dem jemand im Objekt ohne Empfang steht.
+  "index.html", "meine.html",
   "hub.html", "einstellungen.html", "glas-admin.html", "kalender.html", "glas-mitarbeiter.html", "admin.html", "mitarbeiter.html", "schein.html",
   "checkins-admin.html", "checkins-ma.html", "diagnose.html",
   "manifest.json", "manifest-hub.json", "manifest-glas.json", "manifest-kalender.json",
   "manifest-meine.json", "manifest-glas-ma.json", "manifest-checkins.json", "manifest-checkins-ma.json",
   "css/style.css", "css/checkins.css",
   "js/config.js", "js/fehler.js", "js/logo-asset.js", "js/pull-refresh.js", "js/supabase-client.js", "js/app-shared.js",
+  "js/geko-auth.js", "js/meine.js", "js/meine-kalender.js",
   "js/pdf-seiten.js", "js/glas-shared.js", "js/pdf-fonts.js", "js/pdf-template.js", "js/glas-logo-sub.js", "js/glas-pdf-template.js", "js/glas-lager-pdf.js",
   "js/push.js", "js/pdf-ansicht.js", "js/glas-admin.js", "js/glas-mitarbeiter.js", "js/admin.js", "js/mitarbeiter.js", "js/ma-i18n.js", "js/schein.js",
   "js/checkins-shared.js", "js/checkins-admin.js", "js/checkins-ma.js",
@@ -139,16 +145,17 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch (e) {
-    data = { title: "GEKO Abnahmescheine", body: event.data ? event.data.text() : "" };
+    data = { title: "GEKO Clean", body: event.data ? event.data.text() : "" };
   }
 
-  const title = data.title || "GEKO Abnahmescheine";
+  const title = data.title || "GEKO Clean";
   const options = {
     body: data.body || "",
     icon: "/icons/icon-192.png",
-    // Ohne Ziel-URL IMMER auf die Mitarbeiter-Seite - "/" würde zu admin.html
-    // weiterleiten und Mitarbeiter in die Admin-Ansicht lassen
-    data: { url: data.url || "/mitarbeiter.html" },
+    // Ohne Ziel-URL nach GEKO One: das ist die Startseite JEDES Mitarbeiters,
+    // egal aus welcher Abteilung. Vorher ging es hier in die Graffiti-App -
+    // ein Glasreiniger landete also bei den Abnahmescheinen.
+    data: { url: data.url || "/meine.html" },
   };
 
   event.waitUntil(
@@ -160,7 +167,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/mitarbeiter.html";
+  const url = (event.notification.data && event.notification.data.url) || "/meine.html";
   event.waitUntil(
     clients.matchAll({ type: "window" }).then((clientList) => {
       for (const client of clientList) {
