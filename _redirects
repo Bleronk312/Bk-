@@ -14,11 +14,19 @@
 # Verwaltung: der Hub mit allen Abteilungen.
 /admin      /hub.html       200!
 
-# Bewusst KEINE eigene Kurz-Adresse fuer die einzelnen Abteilungen (Graffiti,
-# Glas, Lager, Check-ins). Es gibt genau zwei Eingaenge - GEKO One fuer die
-# Mitarbeiter, den Hub fuer die Verwaltung -, alles andere ist ein Baustein
-# dahinter. Jeder zusaetzliche Einstieg bedeutet nur, dass jemand irgendwo
-# landet, wo er nicht hinwollte.
+# Bewusst KEINE eigene Kurz-Adresse fuer die Abteilungen (Graffiti, Glas,
+# Lager, Check-ins). Die sind Bausteine hinter dem Hub. Jeder zusaetzliche
+# Einstieg bedeutet nur, dass jemand irgendwo landet, wo er nicht hinwollte.
+#
+# Der Kalender ist die Ausnahme, und zwar aus einem praktischen Grund: Er
+# liegt als eigene App auf dem Home-Bildschirm, weil man mehrmals taeglich
+# hineinschaut. Wer eine App installiert, braucht eine Adresse dafuer.
+
+# Der Kalender der Verwaltung. Eigene Kurz-Adresse, weil er als eigene App
+# auf dem Home-Bildschirm liegt - und dann muss die Adresse, von der man
+# installiert, dieselbe sein, die im Manifest steht. Sonst behaelt iOS die
+# Safari-Leiste im App-Fenster.
+/kalender   /kalender.html  200!
 
 # Installations-Anleitung fuers Handy (Schritt fuer Schritt, mit Bildern).
 # Das ist der Link fuer alle, die zum ersten Mal dabei sind.
