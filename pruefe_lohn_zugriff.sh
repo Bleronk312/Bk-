@@ -41,6 +41,24 @@ read -r -s -p "Dessen Passwort: " PASS; echo
 read -r -p "Mitarbeiter-Nummer eines KOLLEGEN (fremder Ordner): " FREMD
 echo
 
+# Plausibilitaet: Mitarbeiter-Nummern sind sechsstellige Codes wie "SR9HF3".
+# Wer hier etwas anderes eintippt, prueft einen Ordner, den es gar nicht gibt -
+# und ein nicht existierender Ordner ist natuerlich leer. Das saehe nach einem
+# bestandenen Test aus und waere keiner.
+if ! echo "$FREMD" | grep -qE '^[A-Za-z0-9]{5,10}$'; then
+  echo "⚠️  ACHTUNG: \"$FREMD\" sieht nicht nach einer Mitarbeiter-Nummer aus."
+  echo "   Die sehen aus wie SR9HF3 - sechs Zeichen, Buchstaben und Ziffern."
+  echo "   Mit einer erfundenen Nummer sind die Tests 4 und 5 WERTLOS:"
+  echo "   ein Ordner, den es nicht gibt, ist immer leer."
+  echo
+  echo "   Die echten Nummern bekommst du im SQL-Editor mit:"
+  echo "       select id, name from glas_mitarbeiter order by name;"
+  echo
+  read -r -p "   Trotzdem weitermachen? (j/n) " WEITER
+  [ "$WEITER" = "j" ] || exit 1
+  echo
+fi
+
 case "$NUTZER" in
   *@*) MAIL="$NUTZER" ;;
   *)   MAIL="${NUTZER}@ma.gekoclean.de" ;;
@@ -122,6 +140,11 @@ echo
 
 echo "============================================================"
 echo " Erwartet: Test 1, 4 und 5 abgewiesen, Test 3 zeigt die"
-echo " eigenen Dateien. Dann kommt kein Mitarbeiter an fremde"
-echo " Lohnabrechnungen."
+echo " eigenen Dateien."
+echo
+echo " WICHTIG fuer die Aussagekraft: Test 4 zaehlt nur, wenn im"
+echo " Ordner des Kollegen wirklich ein Dokument liegt. Sonst"
+echo " haben wir bewiesen, dass ein leerer Ordner leer ist."
+echo " Also vorher bei einem Mitarbeiter ein PDF hochladen und"
+echo " DESSEN Nummer hier angeben."
 echo "============================================================"
