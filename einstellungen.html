@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#1f5d92" />
 <title>GEKO · Einstellungen</title>
 <link rel="manifest" href="manifest-hub.json" />
-<link rel="stylesheet" href="css/style.css?v=216" />
+<link rel="stylesheet" href="css/style.css?v=217" />
 <script>if(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches))document.documentElement.classList.add("app-mode");</script>
 <script>(function(){try{var mq=window.matchMedia("(prefers-color-scheme: dark)");function ap(){var m=localStorage.getItem("geko_theme")||"auto";document.documentElement.classList.toggle("dark",m==="dark"||(m==="auto"&&mq.matches));}ap();if(mq.addEventListener)mq.addEventListener("change",ap);}catch(e){}})();</script>
 <style>
@@ -76,13 +76,13 @@
 
   <script src="vendor/lib/supabase-js@2.min.js"></script>
   <script defer src="vendor/lib/jspdf.umd.min.js"></script>
-  <script src="js/config.js?v=216"></script>
-  <script src="js/supabase-client.js?v=216"></script>
-  <script src="js/geko-auth.js?v=216"></script>
-  <script src="js/pdf-ansicht.js?v=216"></script>
-  <script src="js/push.js?v=216"></script>
-  <script defer src="js/pdf-fonts.js?v=216"></script>
-  <script defer src="js/glas-lager-pdf.js?v=216"></script>
+  <script src="js/config.js?v=217"></script>
+  <script src="js/supabase-client.js?v=217"></script>
+  <script src="js/geko-auth.js?v=217"></script>
+  <script src="js/pdf-ansicht.js?v=217"></script>
+  <script src="js/push.js?v=217"></script>
+  <script defer src="js/pdf-fonts.js?v=217"></script>
+  <script defer src="js/glas-lager-pdf.js?v=217"></script>
   <script>
   // ==========================================================================
   // GEKO · Zentrale Einstellungen (nur Verwaltung)
@@ -361,7 +361,10 @@
   function maDetailOeffnen(id) {
     detailMa = id; pdfMonat = "";
     render(); window.scrollTo(0, 0);
-    if (binOberAdmin) lohnListeLaden(id);
+    // Dokumente darf die ganze Verwaltung - diese Seite ist ohnehin nur fuer
+    // Admins erreichbar. Passwoerter, Konten und Sperren bleiben davon
+    // unberuehrt beim Ober-Admin.
+    lohnListeLaden(id);
   }
   function maDetailSchliessen() { detailMa = null; render(); }
 
@@ -434,14 +437,13 @@
 
       <p class="est-sec-title">Dokumente</p>
       <div class="card">
-        ${binOberAdmin ? `
         <p class="est-sub" style="margin:0 0 10px;">Lohnabrechnung, Vertrag, Info – nur ${sicher(m.name)} sieht sie in GEKO One. Die Überschrift erscheint als Benachrichtigung auf seinem Handy.</p>
         <div class="field" style="margin:0 0 8px;"><label class="muted">Überschrift</label>
           <input id="dokTitel" maxlength="80" placeholder="z.B. Lohnabrechnung August 2026" /></div>
         <input type="file" id="lohnDatei" accept="application/pdf" style="display:none;" onchange="lohnHochladen('${m.id}')" />
         <button class="btn btn-primary" id="lohnKnopf" onclick="dokWaehlen()">📄 PDF wählen &amp; hochladen</button>
-        <div id="lohnListe" style="margin-top:10px;"><p class="est-sub" style="margin:0;">Lade …</p></div>`
-        : '<p class="est-sub" style="margin:0;">Dokumente verwaltet der Ober-Admin.</p>'}
+        <div id="lohnListe" style="margin-top:10px;"><p class="est-sub" style="margin:0;">Lade …</p></div>
+        <p class="est-sub" style="margin:10px 0 0;">Sichtbar für die gesamte Verwaltung – Lohnabrechnungen eingeschlossen.</p>
       </div>
 
       <p class="est-sec-title">Stammdaten</p>

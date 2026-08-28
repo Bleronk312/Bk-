@@ -18,6 +18,12 @@
 #     select id, name from glas_mitarbeiter order by name;
 #
 # Es wird nichts verändert. Nur gelesen - beziehungsweise versucht.
+#
+# HINWEIS seit v217: Dokumente darf jetzt die gesamte Verwaltung hochladen und
+# ansehen, nicht mehr nur der Ober-Admin. An DIESEM Test ändert das nichts - er
+# prüft die Mitarbeiter-Seite, und die ist unverändert: jeder sieht nur seinen
+# eigenen Ordner. Genau deshalb lohnt es sich, den Test nach der Umstellung
+# noch einmal laufen zu lassen.
 # ============================================================================
 
 set -u
