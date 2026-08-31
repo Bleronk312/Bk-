@@ -68,6 +68,7 @@ function renderGlasStopMenu(s) {
   if (isDone) {
     actions =
       it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; downloadGlasPdfAdmin('${s.id}')">📄 PDF öffnen</button>`) +
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; openGlasNachtrag('${s.id}')">✏️ Positionen korrigieren</button>`) +
       it(`<button class="glas-stopmenu-btn danger" onclick="glasStopMenuOpenId=null; deleteGlasSignatur('${s.id}')">${(!s.unterschrift && s.manuell_erledigt_am) ? "↩️ Markierung zurücknehmen" : "🗑️ Unterschrift löschen"}</button>`);
   } else if (isNg) {
     actions = it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; revertGlasNg('${s.id}')">↩️ Doch offen / zurücknehmen</button>`);
@@ -818,6 +819,7 @@ function renderGlasAdmin() {
   if (glasObjektEditing && document.getElementById("o_name")) syncObjektFormFromDom();
   if (glasKundeEditing && document.getElementById("k_name")) syncKundeFormFromDom();
   if (glasShowNewTourForm && !glasTourDetailId && document.getElementById("t_name")) syncNewTourFormFromDom();
+  if (glasNachtragData && document.getElementById("nt_pos_qm_0")) syncNachtragFromDom();
 
   const view = document.getElementById("view");
 
@@ -942,7 +944,7 @@ function glasUpdateTabContent() {
 
   const isHome = glasPage.type === "home";
   const tab = isHome ? "" : glasPage.tab;
-  const html = glasGlobalSearch.trim() ? renderGlobalSearchResults()
+  const html = (glasGlobalSearch.trim() ? renderGlobalSearchResults()
     : isHome ? renderGlasHome()
     : tab === "kunden" ? renderKundenTab()
     : tab === "faellig" ? renderFaelligTab()
@@ -950,7 +952,10 @@ function glasUpdateTabContent() {
     : tab === "scheine" ? renderScheineTab()
     : tab === "einstellungen" ? renderEinstellungenTab()
     : tab === "mehr" ? renderMehrTab()
-    : renderTourenTab();
+    : renderTourenTab())
+    // Positionen-Korrektur haengt am Reiter-Inhalt, damit glasPortalModals() sie findet -
+    // sie ist aus der Tour-Ansicht UND aus dem Abnahmescheine-Reiter erreichbar.
+    + (glasNachtragData ? renderGlasNachtragModal() : "");
 
   const anwenden = () => {
     content.innerHTML = html;
@@ -4768,7 +4773,14 @@ async function editEinzelschein(tourId) {
   glasBusy = false;
   const stop = (data || [])[0];
   if (!stop) { showToast("Kein Stopp zu diesem Schein gefunden"); renderGlasAdmin(); return; }
-  if (stop.status === "erledigt") { showToast("Bereits unterschrieben – kann nicht mehr bearbeitet werden"); renderGlasAdmin(); return; }
+  // Nach der Unterschrift duerfen Kunde/Objekt/Datum/Vorlage nicht mehr wandern - der
+  // Kunde hat genau diesen Kopf abgezeichnet. Positionen korrigiert man ueber
+  // openGlasNachtrag (✏️ am Schein bzw. im ⋯-Menue des Stopps).
+  if (stop.status === "erledigt") {
+    showToast("Bereits unterschrieben – Positionen änderst du über ✏️ am Schein");
+    openGlasNachtrag(stop.id);
+    return;
+  }
 
   const positionen = glasStopPositionen(stop).map((p) => ({
     id: p.id || null, nr: p.nr || "", art: p.art || "", einheit: p.einheit || "", qm: p.qm != null ? String(p.qm) : "",
@@ -4808,6 +4820,208 @@ async function editEinzelschein(tourId) {
 function closeGlasEinzelschein() {
   glasShowEinzelschein = false;
   glasEinzelscheinData = null;
+  renderGlasAdmin();
+}
+
+/* ========================================================================
+   Positionen NACHTRAEGLICH korrigieren - auch bei bereits unterschriebenen
+   Scheinen.
+
+   Warum eigen und nicht ueber "Schein bearbeiten": das Einzelschein-Formular
+   aendert auch Kunde, Objekt, Datum und Vorlage. Nach einer Unterschrift darf
+   sich davon NICHTS mehr bewegen - der Kunde hat genau diesen Kopf abgezeichnet.
+   Was sich in der Praxis als Tippfehler herausstellt, sind die Positionen (falsche
+   qm, falsche Leistung, eine vergessene Zeile). Genau die - und nur die - lassen
+   sich hier korrigieren. Unterschrift, Unterzeichner, Datum und Uhrzeit bleiben
+   unangetastet, das PDF wird beim naechsten Oeffnen neu aus dem Datensatz gebaut.
+   ======================================================================== */
+
+let glasNachtragData = null; // null | { stop_id, objekt, unterschrieben, positionen: [...] }
+
+function glasNachtragLeerePos() {
+  return { id: null, nr: "", art: "", einheit: "", qm: "", pos_text: "", custom: false };
+}
+
+// Sucht den Stopp in den bereits geladenen Listen (Tour-Detail ODER Abnahmescheine-
+// Reiter) und holt ihn nur zur Not aus der Datenbank nach.
+async function openGlasNachtrag(stopId) {
+  let stop = (glasTourDetailStops || []).find((x) => x.id === stopId)
+    || (glasScheineDaten || []).find((x) => x.id === stopId);
+  if (!stop) {
+    glasBusy = true; renderGlasAdmin();
+    const { data } = await sb.from("glas_stopps").select("*").eq("id", stopId).maybeSingle();
+    glasBusy = false;
+    stop = data;
+  }
+  if (!stop) { showToast("Schein nicht gefunden"); renderGlasAdmin(); return; }
+
+  const positionen = glasStopPositionen(stop).map((p) => ({
+    id: p.id || null,
+    nr: p.nr || "",
+    art: p.art || "",
+    einheit: p.einheit || "",
+    qm: p.qm != null ? String(p.qm) : "",
+    pos_text: p.pos_text || "",
+    custom: !!p.art && !glasPositionen.some((sp) => sp.name === p.art),
+  }));
+  glasNachtragData = {
+    stop_id: stopId,
+    objekt: stop.objekt || "",
+    // Der Abnahmescheine-Reiter laedt "status" gar nicht mit - dort ist ohnehin alles
+    // unterschrieben, deshalb zaehlt auch eine vorhandene Unterschrift/Markierung.
+    unterschrieben: stop.status === "erledigt" || !!(stop.signed_at || stop.manuell_erledigt_am),
+    positionen: positionen.length ? positionen : [glasNachtragLeerePos()],
+  };
+  renderGlasAdmin();
+}
+
+function closeGlasNachtrag() {
+  glasNachtragData = null;
+  renderGlasAdmin();
+}
+
+function renderGlasNachtragModal() {
+  const d = glasNachtragData;
+  if (!d) return "";
+  const zeilen = d.positionen
+    .map((pos, i) => `
+      <div class="card glas-pos-row" style="padding:14px 40px 14px 14px; margin-bottom:10px; background:var(--bg);">
+        ${d.positionen.length > 1 ? `<button type="button" class="glas-pos-remove" title="Position entfernen" onclick="removeNtPositionRow(${i})">✕</button>` : ""}
+        <div class="row" style="align-items:flex-end; margin-bottom:8px;">
+          <div class="field" style="flex:2; margin-bottom:0;">
+            <label class="muted">Position</label>
+            <select id="nt_pos_art_${i}" onchange="onNtPositionArtChange(${i})">${glasPositionSelectOptions(pos)}</select>
+          </div>
+          <div class="field" style="flex:1; margin-bottom:0;">
+            <label class="muted">${glasIstStundenPos(pos) ? "Stunden" : "QM"}</label>
+            <input type="text" id="nt_pos_qm_${i}" value="${escapeHtml(pos.qm)}" inputmode="decimal" />
+          </div>
+        </div>
+        ${pos.custom ? `
+        <div class="row" style="align-items:flex-end; margin-bottom:8px;">
+          <div class="field" style="flex:0 0 70px; margin-bottom:0;">
+            <label class="muted">Nr.</label>
+            <input type="text" id="nt_pos_custom_nr_${i}" value="${escapeHtml(pos.nr)}" placeholder="–" />
+          </div>
+          <div class="field" style="flex:2; margin-bottom:0;">
+            <label class="muted">Bezeichnung</label>
+            <input type="text" id="nt_pos_custom_art_${i}" value="${escapeHtml(pos.art)}" placeholder="z.B. Sonderreinigung Fassade" />
+          </div>
+          <div class="field" style="flex:0 0 110px; margin-bottom:0;">
+            <label class="muted">Einheit</label>
+            <select id="nt_pos_einheit_${i}" onchange="onNtPositionEinheitChange(${i})">
+              <option value="qm" ${glasIstStundenPos(pos) ? "" : "selected"}>QM</option>
+              <option value="std" ${glasIstStundenPos(pos) ? "selected" : ""}>Stunden</option>
+            </select>
+          </div>
+        </div>` : ""}
+        <div class="field" style="margin-bottom:0;">
+          <label class="muted">Text unter der Position (optional, erscheint so auf dem Schein)</label>
+          <textarea id="nt_pos_text_${i}" rows="2">${escapeHtml(pos.pos_text || "")}</textarea>
+        </div>
+      </div>`)
+    .join("");
+
+  return `
+    <div class="modal-overlay" onclick="if(event.target===this) closeGlasNachtrag();">
+      <div class="modal-box glas-screen-in" style="max-width:520px; max-height:88vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <p style="margin:0; font-weight:700; font-size:16px;">Positionen korrigieren</p>
+          <button class="btn btn-sm" onclick="closeGlasNachtrag()">✕</button>
+        </div>
+        <p class="muted" style="margin:0 0 10px; font-size:12.5px;">
+          ${escapeHtml(d.objekt || "Schein")}${d.unterschrieben ? ` · <b>bereits unterschrieben</b>` : ""}
+        </p>
+        ${d.unterschrieben ? `<div class="glas-hinweis-box" style="margin:0 0 12px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">Unterschrift, Unterzeichner und Datum bleiben unverändert – nur die Positionen werden korrigiert. Das PDF wird danach neu erzeugt.</p></div></div>` : ""}
+        ${zeilen}
+        <button class="btn btn-sm" style="margin:4px 0 4px;" onclick="addNtPositionRow()">+ Position hinzufügen</button>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="saveGlasNachtrag()" ${glasBusy ? "disabled" : ""}>
+          ${glasBusy ? `<span class="spinner"></span> Wird gespeichert...` : "Änderungen speichern"}
+        </button>
+      </div>
+    </div>`;
+}
+
+// Eingetippte Werte vor jedem Neuaufbau sichern (wie syncEsFromDom beim Einzelschein).
+function syncNachtragFromDom() {
+  const d = glasNachtragData;
+  if (!d) return;
+  d.positionen = d.positionen.map((pos, i) => ({
+    ...pos,
+    nr: pos.custom ? (document.getElementById(`nt_pos_custom_nr_${i}`)?.value.trim() ?? pos.nr) : pos.nr,
+    art: pos.custom ? (document.getElementById(`nt_pos_custom_art_${i}`)?.value.trim() ?? pos.art) : pos.art,
+    einheit: pos.custom ? (document.getElementById(`nt_pos_einheit_${i}`)?.value ?? pos.einheit ?? "") : (pos.einheit || ""),
+    qm: document.getElementById(`nt_pos_qm_${i}`)?.value.trim() ?? pos.qm,
+    pos_text: document.getElementById(`nt_pos_text_${i}`)?.value ?? pos.pos_text,
+  }));
+}
+
+function onNtPositionArtChange(i) {
+  syncNachtragFromDom();
+  const select = document.getElementById(`nt_pos_art_${i}`);
+  const pos = glasNachtragData.positionen[i];
+  const val = select.value;
+  if (val === GLAS_CUSTOM_POS) {
+    pos.custom = true;
+    pos.art = "";
+    pos.nr = "";
+    if (!pos.einheit) pos.einheit = "qm";
+  } else {
+    pos.custom = false;
+    pos.art = val;
+    pos.nr = select.options[select.selectedIndex]?.getAttribute("data-nr") || pos.nr;
+    pos.einheit = "";
+  }
+  // Andere Leistung -> nicht mehr die urspruengliche Objekt-Position. Die Verknuepfung
+  // faellt weg, damit eine spaetere Faelligkeits-Berechnung nicht die falsche Position trifft.
+  pos.id = null;
+  renderGlasAdmin();
+}
+
+function onNtPositionEinheitChange(i) {
+  syncNachtragFromDom();
+  renderGlasAdmin();
+}
+
+function addNtPositionRow() {
+  syncNachtragFromDom();
+  glasNachtragData.positionen.push(glasNachtragLeerePos());
+  renderGlasAdmin();
+}
+
+function removeNtPositionRow(i) {
+  syncNachtragFromDom();
+  glasNachtragData.positionen.splice(i, 1);
+  if (!glasNachtragData.positionen.length) glasNachtragData.positionen.push(glasNachtragLeerePos());
+  renderGlasAdmin();
+}
+
+async function saveGlasNachtrag() {
+  if (glasBusy || !glasNachtragData) return;
+  syncNachtragFromDom();
+  const d = glasNachtragData;
+  const positionen = d.positionen
+    .filter((p) => (p.art || "").trim() || String(p.qm || "").trim())
+    .map((p) => ({
+      id: p.id || null, nr: p.nr, art: p.art, einheit: p.einheit || "",
+      qm: p.qm, pos_text: (p.pos_text || "").trim(),
+    }));
+  if (!positionen.length) { showToast("Mindestens eine Position mit Bezeichnung oder Menge"); return; }
+
+  const neu = JSON.stringify(positionen);
+  glasBusy = true; renderGlasAdmin();
+  const { error } = await sb.from("glas_stopps").update({ positionen: neu }).eq("id", d.stop_id);
+  glasBusy = false;
+  if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
+
+  // Alle Zwischenspeicher nachziehen, damit Liste, qm-Anzeige und PDF sofort stimmen
+  // (das PDF wird bei jedem Oeffnen frisch aus diesen Daten gebaut).
+  [glasTourDetailStops, glasScheineDaten, glasStatistikDaten].forEach((liste) => {
+    const treffer = (liste || []).find((x) => x && x.id === d.stop_id);
+    if (treffer) treffer.positionen = neu;
+  });
+  glasNachtragData = null;
+  showToast("Positionen korrigiert ✓");
   renderGlasAdmin();
 }
 
@@ -7299,6 +7513,7 @@ function glasScheinZeile(s, showDate = true) {
           ${titel}
           <p class="glas-schein-s">${sub}</p>
         </div>
+        <button class="glas-schein-dl" title="Positionen korrigieren" onclick="openGlasNachtrag('${s.id}')">✏️</button>
         <button class="glas-schein-dl" title="PDF herunterladen" onclick="downloadGlasScheinPdf('${s.id}')">⬇</button>
       </div>`;
 }
