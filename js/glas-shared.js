@@ -352,6 +352,20 @@ async function glasSignStop(stopId, positionenJson, name, datum, unterschrift, z
   }
   if (error) return { error };
 
+  // "Zuletzt gereinigt" auf den Positionen des Scheins weiterstellen - erst dadurch
+  // wandert die Fälligkeit weiter.
+  //
+  // ACHTUNG, hier liegt eine Falle: Ein Mitarbeiter darf diese Zeilen zwar ÄNDERN,
+  // aber nicht LESEN (kein select-Recht auf glas_objekt_positionen). Das "in(id)"
+  // unten muss die Zeilen aber erst finden - und Suchen ist Lesen. Ergebnis: für
+  // Mitarbeiter trifft dieses Update 0 Zeilen, und zwar OHNE Fehlermeldung.
+  // Genau daran sind ab der RLS-Umstellung alle Fälligkeiten stehengeblieben.
+  //
+  // Die verlässliche Nachführung macht deshalb die Datenbank selbst: der Trigger
+  // geko_reinigung_nachfuehren auf glas_stopps (supabase_fix_faelligkeit_rls.sql)
+  // greift im selben Vorgang wie die Unterschrift - egal wer unterschreibt.
+  // Der Aufruf hier bleibt nur als Sofort-Wirkung für die Verwaltung stehen; er
+  // schreibt exakt dieselben Werte und darf ruhig ins Leere laufen.
   try {
     const positionen = JSON.parse(positionenJson || "[]");
     const ids = positionen.map((p) => p.id).filter(Boolean);

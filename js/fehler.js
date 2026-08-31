@@ -129,8 +129,16 @@ async function gekoFehlerSenden() {
       geraet: f.geraet, meldung: f.meldung, quelle: f.quelle, stack: f.stack,
       online: f.online, anzahl: f.anzahl,
     }));
-    const { error } = await sb.from("app_fehler").upsert(rows);
-    if (!error) {
+    // Bewusst insert und NICHT upsert: ein "on conflict"-Zugriff verlangt Leserecht
+    // auf die Tabelle, und das hat ein Mitarbeiter nicht (Fehlerprotokolle sind
+    // Verwaltungssache). Mit upsert kam von jedem Mitarbeiter-Gerät nur eine
+    // Ablehnung zurück - der Flugschreiber war also genau dort blind, wo man am
+    // wenigsten hinschauen kann. Die Kennung wird pro Vorfall neu gewürfelt, ein
+    // Zusammenstoß ist praktisch ausgeschlossen; kommt er doch vor (erneuter
+    // Sendeversuch einer schon angekommenen Zeile), ist die Zeile ja bereits da -
+    // Fehlercode 23505 zählt deshalb als erledigt.
+    const { error } = await sb.from("app_fehler").insert(rows);
+    if (!error || error.code === "23505") {
       offen.forEach((f) => { const t = liste.find((x) => x.id === f.id); if (t) t.gesendet = true; });
       gekoFehlerSpeichern(liste);
     }
