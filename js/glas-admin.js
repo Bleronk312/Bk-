@@ -4867,6 +4867,9 @@ async function openGlasNachtrag(stopId) {
   glasNachtragData = {
     stop_id: stopId,
     objekt: stop.objekt || "",
+    // Welche Objekt-Positionen standen VOR der Korrektur auf dem Schein? Wird beim
+    // Speichern gebraucht: faellt eine davon weg, muss ihre Faelligkeit zurueck.
+    ids_vorher: positionen.map((p) => p.id).filter(Boolean),
     // Der Abnahmescheine-Reiter laedt "status" gar nicht mit - dort ist ohnehin alles
     // unterschrieben, deshalb zaehlt auch eine vorhandene Unterschrift/Markierung.
     unterschrieben: stop.status === "erledigt" || !!(stop.signed_at || stop.manuell_erledigt_am),
@@ -5011,8 +5014,32 @@ async function saveGlasNachtrag() {
   const neu = JSON.stringify(positionen);
   glasBusy = true; renderGlasAdmin();
   const { error } = await sb.from("glas_stopps").update({ positionen: neu }).eq("id", d.stop_id);
+  if (error) { glasBusy = false; showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
+
+  // Faelligkeiten nachziehen. Wichtig bei einem UNTERSCHRIEBENEN Schein: wurde eine
+  // Position gegen eine andere getauscht, gilt sonst weiter die falsche als gereinigt
+  // und die richtige wird nie wieder faellig. Deshalb fuer alle betroffenen
+  // Positionen - die weggefallenen UND die neuen - "zuletzt gereinigt" komplett neu
+  // aus dem Verlauf rechnen (dieselbe Rechnung wie beim Loeschen einer Unterschrift,
+  // damit beide Wege nie auseinanderlaufen).
+  // Angefasst werden NUR Positionen, die wirklich dazugekommen oder weggefallen sind.
+  // Eine reine Zahlen- oder Text-Korrektur laesst die Faelligkeiten voellig in Ruhe -
+  // sonst koennte ein Tippfehler-Fix ein Objekt ploetzlich wieder faellig machen.
+  if (d.unterschrieben) {
+    const vorher = new Set(d.ids_vorher || []);
+    const nachher = new Set(positionen.map((p) => p.id).filter(Boolean));
+    const betroffen = [
+      ...[...vorher].filter((id) => !nachher.has(id)),
+      ...[...nachher].filter((id) => !vorher.has(id)),
+    ];
+    if (betroffen.length) {
+      try {
+        await glasSetzeLetzteReinigungAusVerlauf(betroffen);
+        await loadGlasObjektPositionen();
+      } catch (e) { showToast("Positionen gespeichert, Fälligkeit bitte prüfen"); }
+    }
+  }
   glasBusy = false;
-  if (error) { showToast("Fehler: " + error.message); renderGlasAdmin(); return; }
 
   // Alle Zwischenspeicher nachziehen, damit Liste, qm-Anzeige und PDF sofort stimmen
   // (das PDF wird bei jedem Oeffnen frisch aus diesen Daten gebaut).
