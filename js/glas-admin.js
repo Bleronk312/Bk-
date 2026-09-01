@@ -40,7 +40,9 @@ let glasPreselectPositionen = null; // Map objekt_id -> Set(position_id|nr), ges
 let glasTourNotizen = new Map(); // objekt_id -> { use: boolean, text: string }
 let glasTourExtras = new Map(); // objekt_id -> [{ nr, art, qm }] - händisch zusätzlich eingetragene Positionen (z.B. Extra-Stunden)
 let glasTourLfd = new Map(); // objekt_id -> Dietrich LFD-Nr. (pro Schein/Intervall neu, händisch)
-let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko", notiz: "" }; // Zustand des Tour-Formulars (überlebt Re-Renders)
+// Zustand des Tour-Formulars (überlebt Re-Renders). ma_versteckt: true = die Tour wird
+// still angelegt und erscheint erst bei der Mitarbeitern, wenn sie freigegeben wird.
+let glasNewTour = { name: "", datum: "", datum_bis: "", template: "geko", notiz: "", ma_versteckt: false };
 let glasTourenErledigtExpanded = false;
 let glasEditingTourId = null; // gesetzt, wenn eine bestehende Tour bearbeitet statt neu angelegt wird
 let glasAdminSignOpenStopId = null; // Stopp, dessen Unterschrift-Bereich in der Admin-Ansicht gerade offen ist
@@ -3078,7 +3080,7 @@ function glasJetztPlanen(objektId, positionIds) {
   glasPreselectPositionen = new Map([[objektId, new Set(ids)]]);
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]), notiz: "" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte([objektId]), notiz: "", ma_versteckt: false };
   glasShowEinzelschein = false;
   glasTourDetailId = null;
   glasShowNewTourForm = true;
@@ -3315,9 +3317,14 @@ function renderTourenCard(t) {
   // (die MA-App blendet alte fertige Touren am Folgetag aus).
   const alteFertig = allDone && (t.datum_bis || t.datum) && (t.datum_bis || t.datum) < glasTodayIso();
   const maSichtbar = !t.ma_versteckt && !alteFertig;
+  // Eine bewusst zurückgehaltene Tour wird hervorgehoben - sonst bleibt sie leicht
+  // unbemerkt liegen und die Mitarbeiter warten auf etwas, das sie nie zu sehen bekommen.
+  // Eine alte fertige Tour verschwindet dagegen von allein und braucht keinen Alarm.
   const maLabel = maSichtbar
     ? `<span style="color:var(--text-secondary);">👁️ bei MA</span>`
-    : `<span style="color:var(--text-secondary);">🙈 nicht bei MA</span>`;
+    : t.ma_versteckt
+      ? `<span style="color:var(--warning-text, #b06e28); font-weight:700;">🙈 noch nicht freigegeben</span>`
+      : `<span style="color:var(--text-secondary);">🙈 nicht bei MA</span>`;
   // Dietrich-Tour mit Stopps ohne LFD-Nr.: dicker Hinweis direkt auf der Karte.
   // ("lfd_nr" in s: solange die SQL-Migration fehlt, gibt es die Spalte nicht - dann
   // keinen falschen Alarm zeigen.)
@@ -3370,7 +3377,7 @@ function glasStartNewTourForm() {
   glasSelectedObjekte.clear();
   glasPreselectPositionen = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko", notiz: "" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: "geko", notiz: "", ma_versteckt: false };
   renderGlasAdmin();
 }
 
@@ -3519,9 +3526,9 @@ function renderTourDetailView() {
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button class="btn btn-sm" onclick="${t.frei ? `editEinzelschein('${t.id}')` : `editGlasTour('${t.id}')`}">${t.frei ? "Schein bearbeiten" : "Tour bearbeiten"}</button>
         <button class="btn btn-sm" onclick="openGlasMergePicker('${t.id}')">🔀 ${t.frei ? "In andere Tour übernehmen" : "Mit anderer Tour zusammenführen"}</button>
-        <button class="btn btn-sm" onclick="toggleGlasTourMaSichtbar('${t.id}')">${t.ma_versteckt ? "👁️ Zur MA-Ansicht hinzufügen" : "🙈 Aus MA-Ansicht rausnehmen"}</button>
+        <button class="btn ${t.ma_versteckt ? "btn-primary " : ""}btn-sm" onclick="toggleGlasTourMaSichtbar('${t.id}')">${t.ma_versteckt ? "👁️ Für Mitarbeiter freigeben" : "🙈 Aus MA-Ansicht rausnehmen"}</button>
       </div>
-      ${t.ma_versteckt ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">🙈 Diese Tour ist für die Mitarbeiter ausgeblendet – hier im Admin bleibt sie sichtbar.</p>` : ""}
+      ${t.ma_versteckt ? `<p class="muted" style="margin:8px 0 0; font-size:12px;">🙈 Diese Tour ist für die Mitarbeiter ausgeblendet – in GEKO One und im Kalender unsichtbar, benachrichtigt wurde noch niemand. Hier im Admin bleibt sie sichtbar. Mit „Für Mitarbeiter freigeben“ geht sie raus.</p>` : ""}
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
         <span class="muted" style="font-size:13px;">Schein-Vorlage:</span>
         <button class="btn btn-sm ${t.template !== "sub" ? "btn-primary" : ""}" onclick="setGlasTourTemplate('${t.id}','geko')">GEKO Clean</button>
@@ -3616,7 +3623,13 @@ async function toggleGlasTourMaSichtbar(tourId) {
   const { error } = await sb.from("glas_touren").update({ ma_versteckt: neu }).eq("id", tourId);
   if (error) { showToast("Fehler: " + error.message); return; }
   t.ma_versteckt = neu; // optimistisch, damit der Button sofort umschaltet
-  showToast(neu ? "Aus Mitarbeiter-Ansicht entfernt" : "Wieder in Mitarbeiter-Ansicht");
+  // Freigeben ist für die Mitarbeiter der Moment, in dem die Tour entsteht - beim
+  // Anlegen ist bewusst keine Meldung rausgegangen, also jetzt.
+  if (!neu) {
+    glasPushSend("glas", "push_touren", "🚐 Touren",
+      `Neue Tour: ${t.name || "Tour"}${t.datum ? ` – ${formatGlasDate(t.datum)}` : ""}${t.datum_bis ? " bis " + formatGlasDate(t.datum_bis) : ""}`);
+  }
+  showToast(neu ? "Aus Mitarbeiter-Ansicht entfernt" : "Freigegeben – Mitarbeiter benachrichtigt");
   await loadGlasTouren();
   renderGlasAdmin();
 }
@@ -4214,6 +4227,14 @@ function syncNewTourFormFromDom() {
   if (get("t_notiz") !== undefined) glasNewTour.notiz = get("t_notiz");
 }
 
+// Schalter "sofort sichtbar / erst noch nicht" im Tour-Formular. Vor dem Neuaufbau
+// zurücklesen, sonst gingen bereits eingetippte Felder (Name, Notiz, ...) verloren.
+function setGlasTourSichtbar(versteckt) {
+  syncNewTourFormFromDom();
+  glasNewTour.ma_versteckt = !!versteckt;
+  renderGlasAdmin();
+}
+
 function renderNewTourForm() {
   const selectedItems = [...glasSelectedObjekte].map((id) => glasObjekte.find((o) => o.id === id)).filter(Boolean);
 
@@ -4248,6 +4269,18 @@ function renderNewTourForm() {
         <label class="muted">Tour-Notiz für die Mitarbeiter (optional)</label>
         <textarea id="t_notiz" rows="2" placeholder="z.B. Schlüssel im Büro abholen · mit 2 Mann · zuerst bei Herz Mariä">${escapeHtml(glasNewTour.notiz || "")}</textarea>
         <p class="muted" style="margin:5px 0 0; font-size:12px;">Steht dem Mitarbeiter ganz oben, wenn er die Tour öffnet.</p>
+      </div>
+      <div class="field">
+        <label class="muted">Sichtbar für die Mitarbeiter</label>
+        <div class="glas-seg">
+          <button type="button" class="glas-seg-btn ${glasNewTour.ma_versteckt ? "" : "on"}"
+            onclick="setGlasTourSichtbar(false)">👁️ Sofort sichtbar</button>
+          <button type="button" class="glas-seg-btn ${glasNewTour.ma_versteckt ? "on" : ""}"
+            onclick="setGlasTourSichtbar(true)">🙈 Erst noch nicht</button>
+        </div>
+        <p class="muted" style="margin:5px 0 0; font-size:12px;">${glasNewTour.ma_versteckt
+          ? "Die Tour wird still angelegt: keine Benachrichtigung, in GEKO One und im Kalender unsichtbar. Du gibst sie später in der Tour mit „👁️ Für Mitarbeiter freigeben“ frei – erst dann werden sie benachrichtigt."
+          : "Die Tour erscheint sofort in GEKO One und die Mitarbeiter bekommen eine Benachrichtigung."}</p>
       </div>
       <label class="muted">Ausgewählte Objekte (${selectedItems.length})</label>
       ${selectedItems.length ? renderTourSelectedSummary(selectedItems) : `<p class="muted" style="margin:6px 0 14px;">Noch keine Objekte ausgewählt.</p>`}
@@ -4511,6 +4544,8 @@ async function createGlasTour() {
   const datumBis = document.getElementById("t_datum_bis").value;
   const template = document.getElementById("t_template").value;
   const notiz = (document.getElementById("t_notiz")?.value || "").trim();
+  // Der Sichtbarkeits-Schalter ist kein Eingabefeld, sein Stand steht in glasNewTour.
+  const versteckt = !!glasNewTour.ma_versteckt;
   const selected = glasObjekte.filter((o) => glasSelectedObjekte.has(o.id));
 
   // Beim Bearbeiten darf die Auswahl leer sein (z.B. Einzelschein mit frei eingetragenem
@@ -4561,14 +4596,23 @@ async function createGlasTour() {
     }
 
     const tourId = glasEditingTourId || genCode();
-    const { error: tourErr } = await sb.from("glas_touren").upsert(gekoCleanPayload({
+    const tourFelder = gekoCleanPayload({
       id: tourId,
       name,
       datum: datum || null,
       datum_bis: datumBis || null,
       template,
       notiz,
-    }));
+      ma_versteckt: versteckt,
+    });
+    let { error: tourErr } = await sb.from("glas_touren").upsert(tourFelder);
+    // Spalte noch nicht angelegt (supabase_add_glas.sql nicht ausgeführt): Tour trotzdem
+    // speichern - dann greift die Ausblendung eben nicht.
+    if (tourErr && /ma_versteckt/.test(tourErr.message || "")) {
+      const { ma_versteckt, ...ohne } = tourFelder;
+      ({ error: tourErr } = await sb.from("glas_touren").upsert(ohne));
+      if (!tourErr && versteckt) showToast("Hinweis: Ausblenden noch nicht möglich – bitte supabase_add_glas.sql ausführen");
+    }
     if (tourErr) throw tourErr;
 
     // Beim Bearbeiten gilt: BESTEHENDE Stopps werden NIE neu aus den Objekt-Stammdaten
@@ -4674,9 +4718,16 @@ async function createGlasTour() {
     showToast(
       failedNames.length
         ? `Gespeichert – Adresse(n) nicht gefunden, ans Ende gesetzt: ${failedNames.join(", ")}`
-        : glasEditingTourId ? "Tour aktualisiert" : "Tour angelegt – erscheint jetzt im Mitarbeiter-Link"
+        : versteckt
+          ? (glasEditingTourId ? "Tour aktualisiert – weiterhin für Mitarbeiter ausgeblendet" : "Tour angelegt – noch nicht für Mitarbeiter sichtbar")
+          : glasEditingTourId ? "Tour aktualisiert" : "Tour angelegt – erscheint jetzt im Mitarbeiter-Link"
     );
-    glasPushSend("glas", "push_touren", "🚐 Touren", `${glasEditingTourId ? "Tour geändert" : "Neue Tour"}: ${name} – ${formatGlasDate(datum)}${datumBis ? " bis " + formatGlasDate(datumBis) : ""}`);
+    // Keine Benachrichtigung für eine ausgeblendete Tour: sie würde die Mitarbeiter auf
+    // etwas stoßen, das sie gar nicht öffnen können. Die Meldung geht beim Freigeben raus
+    // (toggleGlasTourMaSichtbar).
+    if (!versteckt) {
+      glasPushSend("glas", "push_touren", "🚐 Touren", `${glasEditingTourId ? "Tour geändert" : "Neue Tour"}: ${name} – ${formatGlasDate(datum)}${datumBis ? " bis " + formatGlasDate(datumBis) : ""}`);
+    }
     glasSelectedObjekte.clear();
     glasManualOrder = [];
     glasPreselectPositionen = null;
@@ -4718,7 +4769,7 @@ async function editGlasTour(tourId) {
   });
   glasEditingTourId = tourId;
   glasTourSearch = "";
-  glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko", notiz: t.notiz || "" };
+  glasNewTour = { name: t.name || "", datum: t.datum || "", datum_bis: t.datum_bis || "", template: t.template || "geko", notiz: t.notiz || "", ma_versteckt: !!t.ma_versteckt };
   glasShowNewTourForm = true;
   glasTourDetailId = null;
   renderGlasAdmin();
@@ -7411,7 +7462,7 @@ function glasOffeneZuTourHinzufuegen() {
   glasPreselectPositionen = map;
   glasEditingTourId = null;
   glasTourSearch = "";
-  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds), notiz: "" };
+  glasNewTour = { name: "", datum: glasTodayIso(), datum_bis: "", template: glasTemplateFuerObjekte(objektIds), notiz: "", ma_versteckt: false };
   glasShowNewTourForm = true;
   renderGlasAdmin();
 }
