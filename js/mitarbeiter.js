@@ -231,20 +231,39 @@ function groupByWeek(items) {
 
 // ---------- List ----------
 
-async function loadList() {
+// leise = true: die vorhandene Liste bleibt beim Nachladen stehen (für den
+// Aktualisieren-Knopf). Sonst würde die Liste bei jedem Antippen kurz weiss
+// blinken, und bei Funkloch stünde am Ende nur noch eine Fehlermeldung da,
+// wo vorher die Scheine waren.
+async function loadList(leise) {
   const view = document.getElementById("view");
-  view.innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
+  if (!leise) view.innerHTML = `<p class="muted"><span class="spinner"></span>Lade...</p>`;
   const { data, error } = await sb.from("scheine")
     .select("id, kunde, adresse, ansprechpartner, telefon, kategorie, leistungen, monat, kdnr, datum, unterschrift_name, anhang_name, anhang_type, interne_notiz, created_at, signed_at, termin, archiviert, material_erfasst, material_stunden, material_graffiti_ex_spray, material_graffiti_gel, material_paint_cleaner, material_streichen, material_hochdruck, material_sandstrahl, material_freitext")
     .eq("archiviert", false)
     .order("created_at", { ascending: false });
   if (error) {
+    // Beim leisen Nachladen die bereits angezeigten Scheine NICHT wegwerfen -
+    // ohne Empfang ist die alte Liste allemal brauchbarer als eine rote Zeile.
+    if (leise) { showToast("Kein Netz – Liste bleibt wie sie war"); return; }
     view.innerHTML = `<div class="card"><p style="color:#c0392b;">Fehler beim Laden: ${error.message}</p></div>`;
     return;
   }
   scheine = (data || []).filter((s) => !isArchived(s));
   currentScheine = null;
   renderList();
+}
+
+// Kleiner Aktualisieren-Knopf über der Liste. Holt die Scheine frisch, ohne die
+// Ansicht zu leeren. Sitzt bewusst NUR auf der Liste: mitten im Unterschreiben
+// wäre ein Knopf, der alles neu lädt, eine Falle.
+async function refreshScheineListe() {
+  const btn = document.getElementById("scheineRefreshBtn");
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Aktualisiere ...`; }
+  await loadList(true);
+  const wieder = document.getElementById("scheineRefreshBtn");
+  if (wieder) { wieder.disabled = false; wieder.innerHTML = "&#128260; Aktualisieren"; }
 }
 
 function matchesSearch(s, query) {
@@ -293,10 +312,16 @@ function renderList() {
   const allOpenCount = scheine.filter((s) => !s.signed_at).length;
   updateHeaderStat(allOpenCount);
 
-  // Bewusst ohne Suchfeld und ohne Kalender-/Aktualisieren-Knöpfe: Der Kalender liegt
-  // jetzt zentral in GEKO One, aktualisiert wird beim Öffnen automatisch, und bei der
-  // Handvoll offener Scheine braucht es keine Suche. So sieht jede MA-Seite gleich aus.
-  view.innerHTML = `<div id="scheineListResults">${renderListResults()}</div>`;
+  // Bewusst ohne Suchfeld und ohne Kalender-Knopf: Der Kalender liegt jetzt zentral in
+  // GEKO One, und bei der Handvoll offener Scheine braucht es keine Suche. Nur ein
+  // kleiner Aktualisieren-Knopf steht oben rechts - beim Öffnen wird zwar automatisch
+  // geladen, aber wenn im Büro gerade ein Schein angelegt wurde, will man ihn holen
+  // können, ohne die App zu schliessen und neu zu öffnen.
+  view.innerHTML = `
+    <div style="display:flex; justify-content:flex-end; margin:0 0 10px;">
+      <button class="btn btn-sm" id="scheineRefreshBtn" onclick="refreshScheineListe()">&#128260; Aktualisieren</button>
+    </div>
+    <div id="scheineListResults">${renderListResults()}</div>`;
 }
 
 function renderItem(s) {
