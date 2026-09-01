@@ -816,10 +816,19 @@ function glasViewEintritt(view) {
 function renderGlasAdmin() {
   // Offene Formulare vor jedem Neuaufbau aus dem DOM sichern - sonst würden Re-Renders
   // (z.B. durch einen Klick anderswo) bereits eingetippte Werte verwerfen.
-  if (glasObjektEditing && document.getElementById("o_name")) syncObjektFormFromDom();
-  if (glasKundeEditing && document.getElementById("k_name")) syncKundeFormFromDom();
-  if (glasShowNewTourForm && !glasTourDetailId && document.getElementById("t_name")) syncNewTourFormFromDom();
-  if (glasNachtragData && document.getElementById("nt_pos_qm_0")) syncNachtragFromDom();
+  // ACHTUNG: Wurde gerade eine Positionszeile entfernt, ergänzt oder verschoben, steht
+  // im DOM noch die ALTE Reihenfolge - der Neuaufbau kommt ja erst gleich. Würde hier
+  // zurückgelesen, rutschten alle Werte unterhalb der Änderung um eine Zeile hoch: es
+  // sah aus, als hätte "✕" die falsche Position gelöscht. Die Umbau-Handler lesen selbst
+  // schon sauber zurück, BEVOR sie die Liste ändern - deshalb wird hier einmal ausgesetzt.
+  const domVeraltet = glasZeilenUmgebaut;
+  glasZeilenUmgebaut = false;
+  if (!domVeraltet) {
+    if (glasObjektEditing && document.getElementById("o_name")) syncObjektFormFromDom();
+    if (glasKundeEditing && document.getElementById("k_name")) syncKundeFormFromDom();
+    if (glasShowNewTourForm && !glasTourDetailId && document.getElementById("t_name")) syncNewTourFormFromDom();
+    if (glasNachtragData && document.getElementById("nt_pos_qm_0")) syncNachtragFromDom();
+  }
 
   const view = document.getElementById("view");
 
@@ -2403,6 +2412,11 @@ function editGlasObjekt(id, opts) {
   glasNavigate({ type: "objekt-form" });
 }
 
+// Wird von jedem Handler gesetzt, der Positionszeilen ENTFERNT, ERGÄNZT oder
+// VERSCHIEBT. renderGlasAdmin() setzt daraufhin das Zurücklesen aus dem DOM einmal
+// aus, weil das DOM zu diesem Zeitpunkt noch die alte Zeilenfolge zeigt.
+let glasZeilenUmgebaut = false;
+
 function glasLeerePosition() {
   return {
     id: null, nr: "", art: "", qm: "", template: "geko", pos_text: "",
@@ -2675,12 +2689,14 @@ function syncObjektFormFromDom() {
 
 function addPositionRow() {
   syncObjektFormFromDom();
+  glasZeilenUmgebaut = true;
   glasObjektEditing.positionen.push(glasLeerePosition());
   renderGlasAdmin();
 }
 
 function removePositionRow(idx) {
   syncObjektFormFromDom();
+  glasZeilenUmgebaut = true;
   glasObjektEditing.positionen.splice(idx, 1);
   renderGlasAdmin();
 }
@@ -4888,8 +4904,16 @@ function renderGlasNachtragModal() {
   if (!d) return "";
   const zeilen = d.positionen
     .map((pos, i) => `
-      <div class="card glas-pos-row" style="padding:14px 40px 14px 14px; margin-bottom:10px; background:var(--bg);">
-        ${d.positionen.length > 1 ? `<button type="button" class="glas-pos-remove" title="Position entfernen" onclick="removeNtPositionRow(${i})">✕</button>` : ""}
+      <div class="card glas-pos-row" style="padding:12px 14px 14px; margin-bottom:10px; background:var(--bg);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span class="muted" style="font-size:12px; font-weight:700;">${i + 1}.</span>
+          <span style="flex:1;"></span>
+          <button type="button" class="btn btn-sm" style="padding:4px 9px;" title="Nach oben"
+            onclick="moveNtPositionRow(${i}, -1)" ${i === 0 ? "disabled" : ""}>&#8593;</button>
+          <button type="button" class="btn btn-sm" style="padding:4px 9px;" title="Nach unten"
+            onclick="moveNtPositionRow(${i}, 1)" ${i === d.positionen.length - 1 ? "disabled" : ""}>&#8595;</button>
+          ${d.positionen.length > 1 ? `<button type="button" class="btn btn-sm" style="padding:4px 9px; color:var(--danger);" title="Position entfernen" onclick="removeNtPositionRow(${i})">&#10005;</button>` : ""}
+        </div>
         <div class="row" style="align-items:flex-end; margin-bottom:8px;">
           <div class="field" style="flex:2; margin-bottom:0;">
             <label class="muted">Position</label>
@@ -4988,12 +5012,26 @@ function onNtPositionEinheitChange(i) {
 
 function addNtPositionRow() {
   syncNachtragFromDom();
+  glasZeilenUmgebaut = true;
   glasNachtragData.positionen.push(glasNachtragLeerePos());
+  renderGlasAdmin();
+}
+
+// Reihenfolge der Positionen ändern - genau in dieser Reihenfolge stehen sie
+// anschließend auch auf dem PDF.
+function moveNtPositionRow(i, richtung) {
+  syncNachtragFromDom();
+  const liste = glasNachtragData.positionen;
+  const ziel = i + richtung;
+  if (ziel < 0 || ziel >= liste.length) return;
+  glasZeilenUmgebaut = true;
+  [liste[i], liste[ziel]] = [liste[ziel], liste[i]];
   renderGlasAdmin();
 }
 
 function removeNtPositionRow(i) {
   syncNachtragFromDom();
+  glasZeilenUmgebaut = true;
   glasNachtragData.positionen.splice(i, 1);
   if (!glasNachtragData.positionen.length) glasNachtragData.positionen.push(glasNachtragLeerePos());
   renderGlasAdmin();
@@ -5211,11 +5249,13 @@ function syncEsFromDom() {
 
 function addEsPositionRow() {
   syncEsFromDom();
+  glasZeilenUmgebaut = true;
   glasEinzelscheinData.positionen.push({ id: null, nr: "", art: "", qm: "", custom: false });
   renderGlasAdmin();
 }
 function removeEsPositionRow(idx) {
   syncEsFromDom();
+  glasZeilenUmgebaut = true;
   glasEinzelscheinData.positionen.splice(idx, 1);
   renderGlasAdmin();
 }
