@@ -154,6 +154,6 @@ select o.name as objekt, o.adresse, p.qm, p.feste_monate, p.faelligkeit_override
 from glas_objekt_positionen p join glas_objekte o on o.id = p.objekt_id
 where o.kunde_id in (select id from kunden where id = 'kunde-montabaur' or kdnr = '1073')
 order by o.name;
-select round(sum(replace(qm,',','.')::numeric),2) as summe_qm
+select round(sum(replace(p.qm,',','.')::numeric),2) as summe_qm
 from glas_objekt_positionen p join glas_objekte o on o.id = p.objekt_id
 where o.kunde_id in (select id from kunden where id = 'kunde-montabaur' or kdnr = '1073');
