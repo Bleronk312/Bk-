@@ -10,7 +10,7 @@
 --   laufen im Objekt-Rhythmus mit. Ev. Krankenhaus BG (2070): nur Osmosegeraet OHNE
 --   Intervall (manuell waehlbar). L'Oreal: Auftrags-Nr. weggelassen, Massnahme-Nr. beim AP.
 --   Casa Reha: KST in den Kundenstammdaten. Kita-Zweckverband 3806/570 existiert bereits
---   identisch (nur Schreibweise 57,7 -> 57,70). St. Rochus Objekt 500 = ein Objekt inkl.
+--   identisch (unveraendert). St. Rochus Objekt 500 = ein Objekt inkl.
 --   Maria-Hilf-Positionen 50/60/70/778 (Dietrich druckt dafuer einen zweiten Schein, Bereich 50).
 -- Stabile IDs + on conflict do nothing: sicher mehrfach ausfuehrbar. SQL Editor -> Run.
 
@@ -290,8 +290,9 @@ select 'dtr3319-511-p777', 'dtr3319-511', '777', 'Stangensystem TRH5', '', 'fest
 where exists (select 1 from glas_objekte where id = 'dtr3319-511') on conflict (id) do nothing;
 
 -- Kita-Zweckverband 3806 / Objekt 570 'St. Laurentius I / 535': bereits vorhanden und
--- identisch (Zum Bauverein 34, Gelsenkirchen, 57,70 qm) - nur Schreibweise vereinheitlichen
-update glas_objekt_positionen set qm = '57,70' where id = 'kzv570-p10' and qm = '57,7';
+-- identisch (Zum Bauverein 34, Gelsenkirchen, 57,70 qm) - nichts zu tun.
+-- (Diese Datei enthaelt bewusst NUR INSERTs: UPDATEs auf Positionen blockiert der
+--  Schutz-Trigger geko_schutz_positionen fuer alle, die nicht als Admin eingeloggt sind.)
 
 -- Kontrolle: alle neuen Objekte mit Positionen und qm
 select k.kdnr as kd, o.kdnr as obj, o.name as objekt, p.nr as pos, p.art, p.qm, p.einheit, p.feste_monate
