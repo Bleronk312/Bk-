@@ -78,6 +78,7 @@ function renderGlasStopMenu(s) {
     actions =
       it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; toggleGlasAdminSign('${s.id}')">✍️ Unterschreiben lassen</button>`) +
       it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; markGlasStopErledigt('${s.id}')">✔️ Als unterschrieben markieren</button>`) +
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; glasApEditStopId='${s.id}'; renderGlasAdmin();">👤 Ansprechpartner ${(s.ansprechpartner || "").trim() || (s.telefon || "").trim() ? "ändern" : "eintragen"}</button>`) +
       it(`<button class="glas-stopmenu-btn danger" onclick="glasStopMenuOpenId=null; toggleGlasNg('${s.id}')">🚫 Nicht geschafft</button>`);
   }
   return `
@@ -3482,6 +3483,7 @@ function renderTourDetailView() {
             ${menuOpen && !glasSammelAn ? renderGlasStopMenu(s) : ""}
             ${renderStopPositionenVorschau(s)}
             ${t.template === "sub" ? renderStopLfdZeile(s) : ""}
+            ${!t.archiviert_am && !isDone && !isNg && !glasSammelAn ? renderStopApZeile(s) : ""}
             ${s.hinweise ? `<div class="glas-hinweis-box" style="margin-top:8px;"><span class="glas-hinweis-icon">⚠️</span><div><p class="glas-hinweis-text" style="margin:0;">${escapeHtml(s.hinweise)}</p></div></div>` : ""}
             ${s.notiz ? `<div class="glas-notiz-box" style="margin-top:8px;">📝 ${escapeHtml(s.notiz)}</div>` : ""}
             ${isDone ? `
@@ -3583,6 +3585,60 @@ async function glasSaveStopLfd(stopId) {
   glasLfdEditStopId = null;
   showToast(val ? "LFD-Nr. gespeichert" : "LFD-Nr. entfernt");
   await loadGlasTouren(); // Tourkarten-Hinweis ("LFD fehlt") aktuell halten
+  renderGlasAdmin();
+}
+
+// Ansprechpartner (A.P.) direkt in der Tour pflegen: wird am Stopp gespeichert UND
+// ins Objekt (Stammdaten) zurückgeschrieben, damit jede künftige Tour ihn automatisch
+// übernimmt (Touren kopieren die Objektdaten beim Anlegen). Nur an offenen Stopps -
+// unterschriebene bleiben als Schnappschuss unangetastet.
+let glasApEditStopId = null;
+function renderStopApZeile(s) {
+  const ap = (s.ansprechpartner || "").trim();
+  const tel = (s.telefon || "").trim();
+  if (glasApEditStopId !== s.id) {
+    // Ohne Ansprechpartner keine Zeile - eingetragen wird über das ⋯-Menü des Stopps.
+    if (!ap && !tel) return "";
+    return `<p style="margin:8px 0 0; font-size:13px;">👤 A.P.: <b>${escapeHtml(ap || "–")}</b>${tel ? ` · ☎ ${escapeHtml(tel)}` : ""}</p>`;
+  }
+  return `
+    <div style="margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:8px 10px;" onclick="event.stopPropagation();">
+      <p class="muted" style="margin:0 0 6px; font-size:12px;">👤 Ansprechpartner vor Ort – wird auch im Objekt (Stammdaten) gespeichert</p>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <input type="text" id="stop_ap_${s.id}" value="${escapeHtml(ap)}" placeholder="z.B. Frau Müller" style="flex:1 1 150px; min-width:0;" />
+        <input type="tel" id="stop_ap_tel_${s.id}" value="${escapeHtml(tel)}" placeholder="Telefon (optional)" inputmode="tel" style="flex:1 1 130px; min-width:0;" />
+      </div>
+      <div style="display:flex; gap:6px; margin-top:6px;">
+        <button class="btn btn-sm btn-primary" onclick="glasSaveStopAp('${s.id}')">Speichern</button>
+        <button class="btn btn-sm" onclick="glasApEditStopId=null; renderGlasAdmin();">Abbrechen</button>
+      </div>
+    </div>`;
+}
+
+async function glasSaveStopAp(stopId) {
+  const ap = (document.getElementById(`stop_ap_${stopId}`)?.value || "").trim();
+  const tel = (document.getElementById(`stop_ap_tel_${stopId}`)?.value || "").trim();
+  const stop = glasTourDetailStops.find((x) => x.id === stopId);
+  // 1) Am Stopp speichern - so sehen die Mitarbeiter den Namen sofort in der laufenden
+  //    Tour (VOR-ORT-Kachel + Anrufen-Knopf in GEKO One).
+  const { error } = await sb.from("glas_stopps").update({ ansprechpartner: ap, telefon: tel }).eq("id", stopId);
+  if (error) { showToast("Fehler: " + error.message); return; }
+  if (stop) { stop.ansprechpartner = ap; stop.telefon = tel; }
+  glasApEditStopId = null;
+  // 2) In die Stammdaten zurückschreiben. Schlägt NUR dieser Teil fehl, ist der Stopp
+  //    trotzdem gespeichert - das sagt der Toast dann auch genau so.
+  if (stop?.objekt_id) {
+    const { error: oErr } = await sb.from("glas_objekte").update({ ansprechpartner: ap, telefon: tel }).eq("id", stop.objekt_id);
+    if (oErr) {
+      showToast("Am Stopp gespeichert – aber Stammdaten-Update fehlgeschlagen: " + oErr.message);
+    } else {
+      const o = glasObjekte.find((x) => x.id === stop.objekt_id);
+      if (o) { o.ansprechpartner = ap; o.telefon = tel; }
+      showToast(ap || tel ? "Ansprechpartner gespeichert – Stopp + Objekt-Stammdaten" : "Ansprechpartner entfernt – Stopp + Objekt-Stammdaten");
+    }
+  } else {
+    showToast("Am Stopp gespeichert (Stopp hat kein verknüpftes Objekt in den Stammdaten)");
+  }
   renderGlasAdmin();
 }
 
