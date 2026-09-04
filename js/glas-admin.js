@@ -78,6 +78,7 @@ function renderGlasStopMenu(s) {
     actions =
       it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; toggleGlasAdminSign('${s.id}')">✍️ Unterschreiben lassen</button>`) +
       it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; markGlasStopErledigt('${s.id}')">✔️ Als unterschrieben markieren</button>`) +
+      it(`<button class="glas-stopmenu-btn" onclick="glasStopMenuOpenId=null; glasApEditStopId='${s.id}'; renderGlasAdmin();">👤 Ansprechpartner ${(s.ansprechpartner || "").trim() || (s.telefon || "").trim() ? "ändern" : "eintragen"}</button>`) +
       it(`<button class="glas-stopmenu-btn danger" onclick="glasStopMenuOpenId=null; toggleGlasNg('${s.id}')">🚫 Nicht geschafft</button>`);
   }
   return `
@@ -3596,10 +3597,9 @@ function renderStopApZeile(s) {
   const ap = (s.ansprechpartner || "").trim();
   const tel = (s.telefon || "").trim();
   if (glasApEditStopId !== s.id) {
-    if (!ap && !tel) {
-      return `<p style="margin:8px 0 0;"><a href="javascript:void(0)" style="font-size:12.5px; color:var(--text-secondary);" onclick="glasApEditStopId='${s.id}'; renderGlasAdmin();">👤 + Ansprechpartner eintragen</a></p>`;
-    }
-    return `<p style="margin:8px 0 0; font-size:13px;">👤 A.P.: <b>${escapeHtml(ap || "–")}</b>${tel ? ` · ☎ ${escapeHtml(tel)}` : ""} <a href="javascript:void(0)" style="font-size:12px; color:var(--text-secondary);" onclick="glasApEditStopId='${s.id}'; renderGlasAdmin();">ändern</a></p>`;
+    // Ohne Ansprechpartner keine Zeile - eingetragen wird über das ⋯-Menü des Stopps.
+    if (!ap && !tel) return "";
+    return `<p style="margin:8px 0 0; font-size:13px;">👤 A.P.: <b>${escapeHtml(ap || "–")}</b>${tel ? ` · ☎ ${escapeHtml(tel)}` : ""}</p>`;
   }
   return `
     <div style="margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:8px 10px;" onclick="event.stopPropagation();">
